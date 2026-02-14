@@ -10,6 +10,7 @@
     "seed": "ts-node-dev --transpile-only src/seed.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "mongodb": "^6.9.0",
