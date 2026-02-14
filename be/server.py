@@ -40,6 +40,13 @@ from agents import (
     get_motor_client,
 )
 
+try:
+    from vision_service import detect_appliance
+    VISION_AVAILABLE = True
+except ImportError:
+    VISION_AVAILABLE = False
+    logger.warning("vision_service not available — install torch, torchvision, easyocr")
+
 from scans import (
     InsertScanRequest,
     SimilarSearchRequest,
@@ -206,9 +213,33 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # -------------------------------------------------------------------
-    # TODO: Run image recognition here (Meta on-device AI / Gemini Vision)
-    # For now, return a placeholder response so the frontend flow works.
+    # Run vision ML if available, otherwise use Gemini fallback
     # -------------------------------------------------------------------
+    vision_result = {"detections": [], "ocr_texts": [], "best_match": None}
+
+    if VISION_AVAILABLE:
+        try:
+            vision_result = detect_appliance(str(file_path))
+        except Exception as exc:
+            logger.exception("Vision inference failed, using fallback")
+
+    best = vision_result.get("best_match")
+
+    # If we got a detection, fetch power profile from the Gemini agent
+    power_profile = None
+    if best and best.get("category") not in (None, "Unknown"):
+        try:
+            req = DeviceLookupRequest(
+                brand=best.get("brand", "Unknown"),
+                model=best.get("model", "Unknown"),
+                name=best["category"],
+                region="US",
+            )
+            profile_resp = await lookup_power_profile(req)
+            power_profile = profile_resp.model_dump()
+        except Exception as exc:
+            logger.warning("Power profile lookup failed: %s", exc)
+
     return {
         "success": True,
         "data": {
@@ -216,13 +247,15 @@ async def scan_image(image: UploadFile = File(...)):
             "size_bytes": len(content),
             "content_type": image.content_type,
             "detected_appliance": {
-                "brand": "Unknown",
-                "model": "Unknown",
-                "name": "Unidentified Appliance",
-                "category": "Unknown",
-                "confidence": 0.0,
+                "brand": best["brand"] if best else "Unknown",
+                "model": best["model"] if best else "Unknown",
+                "name": best["category"] if best else "Unidentified Appliance",
+                "category": best["category"] if best else "Unknown",
+                "confidence": best["score"] if best else 0.0,
             },
-            "message": "Image received. Appliance recognition not yet implemented.",
+            "detections": vision_result.get("detections", []),
+            "ocr_texts": vision_result.get("ocr_texts", []),
+            "power_profile": power_profile,
         },
     }
 
@@ -288,6 +321,39 @@ async def resolve_scan_endpoint(request: ResolveRequest):
     except Exception as exc:
         logger.exception("Resolve scan failed")
         raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+# ---------------------------------------------------------------------------
+# Dashboard aggregate
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v1/dashboard")
+async def dashboard():
+    """Return aggregate stats for the dashboard."""
+    db = get_motor_client()[os.getenv("MONGO_DB", "smartgrid_home")]
+    scans_col = db["scans"]
+    profiles_col = db["power_profiles"]
+
+    total_scans = await scans_col.count_documents({})
+    total_profiles = await profiles_col.count_documents({})
+
+    # Get recent scans
+    recent_cursor = scans_col.find({}, {"_id": 0}).sort("created_at", -1).limit(10)
+    recent_scans = await recent_cursor.to_list(length=10)
+
+    # Get all cached power profiles
+    profiles_cursor = profiles_col.find({}, {"_id": 0}).limit(50)
+    profiles = await profiles_cursor.to_list(length=50)
+
+    return {
+        "success": True,
+        "data": {
+            "total_scans": total_scans,
+            "total_profiles": total_profiles,
+            "recent_scans": recent_scans,
+            "profiles": profiles,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

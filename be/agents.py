@@ -60,7 +60,11 @@ def get_motor_client() -> AsyncIOMotorClient:
     global _motor_client
     if _motor_client is None:
         logger.info("Creating Motor client with URI: %s...", MONGO_URI[:40])
-        _motor_client = AsyncIOMotorClient(MONGO_URI)
+        try:
+            import certifi
+            _motor_client = AsyncIOMotorClient(MONGO_URI, tlsCAFile=certifi.where())
+        except ImportError:
+            _motor_client = AsyncIOMotorClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
     return _motor_client
 
 
