@@ -25,7 +25,11 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+import shutil
+import uuid
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents import (
@@ -149,6 +153,78 @@ async def power_profile_endpoint(request: DeviceLookupRequest):
                 "error": f"Power Agent error: {str(exc)}",
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Image Upload / Scan Endpoint
+# ---------------------------------------------------------------------------
+
+# Directory to save uploaded images
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/scan")
+async def scan_image(image: UploadFile = File(...)):
+    """
+    Receive an image from the mobile app camera.
+
+    Accepts multipart/form-data with field name "image".
+    Saves the file locally, then returns a placeholder response.
+    In production, this would run image recognition to identify
+    the appliance and call the Power Agent.
+
+    Example:
+      curl -X POST http://localhost:8000/scan \
+        -F "image=@photo.jpg"
+    """
+    # Validate content type
+    if image.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error": f"Unsupported image type: {image.content_type}. Use JPEG, PNG, or WebP.",
+            },
+        )
+
+    # Save uploaded file
+    ext = image.filename.split(".")[-1] if image.filename else "jpg"
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    file_path = UPLOAD_DIR / filename
+
+    try:
+        with open(file_path, "wb") as f:
+            content = await image.read()
+            f.write(content)
+        logger.info("Saved uploaded image: %s (%d bytes)", file_path, len(content))
+    except Exception as exc:
+        logger.exception("Failed to save uploaded image")
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": f"File save failed: {str(exc)}"},
+        )
+
+    # -------------------------------------------------------------------
+    # TODO: Run image recognition here (Meta on-device AI / Gemini Vision)
+    # For now, return a placeholder response so the frontend flow works.
+    # -------------------------------------------------------------------
+    return {
+        "success": True,
+        "data": {
+            "filename": filename,
+            "size_bytes": len(content),
+            "content_type": image.content_type,
+            "detected_appliance": {
+                "brand": "Unknown",
+                "model": "Unknown",
+                "name": "Unidentified Appliance",
+                "category": "Unknown",
+                "confidence": 0.0,
+            },
+            "message": "Image received. Appliance recognition not yet implemented.",
+        },
+    }
 
 
 @app.post("/api/v1/seed-defaults")
