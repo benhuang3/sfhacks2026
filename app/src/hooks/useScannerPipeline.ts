@@ -2,7 +2,7 @@ import {
   useObjectDetection,
   SSDLITE_320_MOBILENET_V3_LARGE,
   RnExecutorchError,
-} from 'react-native-executorch';
+} from '../shims/exec';
 import { useCallback, useMemo } from 'react';
 import { Detection, BBox } from '../utils/scannerTypes';
 import { isApplianceClass } from '../utils/applianceClasses';
