@@ -33,9 +33,10 @@ const api = axios.create({
  * @param imageUri  Local file URI from expo-camera (e.g. file:///…/photo.jpg)
  * @returns         Parsed JSON response from the backend
  */
-export async function uploadScanImage(imageUri: string): Promise<Record<string, unknown>> {
+export async function uploadScanImage(image: string | File | Blob): Promise<Record<string, unknown>> {
   // Build multipart/form-data
   const formData = new FormData();
+<<<<<<< HEAD
 
   if (typeof window !== 'undefined' && (imageUri.startsWith('blob:') || imageUri.startsWith('data:'))) {
     // ── Web: fetch the blob URL and append as a real File ──
@@ -46,11 +47,33 @@ export async function uploadScanImage(imageUri: string): Promise<Record<string, 
   } else {
     // ── React Native: use the {uri, name, type} shape ──
     const filename = imageUri.split('/').pop() ?? 'scan.jpg';
+=======
+  if (Platform.OS === 'web') {
+    // If a File/Blob is passed (from input.files), append directly
+    if (image instanceof File || image instanceof Blob) {
+      formData.append('image', image, (image as File).name || 'scan.jpg');
+    } else if (typeof image === 'string') {
+      // image is a blob:// or object URL — fetch to get blob
+      try {
+        const resp = await fetch(image);
+        const blob = await resp.blob();
+        formData.append('image', blob, 'scan.jpg');
+      } catch (err) {
+        throw new Error('Failed to prepare image for upload on web.');
+      }
+    }
+  } else {
+    // Native (iOS/Android): use the RN FormData shape
+    if (typeof image !== 'string') {
+      throw new Error('Native upload expects a file URI string');
+    }
+    const filename = image.split('/').pop() ?? 'scan.jpg';
+>>>>>>> c193cea0e7f4a3027ddd8f71aa6103035c90c88f
     const ext = filename.split('.').pop()?.toLowerCase();
     const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
     formData.append('image', {
-      uri: imageUri,
+      uri: image,
       name: filename,
       type: mimeType,
     } as unknown as Blob);
@@ -115,7 +138,7 @@ export async function fetchPowerProfile(device: PowerProfileRequest) {
 // Health check → GET /api/v1/health
 // ---------------------------------------------------------------------------
 
-export async function checkHealth(): Promise<{ status: string; database: string }> {
+export async function checkHealth(): Promise<{ status: string; database: string; models_loaded?: boolean }> {
   const response = await api.get('/api/v1/health');
   return response.data?.data;
 }

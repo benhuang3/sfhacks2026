@@ -40,8 +40,21 @@ from agents import (
     lookup_power_profile,
     seed_category_defaults,
     get_motor_client,
+    _resolve_fallback,
 )
 
+<<<<<<< HEAD
+=======
+try:
+    # import detector helpers to allow preloading models at startup
+    from vision_service import detect_appliance, _get_detector, _get_ocr
+    VISION_AVAILABLE = True
+except Exception:
+    VISION_AVAILABLE = False
+    # logger may not yet be configured at import time — print fallback
+    print("vision_service not available — install torch, torchvision, easyocr")
+
+>>>>>>> c193cea0e7f4a3027ddd8f71aa6103035c90c88f
 from scans import (
     InsertScanRequest,
     SimilarSearchRequest,
@@ -74,6 +87,19 @@ async def lifespan(app: FastAPI):
         logger.info("✅  Connected to MongoDB")
     except Exception as exc:
         logger.warning("⚠️  MongoDB not reachable at startup: %s", exc)
+
+    # Preload vision / OCR models to avoid long first-request latency
+    app.state.models_loaded = False
+    if VISION_AVAILABLE:
+        try:
+            logger.info("Preloading vision and OCR models (startup)...")
+            # call the detector/ocr getters to load weights and models
+            _get_detector()
+            _get_ocr()
+            app.state.models_loaded = True
+            logger.info("Models preloaded ✅")
+        except Exception as exc:
+            logger.warning("Model preload failed: %s", exc)
 
     yield  # ← app is running
 
@@ -122,6 +148,7 @@ async def health_check():
         "data": {
             "status": "ok",
             "database": db_status,
+            "models_loaded": getattr(app.state, "models_loaded", False),
         },
     }
 
@@ -231,10 +258,33 @@ async def scan_image(image: UploadFile = File(...)):
             detail={"success": False, "error": f"Database insert failed: {str(exc)}"},
         )
 
+<<<<<<< HEAD
     # -------------------------------------------------------------------
     # TODO: Run image recognition here (Meta on-device AI / Gemini Vision)
     # For now, return a placeholder response so the frontend flow works.
     # -------------------------------------------------------------------
+=======
+    # If no profile was found, fall back to category defaults so frontend can calculate
+    if power_profile is None:
+        fallback_input = None
+        if best:
+            fallback_input = best.get("category") or best.get("label") or best.get("model")
+        fallback_input = fallback_input or "Unknown"
+        try:
+            fb = _resolve_fallback(fallback_input)
+            power_profile = {
+                "brand": best.get("brand", "Unknown") if best else "Unknown",
+                "model": best.get("model", "Unknown") if best else "Unknown",
+                "name": fallback_input,
+                "region": "US",
+                "profile": fb.model_dump(),
+                "cached": False,
+            }
+            logger.info("Using local fallback power profile for '%s'", fallback_input)
+        except Exception:
+            power_profile = None
+
+>>>>>>> c193cea0e7f4a3027ddd8f71aa6103035c90c88f
     return {
         "success": True,
         "data": {
