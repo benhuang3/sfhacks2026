@@ -21,6 +21,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -57,19 +58,51 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
   // ── Capture photo ──────────────────────────────────────────────────────
   const handleCapture = useCallback(async () => {
     if (!cameraRef.current) return;
+
+    let uri: string | null = null;
+
+    // Try native takePictureAsync first
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
         base64: false,
         exif: false,
       });
-      if (photo?.uri) {
-        setPhotoUri(photo.uri);
-        setPhase('preview');
-        setError(null);
+      if (photo?.uri) uri = photo.uri;
+    } catch {
+      // Fall through to web fallback
+    }
+
+    // Web fallback: capture from <video> element via canvas
+    if (!uri && Platform.OS === 'web') {
+      try {
+        const videoEl = document.querySelector('video');
+        if (videoEl) {
+          const canvas = document.createElement('canvas');
+          canvas.width = videoEl.videoWidth || 640;
+          canvas.height = videoEl.videoHeight || 480;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            uri = await new Promise<string | null>((resolve) => {
+              canvas.toBlob(
+                (blob) => resolve(blob ? URL.createObjectURL(blob) : null),
+                'image/jpeg',
+                0.8
+              );
+            });
+          }
+        }
+      } catch {
+        // ignore web fallback errors
       }
-    } catch (err) {
-      console.error('Camera capture failed:', err);
+    }
+
+    if (uri) {
+      setPhotoUri(uri);
+      setPhase('preview');
+      setError(null);
+    } else {
       setError('Failed to capture photo. Please try again.');
     }
   }, []);
@@ -94,7 +127,11 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
       console.log('✅ Scan result:', JSON.stringify(data, null, 2));
       setResult(data);
       onResult?.(data);
-      Alert.alert('Scan Complete', 'Appliance identified successfully!');
+      if (Platform.OS === 'web') {
+        window.alert('Scan Complete: Appliance identified successfully!');
+      } else {
+        Alert.alert('Scan Complete', 'Appliance identified successfully!');
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Upload failed. Please try again.';
