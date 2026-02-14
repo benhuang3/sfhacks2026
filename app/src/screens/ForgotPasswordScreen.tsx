@@ -32,8 +32,8 @@ export function ForgotPasswordScreen({ onGoLogin }: Props) {
       setMessage(result.message);
       if (result._debug_otp) setDebugOtp(result._debug_otp);
       setStep('code');
-    } catch (e: any) {
-      setError(e.message || 'Failed to send reset code');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Operation failed' || 'Failed to send reset code');
     }
     setLoading(false);
   };
@@ -47,8 +47,8 @@ export function ForgotPasswordScreen({ onGoLogin }: Props) {
       const result = await apiResetPassword(email, code, newPassword);
       setMessage(result.message);
       setStep('done');
-    } catch (e: any) {
-      setError(e.message || 'Reset failed');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Operation failed' || 'Reset failed');
     }
     setLoading(false);
   };

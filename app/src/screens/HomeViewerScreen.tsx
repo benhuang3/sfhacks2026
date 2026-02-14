@@ -22,6 +22,7 @@ import {
   ActionProposal, getScene, HomeScene, RoomModel,
 } from '../services/apiClient';
 import { Scene3D } from '../components/Scene3D';
+import { RATE_PER_KWH, CO2_PER_KWH } from '../utils/energyConstants';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -164,10 +165,10 @@ function Room3DView({
             >
               <Text style={styles.device3dIcon}>{getDeviceIcon(device.category)}</Text>
               <Text style={styles.device3dLabel} numberOfLines={1}>{device.label}</Text>
-              {device.power.standby_watts_typical > 1 && (
+              {(device.power?.standby_watts_typical ?? 0) > 1 && (
                 <View style={styles.device3dGhost}>
                   <Text style={styles.device3dGhostText}>
-                    👻 {device.power.standby_watts_typical}W
+                    👻 {device.power?.standby_watts_typical ?? 0}W
                   </Text>
                 </View>
               )}
@@ -200,11 +201,14 @@ function DeviceDetailPanel({
   onClose: () => void;
   onAction: (action: string) => void;
 }) {
-  const annualKwh = (device.power.active_watts_typical * device.active_hours_per_day +
-    device.power.standby_watts_typical * (24 - device.active_hours_per_day)) * 365 / 1000;
-  const annualCost = annualKwh * 0.30;
-  const annualCo2 = annualKwh * 0.25;
-  const ghostCost = (device.power.standby_watts_typical * (24 - device.active_hours_per_day) * 365 / 1000) * 0.30;
+  const activeHours = device.active_hours_per_day || 4;
+  const activeW = device.power?.active_watts_typical ?? 0;
+  const standbyW = device.power?.standby_watts_typical ?? 0;
+  const annualKwh = (activeW * activeHours +
+    standbyW * (24 - activeHours)) * 365 / 1000;
+  const annualCost = annualKwh * RATE_PER_KWH;
+  const annualCo2 = annualKwh * CO2_PER_KWH;
+  const ghostCost = (standbyW * (24 - activeHours) * 365 / 1000) * RATE_PER_KWH;
 
   return (
     <Animated.View style={[styles.detailPanel, {
@@ -230,13 +234,13 @@ function DeviceDetailPanel({
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : '#e8f5e9' }]}>
           <Text style={[styles.statValue, { color: '#4CAF50' }]}>
-            {device.power.active_watts_typical}W
+            {activeW}W
           </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(255,152,0,0.1)' : '#fff3e0' }]}>
           <Text style={[styles.statValue, { color: '#FF9800' }]}>
-            {device.power.standby_watts_typical}W
+            {standbyW}W
           </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Standby 👻</Text>
         </View>
@@ -307,10 +311,10 @@ function AgentCommandBar({
       const result = await sendAgentCommand(homeId, command.trim());
       onResult(result);
       setCommand('');
-    } catch (e: any) {
+    } catch (e: unknown) {
       onResult({
         intent: 'error',
-        message: e.message || 'Agent command failed',
+        message: e instanceof Error ? e.message : 'Agent command failed',
         proposals: [],
         executed: [],
         auto_executed: false,
@@ -486,7 +490,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
       const result = await sendAgentCommand(homeId, `${action} ${selectedDevice.label}`);
       setAgentResult(result);
       setTimeout(loadData, 500);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Action failed:', e);
     }
   }, [homeId, selectedDevice, loadData]);

@@ -149,7 +149,7 @@ class Reading(BaseModel):
 
 class Assumptions(BaseModel):
     rate_per_kwh: float = Field(default=0.30, ge=0)
-    kg_co2_per_kwh: float = Field(default=0.25, ge=0)
+    kg_co2_per_kwh: float = Field(default=0.42, ge=0)
     profile: Literal["light", "typical", "heavy"] = "typical"
     standby_reduction: float = Field(default=0.8, ge=0, le=1)
 

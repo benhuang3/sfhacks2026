@@ -330,13 +330,21 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # Save uploaded file
-    ext = image.filename.split(".")[-1] if image.filename else "jpg"
+    ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+    ext = (image.filename.split(".")[-1].lower() if image.filename else "jpg")
+    if ext not in ALLOWED_EXTENSIONS:
+        ext = "jpg"
     filename = f"{uuid.uuid4().hex}.{ext}"
     file_path = UPLOAD_DIR / filename
 
     try:
+        content = await image.read()
+        if len(content) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail={"success": False, "error": "Uploaded image is empty."},
+            )
         with open(file_path, "wb") as f:
-            content = await image.read()
             f.write(content)
         logger.info("Saved uploaded image: %s (%d bytes)", file_path, len(content))
     except Exception as exc:

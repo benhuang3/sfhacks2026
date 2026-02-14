@@ -50,9 +50,10 @@ def compute_device_breakdown(
 
     # Active hours: device-specific override → user profile → default 4h
     active_hours = device.get("active_hours_per_day")
-    if active_hours is None or active_hours == 0:
+    if not active_hours or active_hours <= 0:
         profile = device.get("usage_profile", assumptions.profile)
         active_hours = PROFILE_ACTIVE_HOURS.get(profile, 4.0)
+    active_hours = min(active_hours, 24)  # clamp to valid range
 
     standby_hours = 24 - active_hours
 

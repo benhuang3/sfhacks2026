@@ -133,8 +133,8 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
         );
         setSelectedIds(new Set());
         setTab('history');
-      } catch (err: any) {
-        showAlert('Error', err.message || 'Execution failed');
+      } catch (err: unknown) {
+        showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Execution failed');
       } finally {
         setExecuting(false);
       }
@@ -147,8 +147,8 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
         await revertAction(homeId, actionId);
         showAlert('Reverted', 'Action has been reverted.');
         loadHistory();
-      } catch (err: any) {
-        showAlert('Error', err.message);
+      } catch (err: unknown) {
+        showAlert('Error', err instanceof Error ? err.message : 'Operation failed');
       }
     });
   };

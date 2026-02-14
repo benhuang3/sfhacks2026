@@ -19,6 +19,7 @@ import {
   listHomes, getHomeSummary, HomeSummary, DeviceBreakdown, Home,
 } from '../services/apiClient';
 import { ScanResultData } from './UploadScanScreen';
+import { RATE_PER_KWH, CO2_PER_KWH, DEFAULT_USAGE_HOURS } from '../utils/energyConstants';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -33,8 +34,6 @@ interface Props {
 // Constants
 // ---------------------------------------------------------------------------
 const SCREEN_W = Dimensions.get('window').width;
-const RATE = 0.30;  // $/kWh consistent with backend default
-const CO2_FACTOR = 0.25; // kg CO₂/kWh
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Television': '#FF6384', 'TV': '#FF6384',
@@ -167,16 +166,16 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
       totalActive += d.power_profile?.profile?.active_watts_typical ?? 0;
       totalStandby += d.power_profile?.profile?.standby_watts_typical ?? 0;
     });
-    const activeKwh = totalActive * 4 * 365 / 1000; // 4h/day
-    const standbyKwh = totalStandby * 20 * 365 / 1000; // 20h/day
+    const activeKwh = totalActive * DEFAULT_USAGE_HOURS * 365 / 1000;
+    const standbyKwh = totalStandby * (24 - DEFAULT_USAGE_HOURS) * 365 / 1000;
     const totalKwh = activeKwh + standbyKwh;
     return {
       annualKwh: totalKwh,
-      annualCost: totalKwh * RATE,
-      annualCo2: totalKwh * CO2_FACTOR,
-      monthlyCost: totalKwh * RATE / 12,
-      dailyCost: totalKwh * RATE / 365,
-      ghostCost: standbyKwh * RATE,
+      annualCost: totalKwh * RATE_PER_KWH,
+      annualCo2: totalKwh * CO2_PER_KWH,
+      monthlyCost: totalKwh * RATE_PER_KWH / 12,
+      dailyCost: totalKwh * RATE_PER_KWH / 365,
+      ghostCost: standbyKwh * RATE_PER_KWH,
       ghostKwh: standbyKwh,
       deviceCount: scannedDevices.length,
       savedDollars: 0,
@@ -202,8 +201,8 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
     scannedDevices.forEach(d => {
       const cat = d.power_profile?.profile?.category ?? 'Unknown';
       const w = d.power_profile?.profile?.active_watts_typical ?? 0;
-      const kwh = w * 4 * 365 / 1000;
-      catMap[cat] = (catMap[cat] ?? 0) + kwh * RATE;
+      const kwh = w * DEFAULT_USAGE_HOURS * 365 / 1000;
+      catMap[cat] = (catMap[cat] ?? 0) + kwh * RATE_PER_KWH;
     });
     return Object.entries(catMap).map(([label, value]) => ({
       label, value: Math.round(value * 100) / 100,

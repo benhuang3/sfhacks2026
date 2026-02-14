@@ -11,6 +11,14 @@ import {
   ScrollView,
 } from 'react-native';
 import type { ScanResultData } from './UploadScanScreen';
+import {
+  RATE_PER_KWH,
+  CO2_PER_KWH,
+  TREE_ABSORBS_PER_YEAR,
+  DEFAULT_USAGE_HOURS,
+  getCategoryIcon,
+  getCategoryColor,
+} from '../utils/energyConstants';
 
 interface DashboardScreenProps {
   onBack: () => void;
@@ -30,7 +38,7 @@ function BarChart({ data, maxValue }: { data: { label: string; value: number; co
             <View
               style={[
                 chartStyles.barFill,
-                { width: `${Math.min((item.value / maxValue) * 100, 100)}%`, backgroundColor: item.color }
+                { width: `${Math.min((item.value / Math.max(maxValue, 1)) * 100, 100)}%`, backgroundColor: item.color }
               ]}
             />
           </View>
@@ -143,24 +151,20 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
     const totalStandby = devices.reduce((sum, d) => 
       sum + (d.power_profile?.profile?.standby_watts_typical ?? 0), 0);
     
-    // Assume 4h active per device per day
-    const dailyKwh = (totalActive * 4 + totalStandby * 20) / 1000;
+    const dailyKwh = (totalActive * DEFAULT_USAGE_HOURS + totalStandby * (24 - DEFAULT_USAGE_HOURS)) / 1000;
     const monthlyKwh = dailyKwh * 30;
     const yearlyKwh = monthlyKwh * 12;
-    
-    const costPerKwh = 0.30;
-    const dailyCost = dailyKwh * costPerKwh;
-    const monthlyCost = monthlyKwh * costPerKwh;
-    const yearlyCost = yearlyKwh * costPerKwh;
-    
+
+    const dailyCost = dailyKwh * RATE_PER_KWH;
+    const monthlyCost = monthlyKwh * RATE_PER_KWH;
+    const yearlyCost = yearlyKwh * RATE_PER_KWH;
+
     // Standby-only cost (24h/day)
-    const standbyYearlyCost = (totalStandby * 24 * 365 * costPerKwh) / 1000;
-    
-    // Environmental impact (kg CO₂ — consistent with backend)
-    const CO2_PER_KWH = 0.25; // kg CO₂/kWh
-    const TREE_ABSORBS = 21.77; // kg CO₂ per tree per year
+    const standbyYearlyCost = (totalStandby * 24 * 365 * RATE_PER_KWH) / 1000;
+
+    // Environmental impact
     const yearlyCO2 = yearlyKwh * CO2_PER_KWH;
-    const treesNeeded = yearlyCO2 / TREE_ABSORBS;
+    const treesNeeded = yearlyCO2 / TREE_ABSORBS_PER_YEAR;
     
     // Achievements calculation
     const achievements = [];
@@ -380,7 +384,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                 const p = device.power_profile?.profile;
                 if (!p) return null;
                 
-                const deviceMonthly = ((p.active_watts_typical * 4 + p.standby_watts_typical * 20) * 30 * 0.30) / 1000;
+                const deviceMonthly = ((p.active_watts_typical * DEFAULT_USAGE_HOURS + p.standby_watts_typical * (24 - DEFAULT_USAGE_HOURS)) * 30 * RATE_PER_KWH) / 1000;
                 
                 return (
                   <View key={index} style={styles.deviceCard}>
@@ -430,44 +434,6 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
       </ScrollView>
     </View>
   );
-}
-
-function getCategoryIcon(category: string): string {
-  const icons: Record<string, string> = {
-    'Television': '📺',
-    'Refrigerator': '🧊',
-    'Microwave': '📻',
-    'Laptop': '💻',
-    'Oven': '🔥',
-    'Toaster': '🍞',
-    'Hair Dryer': '💨',
-    'Washing Machine': '🧺',
-    'Dryer': '🌀',
-    'Air Conditioner': '❄️',
-    'Space Heater': '🔥',
-    'Monitor': '🖥️',
-    'Light Bulb': '💡',
-  };
-  return icons[category] || '🔌';
-}
-
-function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    'Television': '#2196F3',
-    'Refrigerator': '#00BCD4',
-    'Microwave': '#FF9800',
-    'Laptop': '#9C27B0',
-    'Oven': '#F44336',
-    'Toaster': '#FF5722',
-    'Hair Dryer': '#E91E63',
-    'Washing Machine': '#3F51B5',
-    'Dryer': '#673AB7',
-    'Air Conditioner': '#00ACC1',
-    'Space Heater': '#FF5722',
-    'Monitor': '#7C4DFF',
-    'Light Bulb': '#FFC107',
-  };
-  return colors[category] || '#4CAF50';
 }
 
 const styles = StyleSheet.create({

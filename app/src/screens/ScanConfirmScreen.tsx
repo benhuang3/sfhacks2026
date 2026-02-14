@@ -168,8 +168,8 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
       });
       setAdded(true);
       setTimeout(() => onDeviceAdded(selectedHomeId), 1200);
-    } catch (e: any) {
-      setError(e.message || 'Failed to add device');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to add device');
     } finally {
       setAdding(false);
     }

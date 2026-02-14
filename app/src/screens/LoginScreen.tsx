@@ -27,8 +27,8 @@ export function LoginScreen({ onGoSignup, onGoForgot }: Props) {
     setLoading(true);
     try {
       await login(email, password);
-    } catch (e: any) {
-      setError(e.message || 'Login failed');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Login failed');
     }
     setLoading(false);
   };

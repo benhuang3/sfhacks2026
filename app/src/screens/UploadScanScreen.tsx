@@ -19,6 +19,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadScanImage, checkHealth } from '../services/apiService';
 import { listHomes, addDevice, Home } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
+import {
+  RATE_PER_KWH,
+  CO2_PER_KWH,
+  TREE_ABSORBS_PER_YEAR,
+  US_AVG_APPLIANCE_KWH,
+  USAGE_HOUR_OPTIONS,
+  getCategoryIcon,
+} from '../utils/energyConstants';
 
 interface UploadScanScreenProps {
   onBack: () => void;
@@ -258,6 +266,9 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       await new Promise(r => setTimeout(r, 200));
       
       const scanData = data?.data as ScanResultData;
+      if (!scanData?.detected_appliance) {
+        throw new Error('Server returned incomplete scan data');
+      }
       setResult(scanData);
       setScanStep('complete');
       onScanComplete?.(scanData, imageUri ?? undefined);
@@ -285,8 +296,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
   const power = result?.power_profile?.profile;
   const isScanning = ['uploading', 'detecting', 'analyzing'].includes(scanStep);
 
-  // Calculate costs — consistent $0.30/kWh rate
-  const RATE_PER_KWH = 0.30;
+  // Calculate costs
   const dailyKwh = power ? (power.active_watts_typical * usageHours) / 1000 : 0;
   const monthlyKwh = dailyKwh * 30;
   const monthlyCost = monthlyKwh * RATE_PER_KWH;
@@ -294,14 +304,9 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
   const yearlyCost = yearlyKwh * RATE_PER_KWH;
   const standbyYearlyCost = power ? (power.standby_watts_typical * 24 * 365 * RATE_PER_KWH) / 1000 : 0;
 
-  // Environmental impact calculations — kg CO₂ (consistent with backend)
-  const CO2_PER_KWH = 0.25; // kg CO₂/kWh
-  const TREE_ABSORBS_PER_YEAR = 21.77; // kg CO₂ per tree per year (EPA)
+  // Environmental impact
   const yearlyCO2 = yearlyKwh * CO2_PER_KWH;
   const treesNeeded = yearlyCO2 / TREE_ABSORBS_PER_YEAR;
-  
-  // Comparison with average
-  const US_AVG_APPLIANCE_KWH = 200; // avg appliance yearly kWh
   const comparedToAvg = yearlyKwh > 0 ? ((yearlyKwh / US_AVG_APPLIANCE_KWH) * 100) : 0;
 
   // Load homes when result arrives
@@ -310,7 +315,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       listHomes(user.id).then(h => {
         setHomes(h);
         if (h.length > 0) setSelectedHomeId(h[0].id);
-      }).catch(() => {});
+      }).catch(e => console.warn('Failed to load homes:', e));
     }
   }, [result, user]);
 
@@ -449,7 +454,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                     </View>
                     <View style={styles.confidenceBadge}>
                       <Text style={styles.confidenceText}>
-                        {Math.round(appliance.confidence * 100)}% match
+                        {Math.round(Math.min(1, Math.max(0, appliance.confidence)) * 100)}% match
                       </Text>
                     </View>
                   </View>
@@ -487,7 +492,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                     <View style={styles.usageSection}>
                       <Text style={styles.usageTitle}>Daily Usage</Text>
                       <View style={styles.usageButtons}>
-                        {[1, 2, 4, 6, 8, 12].map((h) => (
+                        {USAGE_HOUR_OPTIONS.map((h) => (
                           <TouchableOpacity
                             key={h}
                             style={[styles.usageBtn, usageHours === h && styles.usageBtnActive]}
@@ -567,7 +572,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                       </Text>
                     </View>
 
-                    <Text style={styles.envNote}>Based on EPA emissions data (0.25 kg CO₂/kWh)</Text>
+                    <Text style={styles.envNote}>Based on EPA emissions data ({CO2_PER_KWH} kg CO₂/kWh)</Text>
                   </View>
                 )}
 
@@ -681,26 +686,6 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       </ScrollView>
     </View>
   );
-}
-
-function getCategoryIcon(category: string): string {
-  const icons: Record<string, string> = {
-    'Television': '📺',
-    'Refrigerator': '🧊',
-    'Microwave': '📻',
-    'Laptop': '💻',
-    'Oven': '🔥',
-    'Toaster': '🍞',
-    'Hair Dryer': '💨',
-    'Washing Machine': '🧺',
-    'Dryer': '🌀',
-    'Air Conditioner': '❄️',
-    'Space Heater': '🔥',
-    'Monitor': '🖥️',
-    'Light Bulb': '💡',
-    'Phone Charger': '🔌',
-  };
-  return icons[category] || '🔌';
 }
 
 const styles = StyleSheet.create({

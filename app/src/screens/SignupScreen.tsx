@@ -30,8 +30,8 @@ export function SignupScreen({ onGoLogin }: Props) {
     setLoading(true);
     try {
       await signup(email, password, name);
-    } catch (e: any) {
-      setError(e.message || 'Signup failed');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Signup failed');
     }
     setLoading(false);
   };

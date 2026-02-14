@@ -24,6 +24,7 @@ import {
   type Home,
   type Device,
 } from '../services/apiClient';
+import { getCategoryIcon } from '../utils/energyConstants';
 
 interface HomeManagerScreenProps {
   onBack: () => void;
@@ -98,8 +99,8 @@ export function HomeManagerScreen({
       setNewHomeName('');
       setNewHomeRooms('living-room, kitchen');
       await loadHomes();
-    } catch (err: any) {
-      showAlert('Error', err.message || 'Failed to create home');
+    } catch (err: unknown) {
+      showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Failed to create home');
     } finally {
       setCreating(false);
     }
@@ -134,8 +135,8 @@ export function HomeManagerScreen({
       setDeviceForm({ label: '', category: '', brand: '', model: '', roomId: 'living-room', is_critical: false });
       setShowAddDevice(null);
       await loadHomes();
-    } catch (err: any) {
-      showAlert('Error', err.message || 'Failed to add device');
+    } catch (err: unknown) {
+      showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Failed to add device');
     } finally {
       setAddingDevice(false);
     }
@@ -145,19 +146,9 @@ export function HomeManagerScreen({
     try {
       await deleteDevice(deviceId);
       await loadHomes();
-    } catch (err: any) {
-      showAlert('Error', err.message);
+    } catch (err: unknown) {
+      showAlert('Error', err instanceof Error ? err.message : 'Operation failed');
     }
-  };
-
-  const getCategoryIcon = (cat: string): string => {
-    const icons: Record<string, string> = {
-      TV: '📺', Television: '📺', Refrigerator: '🧊', Microwave: '📻',
-      Laptop: '💻', Oven: '🔥', Toaster: '🍞', 'Hair Dryer': '💨',
-      'Washing Machine': '🧺', Dryer: '🌀', 'Air Conditioner': '❄️',
-      'Space Heater': '🔥', Monitor: '🖥️', 'Light Bulb': '💡', Light: '💡',
-    };
-    return icons[cat] || '🔌';
   };
 
   return (
@@ -246,7 +237,7 @@ export function HomeManagerScreen({
                   <View style={styles.deviceInfo}>
                     <Text style={styles.deviceLabel}>{d.label}</Text>
                     <Text style={styles.deviceMeta}>
-                      {d.category} • {d.power.active_watts_typical}W active • {d.power.standby_watts_typical}W standby
+                      {d.category} • {d.power?.active_watts_typical ?? 0}W active • {d.power?.standby_watts_typical ?? 0}W standby
                     </Text>
                   </View>
                   {d.is_critical && <Text style={styles.criticalBadge}>⚠️</Text>}

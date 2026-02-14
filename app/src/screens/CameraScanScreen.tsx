@@ -47,7 +47,7 @@ interface CameraScanScreenProps {
 }
 
 export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
-  const cameraRef = useRef<any>(null);
+  const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
 
   const [phase, setPhase] = useState<Phase>('camera');

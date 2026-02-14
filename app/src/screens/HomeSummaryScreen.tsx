@@ -21,6 +21,7 @@ import {
   type Assumptions,
   type DeviceBreakdown,
 } from '../services/apiClient';
+import { RATE_PER_KWH, CO2_PER_KWH, getCategoryIcon, getCategoryColor } from '../utils/energyConstants';
 
 interface HomeSummaryScreenProps {
   homeId: string;
@@ -28,33 +29,12 @@ interface HomeSummaryScreenProps {
   onViewActions: (homeId: string) => void;
 }
 
-function getCategoryIcon(cat: string): string {
-  const icons: Record<string, string> = {
-    TV: '📺', Television: '📺', Refrigerator: '🧊', Microwave: '📻',
-    Laptop: '💻', Oven: '🔥', Toaster: '🍞', 'Hair Dryer': '💨',
-    'Washing Machine': '🧺', Dryer: '🌀', 'Air Conditioner': '❄️',
-    'Space Heater': '🔥', Monitor: '🖥️', 'Light Bulb': '💡', Light: '💡',
-  };
-  return icons[cat] || '🔌';
-}
-
-function getCategoryColor(cat: string): string {
-  const colors: Record<string, string> = {
-    Television: '#2196F3', TV: '#2196F3', Refrigerator: '#00BCD4',
-    Microwave: '#FF9800', Laptop: '#9C27B0', Oven: '#F44336',
-    Toaster: '#FF5722', 'Hair Dryer': '#E91E63', 'Washing Machine': '#3F51B5',
-    Dryer: '#673AB7', 'Air Conditioner': '#00ACC1', 'Space Heater': '#FF5722',
-    Monitor: '#7C4DFF', 'Light Bulb': '#FFC107', Light: '#FFC107',
-  };
-  return colors[cat] || '#4CAF50';
-}
-
 export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummaryScreenProps) {
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [rateInput, setRateInput] = useState('0.30');
-  const [co2Input, setCo2Input] = useState('0.25');
+  const [rateInput, setRateInput] = useState(String(RATE_PER_KWH));
+  const [co2Input, setCo2Input] = useState(String(CO2_PER_KWH));
   const [profileInput, setProfileInput] = useState('typical');
   const [saving, setSaving] = useState(false);
 
@@ -80,14 +60,14 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
     try {
       setSaving(true);
       await setAssumptions(homeId, {
-        rate_per_kwh: parseFloat(rateInput) || 0.30,
-        kg_co2_per_kwh: parseFloat(co2Input) || 0.25,
-        profile: profileInput as any,
+        rate_per_kwh: parseFloat(rateInput) || RATE_PER_KWH,
+        kg_co2_per_kwh: parseFloat(co2Input) || CO2_PER_KWH,
+        profile: profileInput as 'light' | 'typical' | 'heavy',
       });
       setShowSettings(false);
       await loadSummary();
-    } catch (err: any) {
-      showAlert('Error', err.message);
+    } catch (err: unknown) {
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
