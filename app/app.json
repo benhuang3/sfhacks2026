@@ -34,7 +34,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": []
     "plugins": [
       [
         "react-native-vision-camera",

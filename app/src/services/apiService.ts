@@ -6,7 +6,6 @@
  */
 
 import axios, { AxiosError } from 'axios';
-import * as FileSystem from 'expo-file-system';
 
 // ---------------------------------------------------------------------------
 // Config

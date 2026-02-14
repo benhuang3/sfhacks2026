@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, Platform } from 'react-native';
 import { CameraView as ExpoCameraView, useCameraPermissions } from 'expo-camera';
 
 export interface CameraViewRef {
@@ -9,6 +9,32 @@ export interface CameraViewRef {
 interface CameraViewProps {
   isActive: boolean;
   children?: React.ReactNode;
+}
+
+/**
+ * Capture a frame from a <video> element via canvas (web fallback).
+ */
+function captureFrameFromVideo(videoEl: HTMLVideoElement): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth || 640;
+      canvas.height = videoEl.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(null);
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(null);
+          resolve(URL.createObjectURL(blob));
+        },
+        'image/jpeg',
+        0.8
+      );
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 export const CameraView = forwardRef<CameraViewRef, CameraViewProps>(
@@ -25,12 +51,30 @@ export const CameraView = forwardRef<CameraViewRef, CameraViewProps>(
 
     const takePhoto = useCallback(async (): Promise<string | null> => {
       if (!cameraRef.current) return null;
+
+      // Try native takePictureAsync first
       try {
         const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
-        return photo?.uri ?? null;
+        if (photo?.uri) return photo.uri;
       } catch {
-        return null;
+        // Fall through to web fallback
       }
+
+      // Web fallback: find the <video> element inside the camera view and capture a frame
+      if (Platform.OS === 'web') {
+        try {
+          const container = (cameraRef.current as any)?._nativeRef?.current
+            ?? document.querySelector('video');
+          const videoEl = container instanceof HTMLVideoElement
+            ? container
+            : container?.querySelector?.('video');
+          if (videoEl) return captureFrameFromVideo(videoEl);
+        } catch {
+          // ignore
+        }
+      }
+
+      return null;
     }, []);
 
     useImperativeHandle(ref, () => ({ takePhoto }), [takePhoto]);
