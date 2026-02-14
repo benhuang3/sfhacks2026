@@ -76,6 +76,7 @@ from models import (
     ProposeActionsRequest,
     ExecuteActionsRequest,
     SetAssumptionsRequest,
+    AddRoomRequest,
 )
 from homes_devices import (
     create_home,
@@ -90,6 +91,9 @@ from homes_devices import (
     delete_device,
     get_assumptions,
     set_assumptions,
+    add_room,
+    remove_room,
+    get_scene,
 )
 from aggregation import compute_home_summary, save_snapshot, list_snapshots
 from optimizer import propose_actions, propose_actions_with_llm
@@ -561,6 +565,54 @@ async def delete_home_endpoint(home_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
     return {"success": True, "data": {"deleted": True}}
+
+
+# ===========================================================================
+# ROOMS — add / remove rooms from a home
+# ===========================================================================
+
+@app.post("/api/v1/homes/{home_id}/rooms")
+async def add_room_endpoint(home_id: str, request: AddRoomRequest):
+    """Add a new room to a home."""
+    try:
+        updated = await add_room(home_id, request.name)
+        if not updated:
+            raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+        return {"success": True, "data": updated}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Add room failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.delete("/api/v1/homes/{home_id}/rooms/{room_id}")
+async def remove_room_endpoint(home_id: str, room_id: str):
+    """Remove a room. Devices in it become 'unassigned'."""
+    try:
+        updated = await remove_room(home_id, room_id)
+        if not updated:
+            raise HTTPException(status_code=404, detail={"success": False, "error": "Home or room not found"})
+        return {"success": True, "data": updated}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Remove room failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+# ===========================================================================
+# SCENE — 3-D scene JSON for a home
+# ===========================================================================
+
+@app.get("/api/v1/homes/{home_id}/scene")
+async def get_scene_endpoint(home_id: str):
+    """Return the 3-D scene JSON for this home (rooms + placed objects)."""
+    home = await get_home(home_id)
+    if not home:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+    scene = await get_scene(home_id)
+    return {"success": True, "data": scene}
 
 
 # ===========================================================================

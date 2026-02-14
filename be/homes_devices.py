@@ -25,6 +25,11 @@ from models import (
     DeviceControl,
     Assumptions,
     SetAssumptionsRequest,
+    RoomModel,
+    SceneObject,
+    SceneRoom,
+    HomeScene,
+    AddRoomRequest,
 )
 
 logger = logging.getLogger("homes_devices")
@@ -69,10 +74,20 @@ def _assumptions_col():
 
 
 async def create_home(req: CreateHomeRequest) -> dict:
+    # Build scene from room list
+    scene_rooms = [
+        SceneRoom(roomId=r.roomId, name=r.name).model_dump()
+        for r in req.rooms
+    ]
+    scene = HomeScene(
+        rooms=[SceneRoom(**sr) for sr in scene_rooms],
+        objects=[],
+    )
     doc = {
         "userId": req.userId,
         "name": req.name,
-        "rooms": req.rooms,
+        "rooms": [r.model_dump() for r in req.rooms],
+        "scene": scene.model_dump(),
         "createdAt": datetime.now(timezone.utc),
     }
     result = await _homes_col().insert_one(doc)
@@ -91,12 +106,71 @@ async def list_homes(user_id: str) -> list[dict]:
     return [_serialize(doc) async for doc in cursor]
 
 
-async def update_home_rooms(home_id: str, rooms: list[str]) -> dict:
+async def update_home_rooms(home_id: str, rooms: list[dict]) -> dict:
+    """Legacy helper — overwrites entire rooms list. Prefer add_room/remove_room."""
     result = await _homes_col().find_one_and_update(
         {"_id": _oid(home_id)},
         {"$set": {"rooms": rooms}},
         return_document=True,
     )
+    return _serialize(result) if result else {}
+
+
+async def add_room(home_id: str, name: str) -> dict:
+    """Add a new room to the home; auto-assign roomId and update scene."""
+    home = await _homes_col().find_one({"_id": _oid(home_id)})
+    if not home:
+        return {}
+    existing_rooms = home.get("rooms", [])
+    max_num = 0
+    for r in existing_rooms:
+        rid = r.get("roomId", "")
+        if rid.startswith("r"):
+            try:
+                max_num = max(max_num, int(rid[1:]))
+            except ValueError:
+                pass
+    new_id = f"r{max_num + 1}"
+    new_room = {"roomId": new_id, "name": name}
+    new_scene_room = SceneRoom(roomId=new_id, name=name).model_dump()
+    result = await _homes_col().find_one_and_update(
+        {"_id": _oid(home_id)},
+        {
+            "$push": {
+                "rooms": new_room,
+                "scene.rooms": new_scene_room,
+            }
+        },
+        return_document=True,
+    )
+    return _serialize(result) if result else {}
+
+
+async def remove_room(home_id: str, room_id: str) -> dict:
+    """Remove a room. Devices in that room get roomId='unassigned'."""
+    # Move devices to unassigned
+    await _devices_col().update_many(
+        {"homeId": home_id, "roomId": room_id},
+        {"$set": {"roomId": "unassigned"}},
+    )
+    # Pull room from home.rooms and home.scene.rooms
+    result = await _homes_col().find_one_and_update(
+        {"_id": _oid(home_id)},
+        {
+            "$pull": {
+                "rooms": {"roomId": room_id},
+                "scene.rooms": {"roomId": room_id},
+            }
+        },
+        return_document=True,
+    )
+    # Also update scene objects referencing this room
+    if result:
+        await _homes_col().update_one(
+            {"_id": _oid(home_id)},
+            {"$set": {"scene.objects.$[elem].roomId": "unassigned"}},
+            array_filters=[{"elem.roomId": room_id}],
+        )
     return _serialize(result) if result else {}
 
 
@@ -148,8 +222,75 @@ async def add_device(home_id: str, req: AddDeviceRequest) -> dict:
     }
     result = await _devices_col().insert_one(doc)
     doc["_id"] = result.inserted_id
+    device_id = str(result.inserted_id)
+
+    # ── Append scene object with auto-placement ───────────────────────
+    try:
+        home = await _homes_col().find_one({"_id": _oid(home_id)})
+        existing_objects = home.get("scene", {}).get("objects", []) if home else []
+        n = len(existing_objects)
+        # Grid-based auto-placement: spread objects along x-axis
+        position = [1.0 + n * 0.7, 0.0, 1.0]
+
+        # Category → asset key mapping
+        asset_key = _category_to_asset(req.category)
+
+        scene_obj = SceneObject(
+            objectId=f"obj_{device_id}",
+            deviceId=device_id,
+            roomId=req.roomId,
+            category=req.category,
+            assetKey=asset_key,
+            position=position,
+            rotation=[0.0, 0.0, 0.0],
+            scale=[1.0, 1.0, 1.0],
+        ).model_dump()
+
+        await _homes_col().update_one(
+            {"_id": _oid(home_id)},
+            {"$push": {"scene.objects": scene_obj}},
+        )
+        logger.info("Appended scene object for device '%s' in home %s", req.label, home_id)
+    except Exception as e:
+        logger.warning("Scene object append failed (non-fatal): %s", e)
+
     logger.info("Added device '%s' to home %s", req.label, home_id)
     return _serialize(doc)
+
+
+def _category_to_asset(category: str) -> str:
+    """Map a device category to a 3-D asset key."""
+    _map = {
+        "television": "models/television.glb",
+        "tv": "models/television.glb",
+        "laptop": "models/laptop.glb",
+        "monitor": "models/monitor.glb",
+        "microwave": "models/microwave.glb",
+        "oven": "models/oven.glb",
+        "toaster": "models/toaster.glb",
+        "refrigerator": "models/refrigerator.glb",
+        "fridge": "models/refrigerator.glb",
+        "hair dryer": "models/hair_dryer.glb",
+        "phone charger": "models/phone_charger.glb",
+        "washing machine": "models/washing_machine.glb",
+        "dryer": "models/dryer.glb",
+        "light bulb": "models/light_bulb.glb",
+        "lamp": "models/lamp.glb",
+        "air conditioner": "models/air_conditioner.glb",
+        "space heater": "models/space_heater.glb",
+        "gaming console": "models/gaming_console.glb",
+        "router": "models/router.glb",
+        "fan": "models/fan.glb",
+        "water heater": "models/water_heater.glb",
+        "dishwasher": "models/dishwasher.glb",
+        "coffee maker": "models/coffee_maker.glb",
+        "vacuum": "models/vacuum.glb",
+        "iron": "models/iron.glb",
+        "desktop computer": "models/desktop_computer.glb",
+        "printer": "models/printer.glb",
+        "speaker": "models/speaker.glb",
+    }
+    return _map.get(category.lower().strip(), f"models/{category.lower().replace(' ', '_')}.glb")
 
 
 async def get_device(device_id: str) -> Optional[dict]:
@@ -172,8 +313,32 @@ async def update_device(device_id: str, updates: dict) -> dict:
 
 
 async def delete_device(device_id: str) -> bool:
+    # Also remove matching scene object from the home
+    device = await _devices_col().find_one({"_id": _oid(device_id)})
+    if device:
+        home_id = device.get("homeId")
+        if home_id:
+            try:
+                await _homes_col().update_one(
+                    {"_id": _oid(home_id)},
+                    {"$pull": {"scene.objects": {"deviceId": device_id}}},
+                )
+            except Exception:
+                pass
     result = await _devices_col().delete_one({"_id": _oid(device_id)})
     return result.deleted_count > 0
+
+
+# ---------------------------------------------------------------------------
+# Scene
+# ---------------------------------------------------------------------------
+
+async def get_scene(home_id: str) -> dict:
+    """Return the scene JSON for a home."""
+    home = await _homes_col().find_one({"_id": _oid(home_id)}, {"scene": 1})
+    if not home:
+        return {"rooms": [], "objects": []}
+    return home.get("scene", {"rooms": [], "objects": []})
 
 
 # ---------------------------------------------------------------------------

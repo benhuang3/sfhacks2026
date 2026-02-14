@@ -20,7 +20,7 @@ import {
   Platform, useColorScheme, ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -43,6 +43,10 @@ import { CameraScanScreen } from './src/screens/CameraScanScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
+
+// 3D Scene Component
+import { Scene3D } from './src/components/Scene3D';
+import { HomeScene, listHomes, getScene } from './src/services/apiClient';
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -263,11 +267,74 @@ function MainTabs() {
 }
 
 // ---------------------------------------------------------------------------
-// Landing Screen (Home tab)
+// Landing Screen → Smart Dashboard (Home tab)
 // ---------------------------------------------------------------------------
 function LandingScreen() {
   const { colors, isDark, setThemeMode } = useTheme();
   const { user, logout } = useAuth();
+
+  const [stats, setStats] = React.useState<{
+    deviceCount: number;
+    annualKwh: number;
+    annualCost: number;
+    annualCo2: number;
+    monthlyCost: number;
+    standbyWaste: number;
+  } | null>(null);
+  const [scene, setScene] = React.useState<HomeScene | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const loadHomeData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      let homeId = user?.homeId;
+      if (!homeId) {
+        // Try finding the first home for this user
+        const homes = await listHomes(user?.id ?? '');
+        if (homes.length > 0) {
+          homeId = homes[0].id;
+        }
+      }
+      if (homeId) {
+        const { getHomeSummary } = await import('./src/services/apiClient');
+        const [summary, sceneData] = await Promise.all([
+          getHomeSummary(homeId),
+          getScene(homeId).catch(() => null),
+        ]);
+        setStats({
+          deviceCount: summary.totals.device_count,
+          annualKwh: summary.totals.annual_kwh,
+          annualCost: summary.totals.annual_cost,
+          annualCo2: summary.totals.annual_co2_kg,
+          monthlyCost: summary.totals.monthly_cost,
+          standbyWaste: summary.totals.standby_annual_cost,
+        });
+        if (sceneData) setScene(sceneData);
+      }
+    } catch {
+      // No data yet — that's fine
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  // Refetch when screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadHomeData();
+    }, [loadHomeData])
+  );
+
+  const fmt = (n: number, d = 1) => (n ?? 0).toFixed(d);
+
+  const cards = [
+    { icon: '🔌', label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked' },
+    { icon: '⚡', label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours' },
+    { icon: '💰', label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated' },
+    { icon: '🌱', label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint' },
+    { icon: '👻', label: 'Standby Waste', value: stats ? `$${fmt(stats.standbyWaste, 2)}/yr` : '–', sub: 'ghost energy cost' },
+    { icon: '📊', label: 'Annual Cost', value: stats ? `$${fmt(stats.annualCost, 2)}` : '–', sub: 'total estimate' },
+  ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -284,35 +351,56 @@ function LandingScreen() {
       </View>
 
       <View style={styles.hero}>
-        <View style={[styles.heroIconBox, { backgroundColor: isDark ? 'rgba(76,175,80,0.15)' : 'rgba(46,125,50,0.1)' }]}>
-          <Text style={styles.heroIcon}>⚡</Text>
-        </View>
-        <Text style={[styles.title, { color: colors.text }]}>Know Your Power</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {user ? `Welcome, ${user.name || user.email.split('@')[0]}!` : 'Scan appliances to see real energy costs.'}
+        <Text style={[styles.title, { color: colors.text, fontSize: 26 }]}>
+          {user ? `Welcome, ${user.name || user.email.split('@')[0]}` : 'Know Your Power'}
         </Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary, marginTop: 4 }]}>
-          Scan appliances. Track energy. Save money.
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {stats && stats.deviceCount > 0
+            ? 'Here\'s your energy snapshot.'
+            : 'Scan appliances to start tracking energy.'}
         </Text>
       </View>
 
-      <View style={[styles.stepsContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {[
-          { num: '1', text: 'Scan or upload a photo of your appliance' },
-          { num: '2', text: 'AI identifies the device & estimates power usage' },
-          { num: '3', text: 'See cost, ghost energy & optimization tips' },
-        ].map((step, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && <View style={[styles.stepLine, { backgroundColor: colors.border }]} />}
-            <View style={styles.step}>
-              <View style={[styles.stepNum, { backgroundColor: colors.accent }]}>
-                <Text style={styles.stepNumText}>{step.num}</Text>
-              </View>
-              <Text style={[styles.stepText, { color: isDark ? '#ccc' : '#555' }]}>{step.text}</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+      ) : (
+        <View style={{
+          flexDirection: 'row', flexWrap: 'wrap',
+          justifyContent: 'space-between', marginTop: 8,
+        }}>
+          {cards.map((c, i) => (
+            <View
+              key={i}
+              style={{
+                width: '48%',
+                backgroundColor: colors.card,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 16,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ fontSize: 24, marginBottom: 4 }}>{c.icon}</Text>
+              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{c.label}</Text>
+              <Text style={{ color: isDark ? '#555' : '#999', fontSize: 10, marginTop: 1 }}>{c.sub}</Text>
             </View>
-          </React.Fragment>
-        ))}
-      </View>
+          ))}
+        </View>
+      )}
+
+      {/* 3D Home Preview */}
+      {scene && scene.objects && scene.objects.length > 0 && (
+        <View style={{ marginTop: 16 }}>
+          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
+            🏠 Your Home
+          </Text>
+          <View style={{ borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+            <Scene3D scene={scene} height={180} />
+          </View>
+        </View>
+      )}
 
       <Text style={[styles.footnote, { color: isDark ? '#555' : '#999' }]}>
         Power data based on Berkeley Lab and ENERGY STAR research

@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, field_validator
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from agents import get_db
+from agents import get_db, get_motor_client
 
 logger = logging.getLogger("auth")
 
@@ -107,7 +107,9 @@ async def _check_db() -> bool:
         client = get_motor_client()
         await client.admin.command("ping")
         _db_available = True
-    except Exception:
+        logger.info("MongoDB reachable — using real DB for auth")
+    except Exception as exc:
+        logger.warning("MongoDB unreachable (%s) — falling back to in-memory", exc)
         _db_available = False
     return _db_available
 
@@ -118,18 +120,29 @@ class _MemCollection:
     def __init__(self, store: dict, name: str):
         self._store = store
         self._name = name
-        self._counter = 0
+        self._counter = len(store)  # resume counter from existing entries
 
     async def find_one(self, filt: dict):
         for doc in self._store.values():
-            if all(doc.get(k) == v for k, v in filt.items()
-                   if not isinstance(v, dict)):
-            # simple equality match (ignores $gt etc. for OTP)
+            match = True
+            for k, v in filt.items():
+                if isinstance(v, dict):
+                    continue  # skip $gt / $lt operators
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
                 return doc
         return None
 
     async def insert_one(self, doc: dict):
         from types import SimpleNamespace
+        # Enforce email uniqueness
+        email = doc.get("email")
+        if email:
+            for existing in self._store.values():
+                if existing.get("email") == email:
+                    raise HTTPException(status_code=409, detail="Email already registered")
         self._counter += 1
         oid = f"mem_{self._name}_{self._counter}"
         doc["_id"] = oid
@@ -140,8 +153,14 @@ class _MemCollection:
     async def update_one(self, filt: dict, update: dict):
         from types import SimpleNamespace
         for doc in self._store.values():
-            if all(doc.get(k) == v for k, v in filt.items()
-                   if not isinstance(v, dict)):
+            match = True
+            for k, v in filt.items():
+                if isinstance(v, dict):
+                    continue
+                if doc.get(k) != v:
+                    match = False
+                    break
+            if match:
                 for k, v in update.get("$set", {}).items():
                     doc[k] = v
                 return SimpleNamespace(modified_count=1)
@@ -229,7 +248,7 @@ async def get_current_user(
 # ---------------------------------------------------------------------------
 
 async def signup(req: SignupRequest) -> dict:
-    """Create a new user account."""
+    """Create a new user account and auto-creates a default Home."""
     col = _users_col()
     try:
         # Check if email already exists
@@ -252,6 +271,24 @@ async def signup(req: SignupRequest) -> dict:
         logger.error("DB error during signup: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    # ── Auto-create default Home with rooms + empty scene ─────────────
+    home_id: str | None = None
+    try:
+        from models import CreateHomeRequest, DEFAULT_ROOMS
+        from homes_devices import create_home as _create_home
+        home_req = CreateHomeRequest(
+            userId=user_id,
+            name=f"{doc['name']}'s Home",
+            rooms=[r.model_copy() for r in DEFAULT_ROOMS],
+        )
+        home = await _create_home(home_req)
+        home_id = home.get("id")
+        # Persist homeId on user doc for quick lookup
+        await col.update_one({"_id": result.inserted_id}, {"$set": {"homeId": home_id}})
+        logger.info("Auto-created home %s for user %s", home_id, user_id)
+    except Exception as e:
+        logger.warning("Auto-create home failed (non-fatal): %s", e)
+
     token = create_token(user_id, req.email)
     logger.info("New user signup: %s (id=%s)", req.email, user_id)
 
@@ -261,6 +298,7 @@ async def signup(req: SignupRequest) -> dict:
             "id": user_id,
             "email": req.email,
             "name": doc["name"],
+            "homeId": home_id,
         },
     }
 
@@ -290,6 +328,7 @@ async def login(req: LoginRequest) -> dict:
             "id": user_id,
             "email": req.email,
             "name": user.get("name", ""),
+            "homeId": user.get("homeId"),
         },
     }
 
@@ -370,10 +409,18 @@ async def reset_password(req: ResetPasswordRequest) -> dict:
 
 async def get_user_profile(user_id: str) -> dict:
     """Get user profile (for /me endpoint)."""
-    from bson import ObjectId
     col = _users_col()
     try:
-        user = await col.find_one({"_id": ObjectId(user_id)})
+        # Try ObjectId first (real MongoDB), fall back to string match (in-memory)
+        user = None
+        if _db_available:
+            from bson import ObjectId
+            try:
+                user = await col.find_one({"_id": ObjectId(user_id)})
+            except Exception:
+                pass
+        if user is None:
+            user = await col.find_one({"_id": user_id})
     except Exception as e:
         logger.error("DB error during get_user_profile: %s", e)
         raise HTTPException(status_code=503, detail="Database unavailable")
@@ -384,6 +431,7 @@ async def get_user_profile(user_id: str) -> dict:
         "id": str(user["_id"]),
         "email": user["email"],
         "name": user.get("name", ""),
+        "homeId": user.get("homeId"),
         "createdAt": user.get("createdAt", "").isoformat() if hasattr(user.get("createdAt", ""), "isoformat") else "",
     }
 
