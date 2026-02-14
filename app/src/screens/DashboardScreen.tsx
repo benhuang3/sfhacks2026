@@ -11,6 +11,8 @@ import {
   ScrollView,
 } from 'react-native';
 import type { ScanResultData } from './UploadScanScreen';
+import { Appliance3DModel } from '../components/Appliance3DModel';
+import { useTheme } from '../../App';
 
 interface DashboardScreenProps {
   onBack: () => void;
@@ -20,13 +22,13 @@ interface DashboardScreenProps {
 }
 
 // Simple bar chart component
-function BarChart({ data, maxValue }: { data: { label: string; value: number; color: string }[]; maxValue: number }) {
+function BarChart({ data, maxValue, tc }: { data: { label: string; value: number; color: string }[]; maxValue: number; tc: any }) {
   return (
     <View style={chartStyles.container}>
       {data.map((item, idx) => (
         <View key={idx} style={chartStyles.barRow}>
-          <Text style={chartStyles.barLabel} numberOfLines={1}>{item.label}</Text>
-          <View style={chartStyles.barTrack}>
+          <Text style={[chartStyles.barLabel, { color: tc.textSecondary }]} numberOfLines={1}>{item.label}</Text>
+          <View style={[chartStyles.barTrack, { backgroundColor: tc.border }]}>
             <View
               style={[
                 chartStyles.barFill,
@@ -34,7 +36,7 @@ function BarChart({ data, maxValue }: { data: { label: string; value: number; co
               ]}
             />
           </View>
-          <Text style={chartStyles.barValue}>{item.value.toFixed(0)}W</Text>
+          <Text style={[chartStyles.barValue, { color: tc.text }]}>{item.value.toFixed(0)}W</Text>
         </View>
       ))}
     </View>
@@ -51,7 +53,7 @@ const chartStyles = StyleSheet.create({
 });
 
 // Category breakdown pie visualization (simplified)
-function CategoryBreakdown({ categories }: { categories: { name: string; watts: number; color: string }[] }) {
+function CategoryBreakdown({ categories, tc }: { categories: { name: string; watts: number; color: string }[]; tc: any }) {
   const total = categories.reduce((sum, c) => sum + c.watts, 0);
   
   return (
@@ -60,9 +62,9 @@ function CategoryBreakdown({ categories }: { categories: { name: string; watts: 
         {categories.map((cat, idx) => (
           <View key={idx} style={catStyles.legendItem}>
             <View style={[catStyles.dot, { backgroundColor: cat.color }]} />
-            <Text style={catStyles.catName}>{cat.name}</Text>
-            <Text style={catStyles.catValue}>{cat.watts.toFixed(0)}W</Text>
-            <Text style={catStyles.catPercent}>{total > 0 ? ((cat.watts / total) * 100).toFixed(0) : 0}%</Text>
+            <Text style={[catStyles.catName, { color: tc.textSecondary }]}>{cat.name}</Text>
+            <Text style={[catStyles.catValue, { color: tc.text }]}>{cat.watts.toFixed(0)}W</Text>
+            <Text style={[catStyles.catPercent, { color: tc.textSecondary }]}>{total > 0 ? ((cat.watts / total) * 100).toFixed(0) : 0}%</Text>
           </View>
         ))}
       </View>
@@ -95,6 +97,7 @@ const catStyles = StyleSheet.create({
 });
 
 export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory }: DashboardScreenProps) {
+  const { colors, isDark } = useTheme();
   const [timeframe, setTimeframe] = useState<'day' | 'month' | 'year'>('month');
   
   // Generate personalized AI tips based on scanned devices
@@ -221,42 +224,42 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
   const displayCost = timeframe === 'day' ? stats.dailyCost : timeframe === 'month' ? stats.monthlyCost : stats.yearlyCost;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>← Back</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Energy Dashboard</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Energy Dashboard</Text>
         <TouchableOpacity onPress={onScan} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>+ Scan</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>+ Scan</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {stats.deviceCount === 0 ? (
           /* Empty State */
-          <View style={styles.emptyState}>
+          <View style={[styles.emptyState, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={styles.emptyIcon}>📊</Text>
-            <Text style={styles.emptyTitle}>No Devices Yet</Text>
-            <Text style={styles.emptySubtitle}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Devices Yet</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Scan your appliances to track energy usage
             </Text>
-            <TouchableOpacity style={styles.emptyButton} onPress={onScan}>
+            <TouchableOpacity style={[styles.emptyButton, { backgroundColor: colors.accent }]} onPress={onScan}>
               <Text style={styles.emptyButtonText}>Scan First Device</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             {/* Timeframe Toggle */}
-            <View style={styles.toggleRow}>
+            <View style={[styles.toggleRow, { backgroundColor: isDark ? '#12121a' : '#e8e8e8' }]}>
               {(['day', 'month', 'year'] as const).map((t) => (
                 <TouchableOpacity
                   key={t}
-                  style={[styles.toggleBtn, timeframe === t && styles.toggleBtnActive]}
+                  style={[styles.toggleBtn, timeframe === t && { backgroundColor: colors.accent }]}
                   onPress={() => setTimeframe(t)}
                 >
-                  <Text style={[styles.toggleText, timeframe === t && styles.toggleTextActive]}>
+                  <Text style={[styles.toggleText, { color: colors.textSecondary }, timeframe === t && styles.toggleTextActive]}>
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </Text>
                 </TouchableOpacity>
@@ -265,31 +268,31 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
 
             {/* Main Stats */}
             <View style={styles.mainStats}>
-              <View style={styles.mainStatCard}>
-                <Text style={styles.mainStatValue}>{displayKwh.toFixed(1)}</Text>
-                <Text style={styles.mainStatUnit}>kWh</Text>
-                <Text style={styles.mainStatLabel}>Energy Usage</Text>
+              <View style={[styles.mainStatCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.mainStatValue, { color: colors.text }]}>{displayKwh.toFixed(1)}</Text>
+                <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}>kWh</Text>
+                <Text style={[styles.mainStatLabel, { color: colors.textSecondary }]}>Energy Usage</Text>
               </View>
-              <View style={[styles.mainStatCard, styles.costCard]}>
-                <Text style={styles.mainStatValue}>${displayCost.toFixed(2)}</Text>
-                <Text style={styles.mainStatUnit}></Text>
-                <Text style={styles.mainStatLabel}>Estimated Cost</Text>
+              <View style={[styles.mainStatCard, styles.costCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
+                <Text style={[styles.mainStatValue, { color: colors.text }]}>${displayCost.toFixed(2)}</Text>
+                <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}></Text>
+                <Text style={[styles.mainStatLabel, { color: colors.textSecondary }]}>Estimated Cost</Text>
               </View>
             </View>
 
             {/* Summary Row */}
-            <View style={styles.summaryRow}>
+            <View style={[styles.summaryRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{stats.deviceCount}</Text>
-                <Text style={styles.summaryLabel}>Devices</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{stats.deviceCount}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Devices</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{stats.totalActive.toFixed(0)}W</Text>
-                <Text style={styles.summaryLabel}>Active Total</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{stats.totalActive.toFixed(0)}W</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Active Total</Text>
               </View>
               <View style={styles.summaryItem}>
                 <Text style={[styles.summaryValue, styles.standbyText]}>{stats.totalStandby.toFixed(1)}W</Text>
-                <Text style={styles.summaryLabel}>Standby Total</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Standby Total</Text>
               </View>
             </View>
 
@@ -299,7 +302,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                 <Text style={styles.warningIcon}>⚠️</Text>
                 <View style={styles.warningContent}>
                   <Text style={styles.warningTitle}>Phantom Load Alert</Text>
-                  <Text style={styles.warningText}>
+                  <Text style={[styles.warningText, { color: colors.textSecondary }]}>
                     Your devices use ${stats.standbyYearlyCost.toFixed(0)}/year in standby power alone. 
                     That's {stats.totalStandby.toFixed(1)}W running 24/7!
                   </Text>
@@ -310,14 +313,14 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Achievements Section */}
             {stats.achievements.length > 0 && (
               <View style={styles.achievementsSection}>
-                <Text style={styles.sectionTitle}>🏆 Achievements</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>🏆 Achievements</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.achievementsScroll}>
                   <View style={styles.achievementsRow}>
                     {stats.achievements.map((ach) => (
-                      <View key={ach.id} style={styles.achievementCard}>
+                      <View key={ach.id} style={[styles.achievementCard, { backgroundColor: colors.card }]}>
                         <Text style={styles.achievementIcon}>{ach.icon}</Text>
                         <Text style={styles.achievementName}>{ach.name}</Text>
-                        <Text style={styles.achievementDesc}>{ach.desc}</Text>
+                        <Text style={[styles.achievementDesc, { color: colors.textSecondary }]}>{ach.desc}</Text>
                       </View>
                     ))}
                   </View>
@@ -328,23 +331,23 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Environmental Impact */}
             {stats.yearlyCO2 > 0 && (
               <View style={styles.envSection}>
-                <Text style={styles.sectionTitle}>🌍 Environmental Impact</Text>
-                <View style={styles.envCard}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>🌍 Environmental Impact</Text>
+                <View style={[styles.envCard, { backgroundColor: colors.card }]}>
                   <View style={styles.envRow}>
                     <View style={styles.envStat}>
                       <Text style={styles.envIcon}>💨</Text>
-                      <Text style={styles.envValue}>{stats.yearlyCO2.toFixed(0)}</Text>
-                      <Text style={styles.envLabel}>kg CO₂/year</Text>
+                      <Text style={[styles.envValue, { color: colors.accent }]}>{stats.yearlyCO2.toFixed(0)}</Text>
+                      <Text style={[styles.envLabel, { color: colors.textSecondary }]}>kg CO₂/year</Text>
                     </View>
-                    <View style={styles.envDivider} />
+                    <View style={[styles.envDivider, { backgroundColor: colors.border }]} />
                     <View style={styles.envStat}>
                       <Text style={styles.envIcon}>🌳</Text>
-                      <Text style={styles.envValue}>{stats.treesNeeded.toFixed(1)}</Text>
-                      <Text style={styles.envLabel}>trees to offset</Text>
+                      <Text style={[styles.envValue, { color: colors.accent }]}>{stats.treesNeeded.toFixed(1)}</Text>
+                      <Text style={[styles.envLabel, { color: colors.textSecondary }]}>trees to offset</Text>
                     </View>
                   </View>
-                  <View style={styles.envCompare}>
-                    <Text style={styles.envCompareText}>
+                  <View style={[styles.envCompare, { borderTopColor: colors.border }]}>
+                    <Text style={[styles.envCompareText, { color: colors.textSecondary }]}>
                       ≈ {(stats.yearlyCO2 / 19.6).toFixed(0)} gallons of gasoline burned
                     </Text>
                   </View>
@@ -355,9 +358,9 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Power by Device Chart */}
             {barChartData.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Power by Device</Text>
-                <View style={styles.chartCard}>
-                  <BarChart data={barChartData} maxValue={maxBarValue} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Power by Device</Text>
+                <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <BarChart data={barChartData} maxValue={maxBarValue} tc={colors} />
                 </View>
               </View>
             )}
@@ -365,16 +368,16 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Category Breakdown */}
             {categoryData.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Category Breakdown</Text>
-                <View style={styles.chartCard}>
-                  <CategoryBreakdown categories={categoryData} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Category Breakdown</Text>
+                <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <CategoryBreakdown categories={categoryData} tc={colors} />
                 </View>
               </View>
             )}
 
             {/* Device List */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>All Devices</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>All Devices</Text>
               {scannedDevices.map((device, index) => {
                 const a = device.detected_appliance;
                 const p = device.power_profile?.profile;
@@ -383,26 +386,26 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                 const deviceMonthly = ((p.active_watts_typical * 4 + p.standby_watts_typical * 20) * 30 * 0.30) / 1000;
                 
                 return (
-                  <View key={index} style={styles.deviceCard}>
+                  <View key={index} style={[styles.deviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <View style={styles.deviceRow}>
                       <View style={[styles.deviceIcon, { backgroundColor: getCategoryColor(a.category) + '20' }]}>
-                        <Text style={styles.deviceIconText}>{getCategoryIcon(a.category)}</Text>
+                        <Appliance3DModel category={a.category} size={28} showLabel={false} />
                       </View>
                       <View style={styles.deviceInfo}>
-                        <Text style={styles.deviceName}>{a.category}</Text>
-                        <Text style={styles.deviceBrand}>
+                        <Text style={[styles.deviceName, { color: colors.text }]}>{a.category}</Text>
+                        <Text style={[styles.deviceBrand, { color: colors.textSecondary }]}>
                           {a.brand !== 'Unknown' ? a.brand : 'Generic'}
                           {a.model !== 'Unknown' && ` ${a.model}`}
                         </Text>
                       </View>
                       <View style={styles.devicePower}>
-                        <Text style={styles.deviceWatts}>{p.active_watts_typical}W</Text>
-                        <Text style={styles.deviceCost}>${deviceMonthly.toFixed(2)}/mo</Text>
+                        <Text style={[styles.deviceWatts, { color: colors.accent }]}>{p.active_watts_typical}W</Text>
+                        <Text style={[styles.deviceCost, { color: colors.textSecondary }]}>${deviceMonthly.toFixed(2)}/mo</Text>
                       </View>
                     </View>
-                    <View style={styles.deviceMeta}>
-                      <Text style={styles.metaItem}>Standby: {p.standby_watts_typical}W</Text>
-                      <Text style={styles.metaItem}>Source: {p.source === 'category_default' ? 'Berkeley Lab' : p.source}</Text>
+                    <View style={[styles.deviceMeta, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.metaItem, { color: colors.textSecondary }]}>Standby: {p.standby_watts_typical}W</Text>
+                      <Text style={[styles.metaItem, { color: colors.textSecondary }]}>Source: {p.source === 'category_default' ? 'Berkeley Lab' : p.source}</Text>
                     </View>
                   </View>
                 );
@@ -410,11 +413,11 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             </View>
 
             {/* Tips - AI Personalized */}
-            <View style={styles.tipsCard}>
-              <Text style={styles.tipsTitle}>🤖 AI Energy Tips</Text>
+            <View style={[styles.tipsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.tipsTitle, { color: colors.text }]}>🤖 AI Energy Tips</Text>
               <View style={styles.tipsList}>
                 {aiTips.map((tip, idx) => (
-                  <Text key={idx} style={styles.tipItem}>{tip}</Text>
+                  <Text key={idx} style={[styles.tipItem, { color: colors.textSecondary }]}>{tip}</Text>
                 ))}
               </View>
             </View>

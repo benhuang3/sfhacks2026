@@ -10,6 +10,7 @@ import {
 import { useScannerStore } from '../store/scannerStore';
 import { TrackedObject } from '../utils/scannerTypes';
 import { getDisplayName } from '../utils/applianceClasses';
+import { useTheme } from '../../App';
 
 interface ScanResultScreenProps {
   onBack: () => void;
@@ -18,6 +19,7 @@ interface ScanResultScreenProps {
 
 export function ScanResultScreen({ onBack }: ScanResultScreenProps) {
   const { confirmedProducts, clearScan } = useScannerStore();
+  const { colors } = useTheme();
 
   const renderItem = ({ item }: { item: TrackedObject }) => {
     const lookup = item.productInfo?.lookup;
@@ -25,59 +27,59 @@ export function ScanResultScreen({ onBack }: ScanResultScreenProps) {
     const name = item.productInfo?.displayName || getDisplayName(item.label);
 
     return (
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{name}</Text>
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
         {lookup && (
           <View style={styles.cardStats}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{lookup.brand}</Text>
-              <Text style={styles.statLabel}>Brand</Text>
+              <Text style={[styles.statValue, { color: colors.accent }]}>{lookup.brand}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Brand</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{lookup.model}</Text>
-              <Text style={styles.statLabel}>Model</Text>
+              <Text style={[styles.statValue, { color: colors.accent }]}>{lookup.model}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Model</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{lookup.region}</Text>
-              <Text style={styles.statLabel}>Region</Text>
+              <Text style={[styles.statValue, { color: colors.accent }]}>{lookup.region}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Region</Text>
             </View>
           </View>
         )}
         {power ? (
-          <View style={styles.powerSection}>
+          <View style={[styles.powerSection, { borderTopColor: colors.border }]}>
             <Text style={styles.powerTitle}>Power Profile</Text>
             <View style={styles.cardStats}>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{power.active_watts_typical}W</Text>
-                <Text style={styles.statLabel}>Active</Text>
+                <Text style={[styles.statValue, { color: colors.accent }]}>{power.active_watts_typical}W</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{power.standby_watts_typical}W</Text>
-                <Text style={styles.statLabel}>Standby</Text>
+                <Text style={[styles.statValue, { color: colors.accent }]}>{power.standby_watts_typical}W</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Standby</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{power.category}</Text>
-                <Text style={styles.statLabel}>Category</Text>
+                <Text style={[styles.statValue, { color: colors.accent }]}>{power.category}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Category</Text>
               </View>
             </View>
-            <Text style={styles.powerSource}>
+            <Text style={[styles.powerSource, { color: colors.textSecondary }]}>
               Source: {power.source} (confidence: {Math.round(power.confidence * 100)}%)
             </Text>
           </View>
         ) : (
-          <Text style={styles.loadingText}>Loading power data...</Text>
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading power data...</Text>
         )}
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack}>
-          <Text style={styles.backText}>Back</Text>
+          <Text style={[styles.backText, { color: colors.accent }]}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Scan Results</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Scan Results</Text>
         <TouchableOpacity onPress={clearScan}>
           <Text style={styles.clearText}>Clear</Text>
         </TouchableOpacity>
@@ -85,19 +87,19 @@ export function ScanResultScreen({ onBack }: ScanResultScreenProps) {
 
       {confirmedProducts.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>No scanned appliances yet.</Text>
-          <Text style={styles.emptySubtext}>
+          <Text style={[styles.emptyText, { color: colors.text }]}>No scanned appliances yet.</Text>
+          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
             Use the scanner to detect appliances in your home.
           </Text>
         </View>
       ) : (
         <>
           {/* Summary Card */}
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Scanned Products</Text>
+          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
+            <Text style={[styles.summaryTitle, { color: colors.accent }]}>Scanned Products</Text>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total devices:</Text>
-              <Text style={styles.summaryValue}>{confirmedProducts.length}</Text>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total devices:</Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>{confirmedProducts.length}</Text>
             </View>
           </View>
 

@@ -24,7 +24,7 @@ import { useTheme } from '../../App';
 
 // API base URL — reuse same pattern as apiClient
 // Cloudflare tunnel URL — works from any device
-const TUNNEL_URL = 'https://mode-because-consolidation-quantum.trycloudflare.com';
+const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
 // ---------------------------------------------------------------------------
@@ -49,11 +49,12 @@ async function sendChatMessage(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
   });
+  const text = await resp.text();
   if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Chat failed: ${resp.status} — ${err}`);
+    throw new Error(`Chat failed: ${resp.status} — ${text}`);
   }
-  const json = await resp.json();
+  let json: any;
+  try { json = JSON.parse(text); } catch { throw new Error('Server returned invalid response'); }
   return json?.data?.reply ?? 'No response received.';
 }
 

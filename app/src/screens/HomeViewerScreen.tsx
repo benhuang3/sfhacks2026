@@ -22,6 +22,8 @@ import {
   ActionProposal, getScene, HomeScene, RoomModel,
 } from '../services/apiClient';
 import { Scene3D } from '../components/Scene3D';
+import { Appliance3DModel } from '../components/Appliance3DModel';
+import { House3DViewer } from '../components/House3DViewer';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -162,7 +164,7 @@ function Room3DView({
               onPress={() => onSelectDevice(isSelected ? null : device)}
               activeOpacity={0.7}
             >
-              <Text style={styles.device3dIcon}>{getDeviceIcon(device.category)}</Text>
+              <Appliance3DModel category={device.category} size={42} showLabel={false} />
               <Text style={styles.device3dLabel} numberOfLines={1}>{device.label}</Text>
               {device.power.standby_watts_typical > 1 && (
                 <View style={styles.device3dGhost}>
@@ -213,7 +215,7 @@ function DeviceDetailPanel({
     }]}>
       <View style={styles.detailHeader}>
         <View style={styles.detailTitleRow}>
-          <Text style={styles.detailIcon}>{getDeviceIcon(device.category)}</Text>
+          <Appliance3DModel category={device.category} size={48} showLabel={false} />
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={[styles.detailName, { color: colors.text }]}>{device.label}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
@@ -425,6 +427,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [agentResult, setAgentResult] = useState<AgentCommandResult | null>(null);
+  const [viewMode, setViewMode] = useState<'3d' | 'room'>('3d');
 
   // Load data
   const loadData = useCallback(async () => {
@@ -562,9 +565,34 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
         ))}
       </ScrollView>
 
-      {/* 3D Room View */}
+      {/* View Mode Toggle */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, gap: 8 }}>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+            backgroundColor: viewMode === '3d' ? colors.accent : (isDark ? '#222' : '#eee') }}
+          onPress={() => setViewMode('3d')}
+        >
+          <Text style={{ color: viewMode === '3d' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>🏠 3D House</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+            backgroundColor: viewMode === 'room' ? colors.accent : (isDark ? '#222' : '#eee') }}
+          onPress={() => setViewMode('room')}
+        >
+          <Text style={{ color: viewMode === 'room' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>📐 Room View</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 3D Views */}
       <View style={{ flex: 1 }}>
-        {scene && scene.objects && scene.objects.length > 0 ? (
+        {viewMode === '3d' ? (
+          <House3DViewer
+            rooms={rooms}
+            devices={devices.map(d => ({ label: d.label, category: d.category, roomId: d.roomId }))}
+            isDark={isDark}
+            height={SCREEN_H - 280}
+          />
+        ) : scene && scene.objects && scene.objects.length > 0 ? (
           <Scene3D
             scene={scene}
             selectedRoomId={selectedRoom}

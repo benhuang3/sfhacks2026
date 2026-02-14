@@ -16,6 +16,7 @@ import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
 } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
+import { Appliance3DModel } from '../components/Appliance3DModel';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -195,8 +196,8 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
     return (
       <View style={[styles.container, { backgroundColor: colors.bg }]}>
         <View style={styles.successContainer}>
-          <Text style={styles.successIcon}>✅</Text>
-          <Text style={[styles.successText, { color: colors.text }]}>
+          <Appliance3DModel category={selectedCategory || ''} size={80} showLabel={false} />
+          <Text style={[styles.successText, { color: colors.text, marginTop: 12 }]}>
             {selectedCategory} added to your home!
           </Text>
           <Text style={[styles.successSub, { color: colors.textSecondary }]}>
@@ -269,9 +270,9 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
               ]}
               onPress={() => setSelectedCategory(c.category)}
             >
-              <Text style={styles.candidateIcon}>
-                {CATEGORY_ICONS[c.category] || '🔌'}
-              </Text>
+              <View style={styles.candidateIcon}>
+                <Appliance3DModel category={c.category} size={42} showLabel={false} />
+              </View>
               <Text style={[styles.candidateName, { color: colors.text }]} numberOfLines={1}>
                 {c.category}
               </Text>
@@ -327,9 +328,9 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
                     setSearchQuery('');
                   }}
                 >
-                  <Text style={{ fontSize: 18, marginRight: 8 }}>
-                    {CATEGORY_ICONS[c.category] || '🔌'}
-                  </Text>
+                  <View style={{ marginRight: 8 }}>
+                    <Appliance3DModel category={c.category} size={28} showLabel={false} />
+                  </View>
                   <Text style={[styles.searchItemText, { color: colors.text }]}>
                     {c.category}
                   </Text>
@@ -509,7 +510,7 @@ const styles = StyleSheet.create({
     flex: 1, minWidth: 90, padding: 14, borderRadius: 12,
     alignItems: 'center', position: 'relative',
   },
-  candidateIcon: { fontSize: 32, marginBottom: 8 },
+  candidateIcon: { marginBottom: 8, alignItems: 'center' },
   candidateName: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
   confBadge: {
     marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
