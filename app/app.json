@@ -16,7 +16,10 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "SmartGrid Home needs camera access to scan and identify your appliances",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       },
       "bundleIdentifier": "com.anonymous.smartgrid-home"
     },
@@ -28,24 +31,28 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-secure-store",
       [
-        "react-native-vision-camera",
+        "expo-camera",
         {
-          "cameraPermissionText": "SmartGrid Home needs camera access to scan and identify your appliances"
+          "cameraPermission": "SmartGrid Home needs camera access to scan and identify your appliances"
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {
-        "projectId": "74531911-cc52-4e90-8951-fb385a8957c5"
+        "projectId": "ecbe8237-633a-4db8-8264-7ddd1f76ea60"
       }
-    }
+    },
+    "owner": "khoanguyen706"
   }
 }

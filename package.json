@@ -2,6 +2,8 @@
   "dependencies": {
     "axios": "^1.13.5",
     "expo": "^54.0.33",
+    "localtunnel": "^2.0.2",
+    "ngrok": "^5.0.0-beta.2",
     "react-dom": "19.1.0",
     "react-native-web": "^0.21.0"
   },
