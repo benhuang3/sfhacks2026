@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 node_modules/
 __pycache__/
 *.pyc
@@ -10,3 +11,7 @@ be/uploads/
 dist/
 build/
 tmp/
+=======
+node_modules
+.env
+>>>>>>> d627c34346c1069c3175cd79ad069f8774a8f507

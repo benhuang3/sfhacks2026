@@ -13,12 +13,16 @@ import {
   ScrollView,
   Platform,
   Animated,
+  TextInput,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { uploadScanImage, checkHealth } from '../services/apiService';
+import { listHomes, addDevice, Home } from '../services/apiClient';
+import { useAuth } from '../context/AuthContext';
 
 interface UploadScanScreenProps {
   onBack: () => void;
-  onScanComplete?: (result: ScanResultData) => void;
+  onScanComplete?: (result: ScanResultData, imageUri?: string) => void;
   onViewDashboard?: () => void;
 }
 
@@ -65,10 +69,17 @@ const SCAN_STEPS = [
 ];
 
 export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: UploadScanScreenProps) {
+  const { user } = useAuth();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanStep, setScanStep] = useState<ScanStep>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [showAddToHome, setShowAddToHome] = useState(false);
+  const [homes, setHomes] = useState<Home[]>([]);
+  const [selectedHomeId, setSelectedHomeId] = useState<string | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<string>('living-room');
+  const [addingToHome, setAddingToHome] = useState(false);
+  const [addedToHome, setAddedToHome] = useState(false);
   
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -125,24 +136,110 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
     return () => { mounted = false; };
   }, []);
 
-  // File picker
-  const handlePickImage = useCallback(() => {
-    if (Platform.OS !== 'web') return;
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg,image/png,image/webp';
-    input.onchange = (e: any) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        setImageFile(file);
-        setImageUri(URL.createObjectURL(file));
+  // Cross-platform image picker
+  const handlePickImage = useCallback(async () => {
+    try {
+      if (Platform.OS === 'web') {
+        // Web: use file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/jpeg,image/png,image/webp';
+        input.onchange = (e: any) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            // Revoke previous blob URL to prevent memory leak
+            if (imageUri && imageUri.startsWith('blob:')) URL.revokeObjectURL(imageUri);
+            setImageFile(file);
+            setImageUri(URL.createObjectURL(file));
+            setResult(null);
+            setError(null);
+            setScanStep('idle');
+            setShowAddToHome(false);
+            setAddedToHome(false);
+          }
+        };
+        input.click();
+      } else {
+        // Native: use expo-image-picker
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          setError('Permission to access photos is required.');
+          return;
+        }
+        const pickResult = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 0.8,
+        });
+        if (!pickResult.canceled && pickResult.assets[0]) {
+          setImageUri(pickResult.assets[0].uri);
+          setImageFile(null);
+          setResult(null);
+          setError(null);
+          setScanStep('idle');
+          setShowAddToHome(false);
+          setAddedToHome(false);
+        }
+      }
+    } catch (err) {
+      setError('Failed to pick image. Please try again.');
+    }
+  }, [imageUri]);
+
+  // Launch camera directly (native only)
+  const handleTakePhoto = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Camera permission is required.');
+        return;
+      }
+      const pickResult = await ImagePicker.launchCameraAsync({
+        quality: 0.8,
+      });
+      if (!pickResult.canceled && pickResult.assets[0]) {
+        setImageUri(pickResult.assets[0].uri);
+        setImageFile(null);
         setResult(null);
         setError(null);
         setScanStep('idle');
+        setShowAddToHome(false);
+        setAddedToHome(false);
       }
-    };
-    input.click();
+    } catch (err) {
+      setError('Failed to take photo. Please try again.');
+    }
   }, []);
+
+  // Add scanned device to home
+  const handleAddToHome = useCallback(async () => {
+    if (!result || !selectedHomeId) return;
+    setAddingToHome(true);
+    try {
+      const appliance = result.detected_appliance;
+      const power = result.power_profile?.profile;
+      await addDevice(selectedHomeId, {
+        roomId: selectedRoom,
+        label: appliance.name || `${appliance.brand} ${appliance.model}`,
+        brand: appliance.brand,
+        model: appliance.model,
+        category: appliance.category,
+        power: power ? {
+          standby_watts_typical: power.standby_watts_typical,
+          standby_watts_range: power.standby_watts_range as [number, number],
+          active_watts_typical: power.active_watts_typical,
+          active_watts_range: power.active_watts_range as [number, number],
+          source: power.source,
+          confidence: power.confidence,
+        } : undefined,
+        active_hours_per_day: usageHours,
+      });
+      setAddedToHome(true);
+      setShowAddToHome(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add device');
+    }
+    setAddingToHome(false);
+  }, [result, selectedHomeId, selectedRoom, usageHours]);
 
   // Upload with step progress
   const handleUpload = useCallback(async () => {
@@ -163,7 +260,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       const scanData = data?.data as ScanResultData;
       setResult(scanData);
       setScanStep('complete');
-      onScanComplete?.(scanData);
+      onScanComplete?.(scanData, imageUri ?? undefined);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Upload failed';
       setError(msg);
@@ -173,35 +270,49 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
   // Reset
   const handleReset = useCallback(() => {
+    // Revoke blob URL to prevent memory leak
+    if (imageUri && imageUri.startsWith('blob:')) URL.revokeObjectURL(imageUri);
     setImageUri(null);
     setImageFile(null);
     setResult(null);
     setError(null);
     setScanStep('idle');
-  }, []);
+    setShowAddToHome(false);
+    setAddedToHome(false);
+  }, [imageUri]);
 
   const appliance = result?.detected_appliance;
   const power = result?.power_profile?.profile;
   const isScanning = ['uploading', 'detecting', 'analyzing'].includes(scanStep);
 
-  // Calculate costs
+  // Calculate costs — consistent $0.30/kWh rate
+  const RATE_PER_KWH = 0.30;
   const dailyKwh = power ? (power.active_watts_typical * usageHours) / 1000 : 0;
   const monthlyKwh = dailyKwh * 30;
-  const monthlyCost = monthlyKwh * 0.12;
+  const monthlyCost = monthlyKwh * RATE_PER_KWH;
   const yearlyKwh = monthlyKwh * 12;
-  const yearlyCost = yearlyKwh * 0.12;
-  const standbyYearlyCost = power ? (power.standby_watts_typical * 24 * 365 * 0.12) / 1000 : 0;
+  const yearlyCost = yearlyKwh * RATE_PER_KWH;
+  const standbyYearlyCost = power ? (power.standby_watts_typical * 24 * 365 * RATE_PER_KWH) / 1000 : 0;
 
-  // Environmental impact calculations
-  // US average: 0.92 lbs CO2 per kWh (EPA 2024)
-  const CO2_PER_KWH = 0.92; // lbs
-  const TREE_ABSORBS_PER_YEAR = 48; // lbs CO2 per tree per year
+  // Environmental impact calculations — kg CO₂ (consistent with backend)
+  const CO2_PER_KWH = 0.25; // kg CO₂/kWh
+  const TREE_ABSORBS_PER_YEAR = 21.77; // kg CO₂ per tree per year (EPA)
   const yearlyCO2 = yearlyKwh * CO2_PER_KWH;
   const treesNeeded = yearlyCO2 / TREE_ABSORBS_PER_YEAR;
   
   // Comparison with average
   const US_AVG_APPLIANCE_KWH = 200; // avg appliance yearly kWh
   const comparedToAvg = yearlyKwh > 0 ? ((yearlyKwh / US_AVG_APPLIANCE_KWH) * 100) : 0;
+
+  // Load homes when result arrives
+  useEffect(() => {
+    if (result && user) {
+      listHomes(user.id).then(h => {
+        setHomes(h);
+        if (h.length > 0) setSelectedHomeId(h[0].id);
+      }).catch(() => {});
+    }
+  }, [result, user]);
 
   return (
     <View style={styles.container}>
@@ -230,18 +341,25 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
         {/* Upload area */}
         {!imageUri ? (
-          <TouchableOpacity style={styles.dropZone} onPress={handlePickImage}>
-            <View style={styles.dropIconContainer}>
-              <Text style={styles.dropIcon}>📷</Text>
-            </View>
-            <Text style={styles.dropTitle}>Upload Appliance Photo</Text>
-            <Text style={styles.dropSubtitle}>
-              Take a clear photo of your appliance's front or label
-            </Text>
-            <View style={styles.browseButton}>
-              <Text style={styles.browseText}>Select Image</Text>
-            </View>
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity style={styles.dropZone} onPress={handlePickImage}>
+              <View style={styles.dropIconContainer}>
+                <Text style={styles.dropIcon}>📷</Text>
+              </View>
+              <Text style={styles.dropTitle}>Upload Appliance Photo</Text>
+              <Text style={styles.dropSubtitle}>
+                Take a clear photo of your appliance's front or label
+              </Text>
+              <View style={styles.browseButton}>
+                <Text style={styles.browseText}>Select from Gallery</Text>
+              </View>
+            </TouchableOpacity>
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity style={[styles.primaryBtn, { marginTop: 12 }]} onPress={handleTakePhoto}>
+                <Text style={styles.primaryBtnText}>📸 Take Photo</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         ) : (
           <View>
             {/* Image Preview */}
@@ -423,7 +541,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                     <View style={styles.envGrid}>
                       <View style={styles.envItem}>
                         <Text style={styles.envValue}>{yearlyCO2.toFixed(1)}</Text>
-                        <Text style={styles.envLabel}>lbs CO₂/year</Text>
+                        <Text style={styles.envLabel}>kg CO₂/year</Text>
                       </View>
                       <View style={styles.envItem}>
                         <Text style={[styles.envValue, styles.treeValue]}>🌳 {treesNeeded.toFixed(1)}</Text>
@@ -449,7 +567,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                       </Text>
                     </View>
 
-                    <Text style={styles.envNote}>Based on EPA emissions data (0.92 lbs CO₂/kWh)</Text>
+                    <Text style={styles.envNote}>Based on EPA emissions data (0.25 kg CO₂/kWh)</Text>
                   </View>
                 )}
 
@@ -464,6 +582,98 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                     </TouchableOpacity>
                   )}
                 </View>
+
+                {/* Add to Home */}
+                {!addedToHome && homes.length > 0 && (
+                  <View style={styles.addToHomeCard}>
+                    <Text style={styles.addToHomeTitle}>📥 Add to My Home</Text>
+                    <Text style={styles.addToHomeSub}>Save this device to track energy</Text>
+                    
+                    {!showAddToHome ? (
+                      <TouchableOpacity
+                        style={[styles.primaryBtn, { marginTop: 12 }]}
+                        onPress={() => setShowAddToHome(true)}
+                      >
+                        <Text style={styles.primaryBtnText}>+ Add to Home</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={{ marginTop: 12 }}>
+                        <Text style={{ color: '#aaa', fontSize: 12, marginBottom: 6 }}>Select Home:</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          {homes.map(h => (
+                            <TouchableOpacity
+                              key={h.id}
+                              style={[styles.roomChip, selectedHomeId === h.id && styles.roomChipActive]}
+                              onPress={() => {
+                                setSelectedHomeId(h.id);
+                                if (h.rooms.length > 0) setSelectedRoom(h.rooms[0]);
+                              }}
+                            >
+                              <Text style={[styles.roomChipText, selectedHomeId === h.id && styles.roomChipTextActive]}>
+                                {h.name}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {selectedHomeId && (
+                          <>
+                            <Text style={{ color: '#aaa', fontSize: 12, marginTop: 12, marginBottom: 6 }}>Room:</Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                              {(homes.find(h => h.id === selectedHomeId)?.rooms ?? ['living-room']).map(r => (
+                                <TouchableOpacity
+                                  key={r}
+                                  style={[styles.roomChip, selectedRoom === r && styles.roomChipActive]}
+                                  onPress={() => setSelectedRoom(r)}
+                                >
+                                  <Text style={[styles.roomChipText, selectedRoom === r && styles.roomChipTextActive]}>
+                                    {r.replace(/-/g, ' ')}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          </>
+                        )}
+
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                          <TouchableOpacity
+                            style={[styles.secondaryBtn, { flex: 1 }]}
+                            onPress={() => setShowAddToHome(false)}
+                          >
+                            <Text style={styles.secondaryBtnText}>Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.primaryBtn, { flex: 1 }, addingToHome && { opacity: 0.5 }]}
+                            onPress={handleAddToHome}
+                            disabled={addingToHome || !selectedHomeId}
+                          >
+                            {addingToHome ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={styles.primaryBtnText}>✓ Confirm</Text>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {addedToHome && (
+                  <View style={[styles.addToHomeCard, { borderColor: '#4CAF50' }]}>
+                    <Text style={{ color: '#4CAF50', fontSize: 16, fontWeight: '700' }}>
+                      ✅ Added to home! View in My Home tab.
+                    </Text>
+                  </View>
+                )}
+
+                {homes.length === 0 && user && (
+                  <View style={styles.addToHomeCard}>
+                    <Text style={{ color: '#aaa', fontSize: 13, textAlign: 'center' }}>
+                      Create a home in the "My Home" tab to save scanned devices.
+                    </Text>
+                  </View>
+                )}
               </Animated.View>
             )}
           </View>
@@ -802,4 +1012,30 @@ const styles = StyleSheet.create({
   efficiencyText: { color: '#ccc', fontSize: 13, flex: 1 },
   
   envNote: { color: '#555', fontSize: 10, textAlign: 'center' },
+  
+  // Add to Home
+  addToHomeCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  addToHomeTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  addToHomeSub: { color: '#888', fontSize: 13, marginTop: 4 },
+  roomChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  roomChipActive: {
+    backgroundColor: 'rgba(76,175,80,0.2)',
+    borderColor: '#4CAF50',
+  },
+  roomChipText: { color: '#aaa', fontSize: 13 },
+  roomChipTextActive: { color: '#4CAF50', fontWeight: '600' },
 });

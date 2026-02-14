@@ -35,12 +35,16 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+<<<<<<< HEAD
       [
         "react-native-vision-camera",
         {
           "cameraPermissionText": "SmartGrid Home needs camera access to scan and identify your appliances"
         }
       ]
+=======
+      "expo-secure-store"
+>>>>>>> d627c34346c1069c3175cd79ad069f8774a8f507
     ],
     "extra": {
       "eas": {

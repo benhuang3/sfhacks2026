@@ -4,12 +4,23 @@
 =============================================================================
 
 Endpoints:
-  GET  /api/v1/health             → Health check
-  POST /api/v1/power-profile      → Power Agent (estimate device power usage)
-  POST /api/v1/seed-defaults      → Seed category defaults into MongoDB
-  POST /api/v1/scans              → Insert a new appliance scan
-  POST /api/v1/scans/similar      → Vector similarity search
-  POST /api/v1/scans/resolve      → Cache-aware resolve (+ power profile)
+  GET  /api/v1/health                           → Health check
+  POST /api/v1/power-profile                    → Power Agent
+  POST /api/v1/seed-defaults                    → Seed category defaults
+  POST /api/v1/scans                            → Insert scan
+  POST /api/v1/scans/similar                    → Vector similarity search
+  POST /api/v1/scans/resolve                    → Cache-aware resolve
+  POST /api/v1/homes                            → Create home
+  GET  /api/v1/homes?userId=X                   → List homes for user
+  GET  /api/v1/homes/{homeId}                   → Get home
+  POST /api/v1/homes/{homeId}/devices           → Add device
+  GET  /api/v1/homes/{homeId}/devices           → List devices
+  GET  /api/v1/homes/{homeId}/summary           → Aggregated totals
+  POST /api/v1/homes/{homeId}/assumptions       → Set rate/CO₂/profile
+  POST /api/v1/homes/{homeId}/actions/propose   → AI propose actions
+  POST /api/v1/homes/{homeId}/actions/execute   → Execute selected actions
+  GET  /api/v1/homes/{homeId}/actions           → Audit log
+  POST /api/v1/homes/{homeId}/actions/{id}/revert → Revert action
 
 Run:
   uvicorn server:app --reload --host 0.0.0.0 --port 8000
@@ -25,13 +36,11 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
-import base64
 import shutil
 import uuid
 from pathlib import Path
-from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents import (
@@ -61,6 +70,52 @@ from scans import (
     resolve_scan,
 )
 
+from models import (
+    CreateHomeRequest,
+    AddDeviceRequest,
+    ProposeActionsRequest,
+    ExecuteActionsRequest,
+    SetAssumptionsRequest,
+)
+from homes_devices import (
+    create_home,
+    get_home,
+    list_homes,
+    update_home_rooms,
+    delete_home,
+    add_device,
+    get_device,
+    list_devices,
+    update_device,
+    delete_device,
+    get_assumptions,
+    set_assumptions,
+)
+from aggregation import compute_home_summary, save_snapshot, list_snapshots
+from optimizer import propose_actions, propose_actions_with_llm
+from actions_service import (
+    store_proposals,
+    execute_actions,
+    revert_action,
+    list_actions,
+    get_action,
+    compute_action_savings,
+)
+from auth import (
+    SignupRequest,
+    LoginRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    signup,
+    login,
+    forgot_password,
+    reset_password,
+    get_current_user,
+    get_user_profile,
+    ensure_auth_indexes,
+    _check_db as check_auth_db,
+)
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -79,11 +134,18 @@ async def lifespan(app: FastAPI):
     """
     # ── startup ───────────────────────────────────────────────────────────
     client = get_motor_client()
+    db_ok = False
     try:
         await client.admin.command("ping")
         logger.info("✅  Connected to MongoDB")
+        db_ok = True
     except Exception as exc:
         logger.warning("⚠️  MongoDB not reachable at startup: %s", exc)
+
+    # Set auth module's DB availability flag
+    await check_auth_db()  # sets _db_available = True/False
+    if not db_ok:
+        logger.info("📝  Auth running in IN-MEMORY fallback mode (no MongoDB)")
 
     # Preload vision / OCR models to avoid long first-request latency
     app.state.models_loaded = False
@@ -97,6 +159,12 @@ async def lifespan(app: FastAPI):
             logger.info("Models preloaded ✅")
         except Exception as exc:
             logger.warning("Model preload failed: %s", exc)
+
+    # Ensure auth indexes
+    try:
+        await ensure_auth_indexes()
+    except Exception as exc:
+        logger.warning("Auth index creation failed: %s", exc)
 
     yield  # ← app is running
 
@@ -129,6 +197,49 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+# ===========================================================================
+# AUTH
+# ===========================================================================
+
+@app.post("/api/v1/auth/signup")
+async def signup_endpoint(request: SignupRequest):
+    """Create a new user account."""
+    result = await signup(request)
+    return {"success": True, "data": result}
+
+
+@app.post("/api/v1/auth/login")
+async def login_endpoint(request: LoginRequest):
+    """Log in and receive JWT."""
+    result = await login(request)
+    return {"success": True, "data": result}
+
+
+@app.post("/api/v1/auth/forgot-password")
+async def forgot_password_endpoint(request: ForgotPasswordRequest):
+    """Request a password reset OTP."""
+    result = await forgot_password(request)
+    return {"success": True, "data": result}
+
+
+@app.post("/api/v1/auth/reset-password")
+async def reset_password_endpoint(request: ResetPasswordRequest):
+    """Reset password with OTP."""
+    result = await reset_password(request)
+    return {"success": True, "data": result}
+
+
+@app.get("/api/v1/auth/me")
+async def me_endpoint(current_user: dict = Depends(get_current_user)):
+    """Get current user profile."""
+    profile = await get_user_profile(current_user["userId"])
+    return {"success": True, "data": profile}
+
+
+# ===========================================================================
+# HEALTH
+# ===========================================================================
 
 @app.get("/api/v1/health")
 async def health_check():
@@ -220,8 +331,8 @@ async def scan_image(image: UploadFile = File(...)):
     file_path = UPLOAD_DIR / filename
 
     try:
-        content = await image.read()
         with open(file_path, "wb") as f:
+            content = await image.read()
             f.write(content)
         logger.info("Saved uploaded image: %s (%d bytes)", file_path, len(content))
     except Exception as exc:
@@ -232,86 +343,45 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # -------------------------------------------------------------------
-    # Store the image in MongoDB so it persists in the database
+    # Run vision ML if available, otherwise use Gemini fallback
     # -------------------------------------------------------------------
-    try:
-        db = get_motor_client()[os.getenv("MONGO_DB", "smartgrid_home")]
-        image_b64 = base64.b64encode(content).decode("utf-8")
-        doc = {
-            "filename": filename,
-            "contentType": image.content_type,
-            "sizeBytes": len(content),
-            "imageBase64": image_b64,
-            "status": "pending",          # awaiting AI recognition
-            "createdAt": datetime.now(timezone.utc),
-        }
-        result = await db["scans"].insert_one(doc)
-        inserted_id = str(result.inserted_id)
-        logger.info("Inserted scan image into MongoDB: %s", inserted_id)
-    except Exception as exc:
-        logger.exception("Failed to insert scan image into MongoDB")
-        raise HTTPException(
-            status_code=500,
-            detail={"success": False, "error": f"Database insert failed: {str(exc)}"},
-        )
-
-    # -------------------------------------------------------------------
-    # Run vision detection if available, otherwise use placeholder
-    # -------------------------------------------------------------------
-    best = None
-    detections = []
-    ocr_texts = []
-    power_profile = None
+    vision_result = {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
 
     if VISION_AVAILABLE:
         try:
-            det_result = detect_appliance(str(file_path))
-            best = det_result.get("best")
-            detections = det_result.get("detections", [])
-            ocr_texts = det_result.get("ocr_texts", [])
+            vision_result = detect_appliance(str(file_path))
         except Exception as exc:
-            logger.warning("Vision detection failed: %s", exc)
+            logger.exception("Vision inference failed, using fallback")
 
-    # Build detected_appliance from vision result or placeholder
-    if best:
-        detected_appliance = {
-            "brand": best.get("brand", "Unknown"),
-            "model": best.get("model", "Unknown"),
-            "name": best.get("label", "Unknown Appliance"),
-            "category": best.get("category", "Unknown"),
-            "confidence": best.get("score", 0.0),
-        }
-    else:
-        detected_appliance = {
-            "brand": "Unknown",
-            "model": "Unknown",
-            "name": "Unidentified Appliance",
-            "category": "Unknown",
-            "confidence": 0.0,
-        }
+    best = vision_result.get("best_match")
+    candidates = vision_result.get("candidates", [])
 
-    # Try to get a power profile via the Power Agent
-    try:
-        from agents import DeviceLookupRequest as DLR
-        req = DLR(
-            brand=detected_appliance["brand"] or "Unknown",
-            model=detected_appliance["model"] or "Unknown",
-            name=detected_appliance["name"] or "Unknown",
-            region="US",
-        )
-        pp = await lookup_power_profile(req)
-        power_profile = pp.model_dump()
-    except Exception as exc:
-        logger.warning("Power profile lookup failed: %s", exc)
+    # If we got a detection, fetch power profile from the Gemini agent
+    power_profile = None
+    if best and best.get("category") not in (None, "Unknown"):
+        try:
+            req = DeviceLookupRequest(
+                brand=best.get("brand", "Unknown"),
+                model=best.get("model", "Unknown"),
+                name=best["category"],
+                region="US",
+            )
+            profile_resp = await lookup_power_profile(req)
+            power_profile = profile_resp.model_dump()
+        except Exception as exc:
+            logger.warning("Power profile lookup failed: %s", exc)
 
-    # If no profile was found, fall back to category defaults
+    # If no profile was found, fall back to category defaults so frontend can calculate
     if power_profile is None:
-        fallback_input = detected_appliance.get("category") or detected_appliance.get("name") or "Unknown"
+        fallback_input = None
+        if best:
+            fallback_input = best.get("category") or best.get("label") or best.get("model")
+        fallback_input = fallback_input or "Unknown"
         try:
             fb = _resolve_fallback(fallback_input)
             power_profile = {
-                "brand": detected_appliance["brand"],
-                "model": detected_appliance["model"],
+                "brand": best.get("brand", "Unknown") if best else "Unknown",
+                "model": best.get("model", "Unknown") if best else "Unknown",
                 "name": fallback_input,
                 "region": "US",
                 "profile": fb.model_dump(),
@@ -321,18 +391,34 @@ async def scan_image(image: UploadFile = File(...)):
         except Exception:
             power_profile = None
 
+    # If no candidates from vision, provide sensible defaults
+    if not candidates:
+        from vision_service import ALL_CATEGORIES, get_model_asset
+        default_cats = ["Television", "Lamp", "Microwave"]
+        candidates = [
+            {"category": c, "confidence": round(1.0 / len(default_cats), 2), "modelAsset": get_model_asset(c)}
+            for c in default_cats
+        ]
+
     return {
         "success": True,
         "data": {
-            "scanId": inserted_id,
             "filename": filename,
             "size_bytes": len(content),
             "content_type": image.content_type,
-            "detected_appliance": detected_appliance,
+            "candidates": candidates,
+            "bbox": vision_result.get("bbox"),
+            "detected_appliance": {
+                "brand": best["brand"] if best else "Unknown",
+                "model": best["model"] if best else "Unknown",
+                "name": best["category"] if best else "Unidentified Appliance",
+                "category": best["category"] if best else "Unknown",
+                "confidence": best["score"] if best else 0.0,
+            },
+            "detections": vision_result.get("detections", []),
+            "ocr_texts": vision_result.get("ocr_texts", []),
             "power_profile": power_profile,
-            "ocr_texts": ocr_texts,
-            "detections": [{"label": d.get("label", ""), "category": d.get("category", ""), "score": d.get("score", 0)} for d in detections],
-            "message": "Image received and analyzed.",
+            "all_categories": vision_result.get("all_categories", []),
         },
     }
 
@@ -398,6 +484,386 @@ async def resolve_scan_endpoint(request: ResolveRequest):
     except Exception as exc:
         logger.exception("Resolve scan failed")
         raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+# ---------------------------------------------------------------------------
+# Dashboard aggregate
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v1/dashboard")
+async def dashboard():
+    """Return aggregate stats for the dashboard."""
+    db = get_motor_client()[os.getenv("MONGO_DB", "smartgrid_home")]
+    scans_col = db["scans"]
+    profiles_col = db["power_profiles"]
+
+    total_scans = await scans_col.count_documents({})
+    total_profiles = await profiles_col.count_documents({})
+
+    # Get recent scans
+    recent_cursor = scans_col.find({}, {"_id": 0}).sort("created_at", -1).limit(10)
+    recent_scans = await recent_cursor.to_list(length=10)
+
+    # Get all cached power profiles
+    profiles_cursor = profiles_col.find({}, {"_id": 0}).limit(50)
+    profiles = await profiles_cursor.to_list(length=50)
+
+    return {
+        "success": True,
+        "data": {
+            "total_scans": total_scans,
+            "total_profiles": total_profiles,
+            "recent_scans": recent_scans,
+            "profiles": profiles,
+        },
+    }
+
+
+# ===========================================================================
+# HOMES
+# ===========================================================================
+
+@app.post("/api/v1/homes")
+async def create_home_endpoint(request: CreateHomeRequest):
+    """Create a new home."""
+    try:
+        home = await create_home(request)
+        return {"success": True, "data": home}
+    except Exception as exc:
+        logger.exception("Create home failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.get("/api/v1/homes")
+async def list_homes_endpoint(userId: str):
+    """List all homes for a user."""
+    try:
+        homes = await list_homes(userId)
+        return {"success": True, "data": homes}
+    except Exception as exc:
+        logger.exception("List homes failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.get("/api/v1/homes/{home_id}")
+async def get_home_endpoint(home_id: str):
+    """Get a single home by ID."""
+    home = await get_home(home_id)
+    if not home:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+    return {"success": True, "data": home}
+
+
+@app.delete("/api/v1/homes/{home_id}")
+async def delete_home_endpoint(home_id: str):
+    """Delete a home and all its devices."""
+    deleted = await delete_home(home_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+    return {"success": True, "data": {"deleted": True}}
+
+
+# ===========================================================================
+# DEVICES
+# ===========================================================================
+
+@app.post("/api/v1/homes/{home_id}/devices")
+async def add_device_endpoint(home_id: str, request: AddDeviceRequest):
+    """Add a device to a home (from scan or manual entry)."""
+    home = await get_home(home_id)
+    if not home:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+    try:
+        device = await add_device(home_id, request)
+        return {"success": True, "data": device}
+    except Exception as exc:
+        logger.exception("Add device failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.get("/api/v1/homes/{home_id}/devices")
+async def list_devices_endpoint(home_id: str):
+    """List all devices in a home."""
+    try:
+        devices = await list_devices(home_id)
+        return {"success": True, "data": devices}
+    except Exception as exc:
+        logger.exception("List devices failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.delete("/api/v1/devices/{device_id}")
+async def delete_device_endpoint(device_id: str):
+    """Delete a device."""
+    deleted = await delete_device(device_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Device not found"})
+    return {"success": True, "data": {"deleted": True}}
+
+
+# ===========================================================================
+# SUMMARY & ASSUMPTIONS
+# ===========================================================================
+
+@app.get("/api/v1/homes/{home_id}/summary")
+async def home_summary_endpoint(home_id: str):
+    """
+    Aggregated totals + per-device breakdown.
+    Returns annual kWh, cost, CO₂ with min/typical/max ranges.
+    """
+    home = await get_home(home_id)
+    if not home:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+    try:
+        summary = await compute_home_summary(home_id)
+        # Also include savings from executed actions
+        action_savings = await compute_action_savings(home_id)
+        summary["action_savings"] = action_savings
+        return {"success": True, "data": summary}
+    except Exception as exc:
+        logger.exception("Compute summary failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.post("/api/v1/homes/{home_id}/assumptions")
+async def set_assumptions_endpoint(home_id: str, request: SetAssumptionsRequest):
+    """Set energy rate, CO₂ factor, and usage profile for a home."""
+    try:
+        assumptions = await set_assumptions(home_id, request)
+        return {"success": True, "data": assumptions.model_dump()}
+    except Exception as exc:
+        logger.exception("Set assumptions failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.get("/api/v1/homes/{home_id}/assumptions")
+async def get_assumptions_endpoint(home_id: str):
+    """Get current assumptions for a home."""
+    assumptions = await get_assumptions(home_id)
+    return {"success": True, "data": assumptions.model_dump()}
+
+
+@app.get("/api/v1/homes/{home_id}/snapshots")
+async def list_snapshots_endpoint(home_id: str, limit: int = 10):
+    """List historical ROI snapshots."""
+    try:
+        snapshots = await list_snapshots(home_id, limit)
+        return {"success": True, "data": snapshots}
+    except Exception as exc:
+        logger.exception("List snapshots failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+# ===========================================================================
+# ACTIONS — PROPOSE, EXECUTE, AUDIT
+# ===========================================================================
+
+@app.post("/api/v1/homes/{home_id}/actions/propose")
+async def propose_actions_endpoint(home_id: str, request: ProposeActionsRequest):
+    """
+    Ask the AI agent to propose cost-minimizing actions.
+    Returns ranked list of proposals with savings estimates.
+    """
+    home = await get_home(home_id)
+    if not home:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+
+    try:
+        devices = await list_devices(home_id)
+        if not devices:
+            return {"success": True, "data": {"proposals": [], "message": "No devices found in home"}}
+
+        # Use provided assumptions or fetch stored ones
+        assumptions = request.assumptions or await get_assumptions(home_id)
+
+        # Try LLM-powered optimizer first, fall back to greedy
+        proposals = await propose_actions_with_llm(
+            devices, assumptions, request.constraints, request.top_n
+        )
+
+        # Store proposals in DB and return with IDs
+        proposal_ids = await store_proposals(home_id, proposals)
+        proposals_data = []
+        for proposal, pid in zip(proposals, proposal_ids):
+            pd = proposal.model_dump()
+            pd["id"] = pid
+            proposals_data.append(pd)
+
+        return {"success": True, "data": {"proposals": proposals_data}}
+    except Exception as exc:
+        logger.exception("Propose actions failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.post("/api/v1/homes/{home_id}/actions/execute")
+async def execute_actions_endpoint(home_id: str, request: ExecuteActionsRequest):
+    """
+    Execute selected actions (with user confirmation already done on frontend).
+    Calls control APIs (simulated for demo), logs results.
+    """
+    try:
+        results = await execute_actions(request.action_ids)
+
+        # Recompute summary after executing actions
+        summary = await compute_home_summary(home_id)
+        action_savings = await compute_action_savings(home_id)
+
+        # Save a snapshot for historical tracking
+        await save_snapshot(home_id, summary)
+
+        return {
+            "success": True,
+            "data": {
+                "execution_results": results,
+                "updated_summary": summary["totals"],
+                "total_savings": action_savings,
+            },
+        }
+    except Exception as exc:
+        logger.exception("Execute actions failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.get("/api/v1/homes/{home_id}/actions")
+async def list_actions_endpoint(home_id: str, limit: int = 50):
+    """List the audit log of all actions for a home."""
+    try:
+        actions = await list_actions(home_id, limit)
+        return {"success": True, "data": actions}
+    except Exception as exc:
+        logger.exception("List actions failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.post("/api/v1/homes/{home_id}/actions/{action_id}/revert")
+async def revert_action_endpoint(home_id: str, action_id: str):
+    """Revert a previously executed action."""
+    try:
+        result = await revert_action(action_id)
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail={"success": False, "error": result["error"]})
+        return {"success": True, "data": result}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Revert action failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+# ===========================================================================
+# AGENT COMMAND — Natural Language Home Control
+# ===========================================================================
+
+from pydantic import BaseModel as _PydanticBase
+
+class AgentCommandRequest(_PydanticBase):
+    command: str = ""
+    constraints: dict | None = None
+
+
+@app.post("/api/v1/homes/{home_id}/agent")
+async def agent_command_endpoint(home_id: str, request: AgentCommandRequest):
+    """
+    Accept a natural language command like "turn off things I'm not using"
+    or "optimize energy". Uses the AI optimizer to propose actions, then
+    optionally auto-executes safe ones.
+
+    Returns proposals for the user to confirm or auto-executed results.
+    """
+    home = await get_home(home_id)
+    if not home:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Home not found"})
+
+    try:
+        devices = await list_devices(home_id)
+        if not devices:
+            return {"success": True, "data": {
+                "message": "No devices in this home yet. Scan some appliances first!",
+                "proposals": [], "executed": [],
+            }}
+
+        assumptions_obj = await get_assumptions(home_id)
+
+        # Merge user constraints with defaults
+        constraints = request.constraints or {}
+        if "quiet_hours" not in constraints:
+            constraints["quiet_hours"] = ["23:00-07:00"]
+        if "max_actions" not in constraints:
+            constraints["max_actions"] = 5
+        if "do_not_turn_off" not in constraints:
+            constraints["do_not_turn_off"] = ["router", "fridge", "refrigerator"]
+
+        # Determine intent from command text
+        cmd_lower = request.command.lower().strip()
+        auto_execute = False
+
+        if any(kw in cmd_lower for kw in ["turn off", "shut down", "switch off", "power off"]):
+            # Direct turn-off intent: auto-execute safe actions
+            auto_execute = True
+        # For "optimize" or general commands, just propose
+
+        # Get AI proposals
+        proposals = await propose_actions_with_llm(
+            devices, assumptions_obj, constraints, constraints.get("max_actions", 5)
+        )
+
+        # Store proposals in DB
+        proposal_ids = await store_proposals(home_id, proposals)
+        proposals_data = []
+        for proposal, pid in zip(proposals, proposal_ids):
+            pd = proposal.model_dump()
+            pd["id"] = pid
+            proposals_data.append(pd)
+
+        executed = []
+        if auto_execute:
+            # Auto-execute non-critical, safe proposals
+            safe_ids = [
+                p["id"] for p in proposals_data
+                if "critical_device" not in p.get("safety_flags", [])
+                and p["action_type"] in ("turn_off", "schedule", "set_mode", "suggest_manual")
+            ]
+            if safe_ids:
+                executed = await execute_actions(safe_ids)
+                # Recompute summary
+                summary = await compute_home_summary(home_id)
+                await save_snapshot(home_id, summary)
+
+        return {
+            "success": True,
+            "data": {
+                "intent": "turn_off" if auto_execute else "optimize",
+                "message": f"{'Executed' if auto_execute else 'Proposed'} {len(proposals_data)} action(s) based on: \"{request.command}\"",
+                "proposals": proposals_data,
+                "executed": executed,
+                "auto_executed": auto_execute,
+            },
+        }
+    except Exception as exc:
+        logger.exception("Agent command failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+# ===========================================================================
+# CATEGORIES LIST — for device search/confirm UI
+# ===========================================================================
+
+@app.get("/api/v1/categories")
+async def list_categories():
+    """Return all available device categories with model assets."""
+    try:
+        from vision_service import ALL_CATEGORIES, get_model_asset
+        cats = [{"category": c, "modelAsset": get_model_asset(c)} for c in ALL_CATEGORIES]
+        return {"success": True, "data": cats}
+    except Exception:
+        # Fallback if vision_service is not available
+        fallback = [
+            "Television", "Laptop", "Monitor", "Microwave", "Oven", "Toaster",
+            "Refrigerator", "Hair Dryer", "Phone Charger", "Washing Machine",
+            "Dryer", "Light Bulb", "Lamp", "Air Conditioner", "Space Heater",
+            "Gaming Console", "Router", "Fan", "Water Heater", "Dishwasher",
+        ]
+        return {"success": True, "data": [{"category": c, "modelAsset": f"models/{c.lower().replace(' ', '_')}.glb"} for c in fallback]}
 
 
 # ---------------------------------------------------------------------------

@@ -12,15 +12,20 @@ import { Platform } from 'react-native';
 // Config
 // ---------------------------------------------------------------------------
 
-// Use your local IP (not localhost) when testing on a physical device.
-// e.g. "http://192.168.1.42:8000"
+// Web can use localhost; physical devices need LAN IP.
+const DEV_HOST = Platform.select({
+  web: 'localhost',
+  android: '10.0.2.2',      // Android emulator
+  default: '10.142.12.209',  // LAN IP for physical iOS devices
+});
+
 const API_BASE_URL = __DEV__
-  ? 'http://10.142.12.143:8000'   // ← Your machine's LAN IP
+  ? `http://${DEV_HOST}:8000`
   : 'https://your-production-url.com';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30_000,
+  timeout: 120_000, // 2 min — first scan downloads ML models
   headers: { Accept: 'application/json' },
 });
 
@@ -31,13 +36,12 @@ const api = axios.create({
 /**
  * Upload a captured photo to the FastAPI /scan endpoint.
  *
- * @param image  File/Blob on web, or file URI string on native
- * @returns      Parsed JSON response from the backend
+ * @param imageUri  Local file URI from expo-camera (e.g. file:///…/photo.jpg)
+ * @returns         Parsed JSON response from the backend
  */
 export async function uploadScanImage(image: string | File | Blob): Promise<Record<string, unknown>> {
   // Build multipart/form-data
   const formData = new FormData();
-
   if (Platform.OS === 'web') {
     // If a File/Blob is passed (from input.files), append directly
     if (image instanceof File || image instanceof Blob) {
@@ -60,7 +64,6 @@ export async function uploadScanImage(image: string | File | Blob): Promise<Reco
     const filename = image.split('/').pop() ?? 'scan.jpg';
     const ext = filename.split('.').pop()?.toLowerCase();
     const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-
     formData.append('image', {
       uri: image,
       name: filename,
@@ -69,21 +72,17 @@ export async function uploadScanImage(image: string | File | Blob): Promise<Reco
   }
 
   try {
-    // On web, do NOT set Content-Type — the browser must auto-set it
-    // with the correct multipart boundary. On React Native, axios needs the hint.
-    const headers: Record<string, string> = {};
-    if (typeof window === 'undefined') {
-      headers['Content-Type'] = 'multipart/form-data';
-    }
-
-    const response = await api.post('/scan', formData, { headers });
+    const response = await api.post('/scan', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosErr = error as AxiosError<{ detail?: string; error?: string }>;
-      const detail = axiosErr.response?.data?.detail;
       const serverMessage =
-        (typeof detail === 'string' ? detail : JSON.stringify(detail)) ??
+        axiosErr.response?.data?.detail ??
         axiosErr.response?.data?.error ??
         axiosErr.message;
       throw new Error(`Scan failed (${axiosErr.response?.status ?? 'network'}): ${serverMessage}`);

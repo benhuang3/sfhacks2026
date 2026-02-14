@@ -60,7 +60,25 @@ def get_motor_client() -> AsyncIOMotorClient:
     global _motor_client
     if _motor_client is None:
         logger.info("Creating Motor client with URI: %s...", MONGO_URI[:40])
-        _motor_client = AsyncIOMotorClient(MONGO_URI)
+        try:
+            import certifi
+            _motor_client = AsyncIOMotorClient(
+                MONGO_URI,
+                tlsCAFile=certifi.where(),
+                serverSelectionTimeoutMS=10_000,
+                connectTimeoutMS=10_000,
+                socketTimeoutMS=20_000,
+            )
+        except Exception:
+            # Fallback: skip cert verification (dev / hackathon only)
+            _motor_client = AsyncIOMotorClient(
+                MONGO_URI,
+                tls=True,
+                tlsAllowInvalidCertificates=True,
+                serverSelectionTimeoutMS=10_000,
+                connectTimeoutMS=10_000,
+                socketTimeoutMS=20_000,
+            )
     return _motor_client
 
 
