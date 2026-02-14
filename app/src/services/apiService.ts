@@ -6,20 +6,26 @@
  */
 
 import axios, { AxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-// Use your local IP (not localhost) when testing on a physical device.
-// e.g. "http://192.168.1.42:8000"
+// Web can use localhost; physical devices need LAN IP.
+const DEV_HOST = Platform.select({
+  web: 'localhost',
+  android: '10.0.2.2',      // Android emulator
+  default: '10.142.12.209',  // LAN IP for physical iOS devices
+});
+
 const API_BASE_URL = __DEV__
-  ? 'http://10.142.12.209:8000'   // ← Your machine's LAN IP
+  ? `http://${DEV_HOST}:8000`
   : 'https://your-production-url.com';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30_000,
+  timeout: 120_000, // 2 min — first scan downloads ML models
   headers: { Accept: 'application/json' },
 });
 
@@ -37,19 +43,27 @@ export async function uploadScanImage(imageUri: string): Promise<Record<string, 
   // Build multipart/form-data
   const formData = new FormData();
 
-  // Extract filename from URI
-  const filename = imageUri.split('/').pop() ?? 'scan.jpg';
-
-  // Determine MIME type from extension
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-
-  // Append file — React Native FormData accepts this shape
-  formData.append('image', {
-    uri: imageUri,
-    name: filename,
-    type: mimeType,
-  } as unknown as Blob);
+  if (Platform.OS === 'web') {
+    // Web: imageUri is a blob:// URL — fetch it to get a real Blob
+    try {
+      const resp = await fetch(imageUri);
+      const blob = await resp.blob();
+      formData.append('image', blob, 'scan.jpg');
+    } catch {
+      // Fallback: try canvas capture to blob
+      throw new Error('Failed to prepare image for upload on web.');
+    }
+  } else {
+    // Native (iOS/Android): use the RN FormData shape
+    const filename = imageUri.split('/').pop() ?? 'scan.jpg';
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+    formData.append('image', {
+      uri: imageUri,
+      name: filename,
+      type: mimeType,
+    } as unknown as Blob);
+  }
 
   try {
     const response = await api.post('/scan', formData, {
