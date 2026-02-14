@@ -43,6 +43,7 @@ import { CameraScanScreen } from './src/screens/CameraScanScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
+import { ChatScreen } from './src/screens/ChatScreen';
 
 // 3D Scene Component
 import { Scene3D } from './src/components/Scene3D';
@@ -147,7 +148,9 @@ function ScanNavigator() {
         {({ navigation }) => (
           <CameraScanScreen
             onBack={() => navigation.goBack()}
-            onResult={() => navigation.goBack()}
+            onScanComplete={(scanData: ScanResultData, imageUri?: string) => {
+              navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
+            }}
           />
         )}
       </ScanStackNav.Screen>
@@ -261,6 +264,11 @@ function MainTabs() {
         name="MyHome"
         component={HomeNavigator}
         options={{ tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>⚡</Text>, tabBarLabel: 'My Home' }}
+      />
+      <Tab.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={{ tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🤖</Text>, tabBarLabel: 'AI Chat' }}
       />
     </Tab.Navigator>
   );

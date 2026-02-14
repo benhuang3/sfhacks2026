@@ -2,15 +2,12 @@
  * Auth API — calls the FastAPI auth endpoints
  */
 
-import { Platform } from 'react-native';
+// Cloudflare tunnel URL — works from any device (phone, web, emulator)
+const TUNNEL_URL = 'https://mode-because-consolidation-quantum.trycloudflare.com';
 
-const DEV_HOST = Platform.select({
-  web: 'localhost',
-  android: '10.0.2.2',
-  default: '10.142.12.209',
-});
+const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
-const BASE_URL = `http://${DEV_HOST}:8000/api/v1`;
+console.log('[authApi] BASE_URL =', BASE_URL);
 
 // ---------------------------------------------------------------------------
 // Types

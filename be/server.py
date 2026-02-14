@@ -918,6 +918,74 @@ async def list_categories():
         return {"success": True, "data": [{"category": c, "modelAsset": f"models/{c.lower().replace(' ', '_')}.glb"} for c in fallback]}
 
 
+# ===========================================================================
+# CHAT — Gemini-powered energy advisor
+# ===========================================================================
+
+class ChatRequest(_PydanticBase):
+    message: str
+    history: list[dict] = []  # [{role: "user"|"assistant", content: "..."}]
+
+class ChatResponse(_PydanticBase):
+    reply: str
+
+@app.post("/api/v1/chat")
+async def chat_endpoint(req: ChatRequest):
+    """
+    Energy advisor chatbot powered by Gemini 2.0 Flash.
+    Accepts a user message + optional history, returns AI reply.
+    """
+    try:
+        from agents import GOOGLE_API_KEY as _GKEY
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+        system_msg = (
+            "You are SmartGrid AI, a friendly and knowledgeable home energy advisor. "
+            "Your role is to:\n"
+            "- Help users understand their home energy consumption\n"
+            "- Provide tips to reduce electricity bills\n"
+            "- Explain how different appliances affect energy usage\n"
+            "- Suggest energy-efficient alternatives\n"
+            "- Answer questions about power ratings, kWh, standby power, and costs\n"
+            "- Give personalized advice based on appliance categories\n\n"
+            "Keep responses concise and practical. Use simple language. "
+            "Include specific numbers when helpful (watts, kWh, costs at $0.30/kWh). "
+            "Use emoji occasionally to keep it friendly. Max 3-4 paragraphs."
+        )
+
+        messages = [SystemMessage(content=system_msg)]
+        for msg in req.history[-10:]:  # keep last 10 for context
+            if msg.get("role") == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg.get("role") == "assistant":
+                messages.append(AIMessage(content=msg["content"]))
+        messages.append(HumanMessage(content=req.message))
+
+        # Try multiple models in order (handles rate limits on free tier)
+        models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+        last_err = None
+        for model_name in models:
+            try:
+                llm = ChatGoogleGenerativeAI(
+                    model=model_name,
+                    google_api_key=_GKEY,
+                    temperature=0.7,
+                )
+                result = await llm.ainvoke(messages)
+                reply = result.content if hasattr(result, "content") else str(result)
+                return {"success": True, "data": {"reply": reply}}
+            except Exception as model_err:
+                last_err = model_err
+                logger.warning("Model %s failed: %s — trying next", model_name, model_err)
+                continue
+
+        raise last_err or Exception("All models failed")
+    except Exception as exc:
+        logger.exception("Chat endpoint failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
 # ---------------------------------------------------------------------------
 # Run directly: python server.py
 # ---------------------------------------------------------------------------

@@ -6,22 +6,17 @@
  */
 
 import axios, { AxiosError } from 'axios';
-import { Platform } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-// Web can use localhost; physical devices need LAN IP.
-const DEV_HOST = Platform.select({
-  web: 'localhost',
-  android: '10.0.2.2',      // Android emulator
-  default: '10.142.12.209',  // LAN IP for physical iOS devices
-});
+// Cloudflare tunnel URL — works from any device (phone, web, emulator)
+const TUNNEL_URL = 'https://mode-because-consolidation-quantum.trycloudflare.com';
 
-const API_BASE_URL = __DEV__
-  ? `http://${DEV_HOST}:8000`
-  : 'https://your-production-url.com';
+const API_BASE_URL = TUNNEL_URL;
+
+console.log('[apiService] API_BASE_URL =', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,

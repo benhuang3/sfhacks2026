@@ -44,9 +44,10 @@ interface ScanResult {
 interface CameraScanScreenProps {
   onBack?: () => void;
   onResult?: (result: ScanResult) => void;
+  onScanComplete?: (scanData: any, imageUri?: string) => void;
 }
 
-export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
+export function CameraScanScreen({ onBack, onResult, onScanComplete }: CameraScanScreenProps) {
   const cameraRef = useRef<any>(null);
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -125,12 +126,18 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
     try {
       const data = await uploadScanImage(photoUri);
       console.log('✅ Scan result:', JSON.stringify(data, null, 2));
-      setResult(data);
-      onResult?.(data);
-      if (Platform.OS === 'web') {
-        window.alert('Scan Complete: Appliance identified successfully!');
+      const scanData = data?.data ?? data;
+      setResult(scanData);
+      onResult?.(scanData);
+      // Navigate to confirm screen if callback provided
+      if (onScanComplete) {
+        onScanComplete(scanData, photoUri);
       } else {
-        Alert.alert('Scan Complete', 'Appliance identified successfully!');
+        if (Platform.OS === 'web') {
+          window.alert('Scan Complete: Appliance identified successfully!');
+        } else {
+          Alert.alert('Scan Complete', 'Appliance identified successfully!');
+        }
       }
     } catch (err: unknown) {
       const message =
