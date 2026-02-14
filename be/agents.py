@@ -22,6 +22,9 @@ DEPENDENCIES:
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import json
 import logging
@@ -56,6 +59,7 @@ def get_motor_client() -> AsyncIOMotorClient:
     """Return a reusable Motor async client (singleton)."""
     global _motor_client
     if _motor_client is None:
+        logger.info("Creating Motor client with URI: %s...", MONGO_URI[:40])
         _motor_client = AsyncIOMotorClient(MONGO_URI)
     return _motor_client
 

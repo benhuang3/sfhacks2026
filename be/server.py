@@ -1,12 +1,15 @@
 """
 =============================================================================
-  SmartGrid Home — FastAPI Backend Server (SF Hacks 2026)
+  SmartGrid Home — Consolidated FastAPI Server (SF Hacks 2026)
 =============================================================================
 
 Endpoints:
-  POST /api/v1/power-profile   → Power Agent (estimate device power usage)
-  GET  /api/v1/health           → Health check
-  POST /api/v1/seed-defaults    → Seed category defaults into MongoDB
+  GET  /api/v1/health             → Health check
+  POST /api/v1/power-profile      → Power Agent (estimate device power usage)
+  POST /api/v1/seed-defaults      → Seed category defaults into MongoDB
+  POST /api/v1/scans              → Insert a new appliance scan
+  POST /api/v1/scans/similar      → Vector similarity search
+  POST /api/v1/scans/resolve      → Cache-aware resolve (+ power profile)
 
 Run:
   uvicorn server:app --reload --host 0.0.0.0 --port 8000
@@ -14,6 +17,9 @@ Run:
 """
 
 from __future__ import annotations
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import os
 import logging
@@ -28,6 +34,15 @@ from agents import (
     lookup_power_profile,
     seed_category_defaults,
     get_motor_client,
+)
+
+from scans import (
+    InsertScanRequest,
+    SimilarSearchRequest,
+    ResolveRequest,
+    insert_scan,
+    find_similar_scans,
+    resolve_scan,
 )
 
 # ---------------------------------------------------------------------------
@@ -154,6 +169,49 @@ async def seed_defaults_endpoint():
                 "error": str(exc),
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Scan Routes
+# ---------------------------------------------------------------------------
+
+@app.post("/api/v1/scans")
+async def create_scan(request: InsertScanRequest):
+    """Insert a new appliance scan document."""
+    try:
+        inserted_id = await insert_scan(request)
+        return {"success": True, "data": {"insertedId": inserted_id}}
+    except Exception as exc:
+        logger.exception("Insert scan failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.post("/api/v1/scans/similar")
+async def similar_search(request: SimilarSearchRequest):
+    """Vector similarity search against the scans collection."""
+    try:
+        result = await find_similar_scans(request.userId, request.embedding, request.k)
+        return {"success": True, "data": result}
+    except Exception as exc:
+        logger.exception("Similar search failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+@app.post("/api/v1/scans/resolve")
+async def resolve_scan_endpoint(request: ResolveRequest):
+    """
+    Cache-aware scan resolution.
+
+    1. Vector search for similar scans (cache check)
+    2. If hit (score >= 0.85) → return matched scan + power profile
+    3. If miss → run recognition, insert new scan, fetch power profile
+    """
+    try:
+        result = await resolve_scan(request)
+        return {"success": True, "data": result}
+    except Exception as exc:
+        logger.exception("Resolve scan failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
 
 
 # ---------------------------------------------------------------------------
