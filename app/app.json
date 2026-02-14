@@ -15,7 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "SmartGrid Home needs camera access to scan and identify your appliances"
+        "NSCameraUsageDescription": "SmartGrid Home needs camera access to scan and identify your appliances",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.anonymous.smartgrid-home"
     },
@@ -34,5 +35,18 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": []
+    "plugins": [
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "SmartGrid Home needs camera access to scan and identify your appliances"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "74531911-cc52-4e90-8951-fb385a8957c5"
+      }
+    }
   }
 }
