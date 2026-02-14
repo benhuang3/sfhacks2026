@@ -1,188 +1,144 @@
-# SmartGrid Home — Android Install Guide
+# SmartGrid Home
 
-## Prerequisites
+Scan your home appliances with on-device AI to monitor energy usage and detect ghost energy drain.
 
-- **Node.js** 18+
-- **Java Development Kit (JDK) 17** — required by React Native / Gradle
-- **Android Studio** with:
-  - Android SDK (API 34 or higher)
-  - Android SDK Build-Tools
-  - Android SDK Platform-Tools
-  - Android Emulator (optional, for testing without a phone)
-- **An Android phone** with USB debugging enabled (for on-device testing)
-
-## 1. Install system dependencies
-
-### macOS
-
-```bash
-brew install node watchman
-brew install --cask android-studio
-```
-
-JDK 17 (if not bundled with Android Studio):
-
-```bash
-brew install --cask zulu@17
-```
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt update && sudo apt install -y openjdk-17-jdk watchman
-```
-
-Download Android Studio from https://developer.android.com/studio and install it.
-
-### Windows
-
-Install Node.js from https://nodejs.org. Install Android Studio from https://developer.android.com/studio (includes JDK 17).
-
-## 2. Configure Android SDK
-
-1. Open Android Studio → **Settings** → **Languages & Frameworks** → **Android SDK**
-2. Under **SDK Platforms**, check **Android 14 (API 34)** or higher
-3. Under **SDK Tools**, check:
-   - Android SDK Build-Tools
-   - Android SDK Command-line Tools
-   - Android Emulator
-   - Android SDK Platform-Tools
-4. Click **Apply** to install
-
-Set environment variables (add to `~/.bashrc`, `~/.zshrc`, or equivalent):
-
-```bash
-export ANDROID_HOME=$HOME/Library/Android/sdk   # macOS
-# export ANDROID_HOME=$HOME/Android/Sdk         # Linux
-# export ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk # Windows
-
-export PATH=$ANDROID_HOME/emulator:$PATH
-export PATH=$ANDROID_HOME/platform-tools:$PATH
-```
-
-Reload your shell:
-
-```bash
-source ~/.zshrc  # or ~/.bashrc
-```
-
-## 3. Install project dependencies
+## Quick Start
 
 ```bash
 cd app
 npm install
 ```
 
-## 4. Generate the native Android project
+Then pick how you want to run it:
 
-This app uses native modules (`react-native-vision-camera`, `react-native-executorch`) that require a dev build — Expo Go will not work.
+| Platform | Command | Requirements |
+|----------|---------|-------------|
+| **Web** | `npx expo start --web` | Just Node.js |
+| **Android** | `npx expo prebuild --platform android && npm run android` | Android Studio + JDK 17 |
+| **iOS** | `npx expo prebuild --platform ios && npx expo run:ios --device` | Xcode |
+
+---
+
+## Run on Web (fastest)
+
+No native SDK needed — runs in your browser:
 
 ```bash
+cd app
+npm install
+npx expo start --web
+```
+
+Opens at `http://localhost:8081`. Camera uses your webcam. On-device AI detection is shimmed on web (returns empty results), but the Quick Scan flow (capture + upload to backend) works fully.
+
+---
+
+## Run on Android
+
+### Prerequisites
+
+- **Node.js** 18+
+- **JDK 17**
+- **Android Studio** with Android SDK (API 34+), Build-Tools, Platform-Tools
+
+### Environment setup
+
+Add to `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export ANDROID_HOME=$HOME/Library/Android/sdk   # macOS
+# export ANDROID_HOME=$HOME/Android/Sdk         # Linux
+export PATH=$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH
+```
+
+### Build and install on your phone
+
+1. Enable USB Debugging: **Settings > About phone > tap Build number 7x > Developer options > USB debugging**
+2. Plug in phone via USB, tap **Allow** when prompted
+
+```bash
+cd app
+npm install
 npx expo prebuild --platform android
-```
-
-This generates the `android/` directory with all native code.
-
-## 5. Run on a physical Android device
-
-### Enable USB Debugging on your phone
-
-1. Go to **Settings** → **About phone**
-2. Tap **Build number** 7 times to unlock Developer options
-3. Go to **Settings** → **Developer options**
-4. Enable **USB debugging**
-5. Plug your phone into your computer via USB cable
-6. When prompted on the phone, tap **Allow** to authorize your computer
-
-### Verify your device is detected
-
-```bash
-adb devices
-```
-
-You should see your device listed (e.g., `XXXXXXXX  device`). If it shows `unauthorized`, check the phone for the USB debugging prompt.
-
-### Build and install
-
-```bash
 npm run android
 ```
 
-This compiles the native project with Gradle, installs the APK on your connected device, and starts the Metro bundler. The first build takes several minutes.
+First build takes several minutes. After that, JS changes hot-reload instantly.
 
-## 6. Run on an Android Emulator (alternative)
-
-1. Open Android Studio → **Virtual Device Manager**
-2. Create a device (e.g., Pixel 7, API 34)
-3. Start the emulator
-4. Run:
+### Alternative: EAS cloud build (no local Android SDK)
 
 ```bash
-npm run android
+npx eas build --platform android --profile development
 ```
 
-> Note: Camera features won't work properly on the emulator. Use a physical device for testing the scanning pipeline.
-
-## 7. Build with EAS (cloud build, no local Android SDK needed)
-
-If you don't want to install Android Studio locally:
+Download the APK from the EAS build page, install on phone, then:
 
 ```bash
-npm install -g eas-cli
-eas login
-eas build --platform android --profile development
+cd app && npx expo start --dev-client
 ```
 
-This builds in the cloud and gives you a downloadable `.apk` file. Install it on your phone by:
+Scan the QR code from the dev client app.
 
-1. Downloading the APK link from the EAS build page
-2. Opening the APK on your phone (you may need to enable **Install from unknown sources** in Settings)
+---
 
-Then start the dev server locally:
+## Run on iOS
+
+### Prerequisites
+
+- **Xcode** (from Mac App Store)
+- Xcode version must support your iPhone's iOS version
+
+### Build and install on your phone
 
 ```bash
-npx expo start --dev-client
+cd app
+npm install
+npx expo prebuild --platform ios
+npx expo run:ios --device
 ```
 
-Scan the QR code shown in the terminal from the app on your phone.
+Set a signing team in Xcode when prompted (your personal Apple ID works for free development).
+
+### Alternative: EAS cloud build (requires paid $99/yr Apple Developer account)
+
+```bash
+npx eas build --platform ios --profile development
+```
+
+---
+
+## After the first native build
+
+Once the dev client is on your phone, you only need to rebuild when adding/removing native dependencies. For JS changes, just:
+
+```bash
+cd app && npx expo start --dev-client
+```
+
+Scan the QR code from the dev client app on your phone. Hot reload handles all JS/TS changes.
+
+---
+
+## Run the Backend
+
+```bash
+cd be
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The mobile app connects to your machine's IP on port 8000. Update the IP in `app/src/services/apiService.ts` if needed.
+
+---
 
 ## Troubleshooting
 
-### `JAVA_HOME is not set`
-
-Make sure JDK 17 is installed and set:
-
-```bash
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)  # macOS
-# export JAVA_HOME=/usr/lib/jvm/java-17-openjdk    # Linux
-```
-
-### `SDK location not found`
-
-Create `app/android/local.properties`:
-
-```
-sdk.dir=/Users/YOUR_USERNAME/Library/Android/sdk
-```
-
-### `adb devices` shows nothing
-
-- Try a different USB cable (some cables are charge-only)
-- Make sure USB debugging is enabled
-- Run `adb kill-server && adb start-server`
-
-### Gradle build fails with memory error
-
-Add to `app/android/gradle.properties`:
-
-```
-org.gradle.jvmargs=-Xmx4096m
-```
-
-### Metro bundler not connecting to device
-
-Make sure your phone and computer are on the same Wi-Fi network, or run:
-
-```bash
-adb reverse tcp:8081 tcp:8081
-```
+| Problem | Fix |
+|---------|-----|
+| Blank page on web | Open browser console (F12) for errors. Try `npx expo start --web --clear` |
+| `JAVA_HOME is not set` | `export JAVA_HOME=$(/usr/libexec/java_home -v 17)` |
+| `SDK location not found` | Create `app/android/local.properties` with `sdk.dir=/path/to/Android/sdk` |
+| `adb devices` empty | Try different USB cable, run `adb kill-server && adb start-server` |
+| Metro not connecting to phone | `adb reverse tcp:8081 tcp:8081` |
+| Gradle out of memory | Add `org.gradle.jvmargs=-Xmx4096m` to `app/android/gradle.properties` |
+| Xcode "needs iOS 17.x" | Update Xcode to match your phone's iOS, or build for Android/web instead |
