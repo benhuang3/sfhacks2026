@@ -1,0 +1,202 @@
+[
+  {
+    "brand": "Samsung",
+    "model": "RF28R7351SG",
+    "category": "refrigerator",
+    "displayName": "Samsung Family Hub Refrigerator",
+    "avgWatts": 150,
+    "standbyWatts": 2,
+    "annualKwh": 632,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "LG",
+    "model": "LRMVS3006S",
+    "category": "refrigerator",
+    "displayName": "LG InstaView Refrigerator",
+    "avgWatts": 140,
+    "standbyWatts": 2,
+    "annualKwh": 590,
+    "yearManufactured": 2023
+  },
+  {
+    "brand": "Whirlpool",
+    "model": "WRS325SDHZ",
+    "category": "refrigerator",
+    "displayName": "Whirlpool Side-by-Side Refrigerator",
+    "avgWatts": 130,
+    "standbyWatts": 2,
+    "annualKwh": 550,
+    "yearManufactured": 2021
+  },
+  {
+    "brand": "Samsung",
+    "model": "WF45R6100AW",
+    "category": "washing_machine",
+    "displayName": "Samsung Front Load Washer",
+    "avgWatts": 500,
+    "standbyWatts": 1,
+    "annualKwh": 120,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "LG",
+    "model": "WM4000HWA",
+    "category": "washing_machine",
+    "displayName": "LG TurboWash 360 Washer",
+    "avgWatts": 480,
+    "standbyWatts": 1,
+    "annualKwh": 105,
+    "yearManufactured": 2023
+  },
+  {
+    "brand": "Samsung",
+    "model": "DVE45R6100W",
+    "category": "dryer",
+    "displayName": "Samsung Electric Dryer",
+    "avgWatts": 5000,
+    "standbyWatts": 1,
+    "annualKwh": 608,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "LG",
+    "model": "DLEX4000W",
+    "category": "dryer",
+    "displayName": "LG Electric Dryer",
+    "avgWatts": 5200,
+    "standbyWatts": 1,
+    "annualKwh": 620,
+    "yearManufactured": 2023
+  },
+  {
+    "brand": "Samsung",
+    "model": "NE63A6511SS",
+    "category": "oven",
+    "displayName": "Samsung Electric Range",
+    "avgWatts": 3000,
+    "standbyWatts": 3,
+    "annualKwh": 730,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "GE",
+    "model": "JB655SKSS",
+    "category": "oven",
+    "displayName": "GE Electric Range",
+    "avgWatts": 2800,
+    "standbyWatts": 3,
+    "annualKwh": 700,
+    "yearManufactured": 2021
+  },
+  {
+    "brand": "Samsung",
+    "model": "DW80R5061US",
+    "category": "dishwasher",
+    "displayName": "Samsung StormWash Dishwasher",
+    "avgWatts": 1800,
+    "standbyWatts": 1,
+    "annualKwh": 270,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "Bosch",
+    "model": "SHPM88Z75N",
+    "category": "dishwasher",
+    "displayName": "Bosch 800 Series Dishwasher",
+    "avgWatts": 1600,
+    "standbyWatts": 1,
+    "annualKwh": 240,
+    "yearManufactured": 2023
+  },
+  {
+    "brand": "Samsung",
+    "model": "MC11A7033CT",
+    "category": "microwave",
+    "displayName": "Samsung Countertop Microwave",
+    "avgWatts": 1000,
+    "standbyWatts": 2,
+    "annualKwh": 58,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "Panasonic",
+    "model": "NN-SN966S",
+    "category": "microwave",
+    "displayName": "Panasonic Inverter Microwave",
+    "avgWatts": 1250,
+    "standbyWatts": 2,
+    "annualKwh": 72,
+    "yearManufactured": 2021
+  },
+  {
+    "brand": "Dyson",
+    "model": "TP07",
+    "category": "fan",
+    "displayName": "Dyson Purifier Cool",
+    "avgWatts": 40,
+    "standbyWatts": 1,
+    "annualKwh": 35,
+    "yearManufactured": 2023
+  },
+  {
+    "brand": "Carrier",
+    "model": "24ACC636A003",
+    "category": "air_conditioner",
+    "displayName": "Carrier Central AC Unit",
+    "avgWatts": 3500,
+    "standbyWatts": 5,
+    "annualKwh": 2100,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "LG",
+    "model": "LW8016ER",
+    "category": "air_conditioner",
+    "displayName": "LG Window Air Conditioner",
+    "avgWatts": 800,
+    "standbyWatts": 2,
+    "annualKwh": 480,
+    "yearManufactured": 2021
+  },
+  {
+    "brand": "Instant Pot",
+    "model": "DUO60",
+    "category": "cooker",
+    "displayName": "Instant Pot Duo 6 Qt",
+    "avgWatts": 1000,
+    "standbyWatts": 0,
+    "annualKwh": 36,
+    "yearManufactured": 2020
+  },
+  {
+    "brand": "Keurig",
+    "model": "K-Supreme",
+    "category": "coffee_maker",
+    "displayName": "Keurig K-Supreme Coffee Maker",
+    "avgWatts": 1470,
+    "standbyWatts": 2,
+    "annualKwh": 45,
+    "yearManufactured": 2022
+  },
+  {
+    "brand": "Vitamix",
+    "model": "A3500",
+    "category": "blender",
+    "displayName": "Vitamix Ascent A3500 Blender",
+    "avgWatts": 1440,
+    "standbyWatts": 0,
+    "annualKwh": 18,
+    "yearManufactured": 2021
+  },
+  {
+    "brand": "iRobot",
+    "model": "j7+",
+    "category": "vacuum",
+    "displayName": "iRobot Roomba j7+",
+    "avgWatts": 30,
+    "standbyWatts": 3,
+    "annualKwh": 26,
+    "yearManufactured": 2023
+  }
+]

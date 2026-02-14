@@ -1,5 +1,5 @@
 import { ApplianceLookupResult, ApplianceEnergyProfile, ParsedProductInfo } from '../utils/scannerTypes';
-import applianceDb from '../../../ai/data/appliance_energy_db.json';
+import applianceDb from '../data/appliance_energy_db.json';
 
 const db = applianceDb as ApplianceEnergyProfile[];
 
