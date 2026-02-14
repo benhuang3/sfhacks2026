@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../App';
 import {
-  addDevice, listHomes, Home, listCategories, CategoryInfo,
+  addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
 } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
 
@@ -70,7 +70,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
   const [allCategories, setAllCategories] = useState<CategoryInfo[]>([]);
   const [homes, setHomes] = useState<Home[]>([]);
   const [selectedHomeId, setSelectedHomeId] = useState<string | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState('living-room');
+  const [selectedRoom, setSelectedRoom] = useState('r1');
   const [deviceLabel, setDeviceLabel] = useState('');
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
@@ -175,7 +175,21 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
     }
   };
 
-  const rooms = ['living-room', 'bedroom', 'kitchen', 'bathroom', 'office', 'garage', 'laundry'];
+  // Rooms from the selected home (structured RoomModel objects)
+  const rooms: RoomModel[] = useMemo(() => {
+    const h = homes.find(h => h.id === selectedHomeId);
+    if (h?.rooms && h.rooms.length > 0) {
+      return h.rooms as RoomModel[];
+    }
+    // Fallback
+    return [
+      { roomId: 'r1', name: 'Living Room' },
+      { roomId: 'r2', name: 'Bedroom' },
+      { roomId: 'r3', name: 'Kitchen' },
+      { roomId: 'r4', name: 'Bathroom' },
+      { roomId: 'r5', name: 'Office' },
+    ];
+  }, [homes, selectedHomeId]);
 
   if (added) {
     return (
@@ -387,18 +401,18 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomPicker}>
               {rooms.map(r => (
                 <TouchableOpacity
-                  key={r}
+                  key={r.roomId}
                   style={[styles.roomChip, {
-                    backgroundColor: selectedRoom === r
+                    backgroundColor: selectedRoom === r.roomId
                       ? colors.accent : (isDark ? '#222' : '#eee'),
                   }]}
-                  onPress={() => setSelectedRoom(r)}
+                  onPress={() => setSelectedRoom(r.roomId)}
                 >
                   <Text style={{
-                    color: selectedRoom === r ? '#fff' : colors.text,
+                    color: selectedRoom === r.roomId ? '#fff' : colors.text,
                     fontWeight: '600', fontSize: 12,
                   }}>
-                    {r.replace('-', ' ')}
+                    {r.name}
                   </Text>
                 </TouchableOpacity>
               ))}

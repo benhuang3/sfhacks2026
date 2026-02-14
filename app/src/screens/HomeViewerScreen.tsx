@@ -14,12 +14,14 @@ import {
   Dimensions, ActivityIndicator, Platform, Animated,
   TextInput, KeyboardAvoidingView,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../../App';
 import {
   listDevices, Device, getHomeSummary, HomeSummary,
   getHome, Home, sendAgentCommand, AgentCommandResult,
-  ActionProposal,
+  ActionProposal, getScene, HomeScene, RoomModel,
 } from '../services/apiClient';
+import { Scene3D } from '../components/Scene3D';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -417,6 +419,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
 
   const [home, setHome] = useState<Home | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [scene, setScene] = useState<HomeScene | null>(null);
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
@@ -427,14 +430,18 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [h, devs] = await Promise.all([
+      const [h, devs, sc] = await Promise.all([
         getHome(homeId),
         listDevices(homeId),
+        getScene(homeId).catch(() => null),
       ]);
       setHome(h);
       setDevices(devs);
+      if (sc) setScene(sc);
+      // Default to first room
       if (h.rooms?.length > 0 && !selectedRoom) {
-        setSelectedRoom(h.rooms[0]);
+        const firstRoom = h.rooms[0];
+        setSelectedRoom(typeof firstRoom === 'string' ? firstRoom : firstRoom.roomId);
       }
       try {
         const sum = await getHomeSummary(homeId);
@@ -449,17 +456,28 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Refetch when screen gains focus (e.g., after adding device)
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
   // Devices in selected room
   const roomDevices = useMemo(() =>
     devices.filter(d => !selectedRoom || d.roomId === selectedRoom),
     [devices, selectedRoom]
   );
 
-  // All rooms (from home or from devices)
-  const rooms = useMemo(() => {
-    const fromHome = home?.rooms || [];
+  // All rooms (structured RoomModel objects)
+  const rooms: RoomModel[] = useMemo(() => {
+    if (home?.rooms && home.rooms.length > 0) {
+      // Home has structured rooms
+      return home.rooms as RoomModel[];
+    }
+    // Fallback: derive from device roomIds
     const fromDevices = [...new Set(devices.map(d => d.roomId))];
-    return [...new Set([...fromHome, ...fromDevices])];
+    return fromDevices.map(rid => ({ roomId: rid, name: rid.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }));
   }, [home, devices]);
 
   const handleDeviceAction = useCallback(async (action: string) => {
@@ -527,18 +545,18 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
         </TouchableOpacity>
         {rooms.map(r => (
           <TouchableOpacity
-            key={r}
+            key={r.roomId}
             style={[styles.roomTab, {
-              backgroundColor: selectedRoom === r ? colors.accent : (isDark ? '#222' : '#eee'),
+              backgroundColor: selectedRoom === r.roomId ? colors.accent : (isDark ? '#222' : '#eee'),
             }]}
-            onPress={() => setSelectedRoom(r)}
+            onPress={() => setSelectedRoom(r.roomId)}
           >
             <Text style={{
-              color: selectedRoom === r ? '#fff' : colors.text,
+              color: selectedRoom === r.roomId ? '#fff' : colors.text,
               fontWeight: '600', fontSize: 12,
             }}>
-              {(ROOM_LAYOUTS[r]?.name || r).replace('-', ' ')}
-              {' '}({devices.filter(d => d.roomId === r).length})
+              {r.name}
+              {' '}({devices.filter(d => d.roomId === r.roomId).length})
             </Text>
           </TouchableOpacity>
         ))}
@@ -546,14 +564,26 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
 
       {/* 3D Room View */}
       <View style={{ flex: 1 }}>
-        <Room3DView
-          devices={roomDevices}
-          selectedDevice={selectedDevice}
-          onSelectDevice={setSelectedDevice}
-          isDark={isDark}
-          colors={colors}
-          roomId={selectedRoom || 'living-room'}
-        />
+        {scene && scene.objects && scene.objects.length > 0 ? (
+          <Scene3D
+            scene={scene}
+            selectedRoomId={selectedRoom}
+            height={300}
+            onDevicePress={(deviceId: string) => {
+              const device = devices.find(d => d.id === deviceId);
+              if (device) setSelectedDevice(device);
+            }}
+          />
+        ) : (
+          <Room3DView
+            devices={roomDevices}
+            selectedDevice={selectedDevice}
+            onSelectDevice={setSelectedDevice}
+            isDark={isDark}
+            colors={colors}
+            roomId={selectedRoom || 'living-room'}
+          />
+        )}
       </View>
 
       {/* Agent Result Toast */}

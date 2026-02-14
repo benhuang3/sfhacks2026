@@ -147,11 +147,39 @@ async function del<T>(path: string): Promise<T> {
 // Home types
 // ---------------------------------------------------------------------------
 
+export interface RoomModel {
+  roomId: string;
+  name: string;
+}
+
+export interface SceneObject {
+  objectId: string;
+  deviceId: string;
+  roomId: string;
+  category: string;
+  assetKey: string;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+}
+
+export interface SceneRoom {
+  roomId: string;
+  name: string;
+  size: [number, number, number];
+}
+
+export interface HomeScene {
+  rooms: SceneRoom[];
+  objects: SceneObject[];
+}
+
 export interface Home {
   id: string;
   userId: string;
   name: string;
-  rooms: string[];
+  rooms: RoomModel[];
+  scene?: HomeScene;
   createdAt: string;
 }
 
@@ -273,8 +301,8 @@ export interface ActionRecord {
 // Homes API
 // ---------------------------------------------------------------------------
 
-export async function createHome(userId: string, name: string, rooms: string[] = ['living-room']): Promise<Home> {
-  return post<Home>('/homes', { userId, name, rooms });
+export async function createHome(userId: string, name: string, rooms?: RoomModel[]): Promise<Home> {
+  return post<Home>('/homes', { userId, name, rooms: rooms ?? [] });
 }
 
 export async function listHomes(userId: string): Promise<Home[]> {
@@ -287,6 +315,26 @@ export async function getHome(homeId: string): Promise<Home> {
 
 export async function deleteHome(homeId: string): Promise<void> {
   await del(`/homes/${homeId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Rooms API
+// ---------------------------------------------------------------------------
+
+export async function addRoom(homeId: string, name: string): Promise<Home> {
+  return post<Home>(`/homes/${homeId}/rooms`, { name });
+}
+
+export async function removeRoom(homeId: string, roomId: string): Promise<Home> {
+  return del<Home>(`/homes/${homeId}/rooms/${roomId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Scene API
+// ---------------------------------------------------------------------------
+
+export async function getScene(homeId: string): Promise<HomeScene> {
+  return get<HomeScene>(`/homes/${homeId}/scene`);
 }
 
 // ---------------------------------------------------------------------------

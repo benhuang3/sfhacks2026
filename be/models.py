@@ -16,21 +16,71 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Rooms & Scene (structured)
+# ---------------------------------------------------------------------------
+
+class RoomModel(BaseModel):
+    """A room within a home — stored as structured object, not a bare string."""
+    roomId: str = Field(..., min_length=1, examples=["r1"])
+    name: str = Field(..., min_length=1, examples=["Living Room"])
+
+
+class SceneObject(BaseModel):
+    """One 3-D object placed in the home scene (tied to a device doc)."""
+    objectId: str = Field(..., min_length=1)
+    deviceId: str = Field(..., min_length=1)
+    roomId: str = Field(default="r1")
+    category: str = Field(default="Unknown")
+    assetKey: str = Field(default="models/default.glb")
+    position: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0], min_length=3, max_length=3)
+    rotation: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0], min_length=3, max_length=3)
+    scale: list[float] = Field(default_factory=lambda: [1.0, 1.0, 1.0], min_length=3, max_length=3)
+
+
+class SceneRoom(BaseModel):
+    """Per-room geometry metadata for the 3-D renderer."""
+    roomId: str
+    name: str = ""
+    size: list[float] = Field(default_factory=lambda: [5.0, 3.0, 4.0], min_length=3, max_length=3)
+
+
+class HomeScene(BaseModel):
+    """The full 3-D scene stored on a home document."""
+    rooms: list[SceneRoom] = Field(default_factory=list)
+    objects: list[SceneObject] = Field(default_factory=list)
+
+
+# Default rooms created on signup
+DEFAULT_ROOMS: list[RoomModel] = [
+    RoomModel(roomId="r1", name="Living Room"),
+    RoomModel(roomId="r2", name="Bedroom"),
+    RoomModel(roomId="r3", name="Kitchen"),
+    RoomModel(roomId="r4", name="Bathroom"),
+    RoomModel(roomId="r5", name="Office"),
+]
+
+
+# ---------------------------------------------------------------------------
 # Homes
 # ---------------------------------------------------------------------------
 
 class CreateHomeRequest(BaseModel):
     userId: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1, examples=["My Apartment"])
-    rooms: list[str] = Field(default_factory=lambda: ["living-room"])
+    rooms: list[RoomModel] = Field(default_factory=lambda: [r.model_copy() for r in DEFAULT_ROOMS])
 
 
 class HomeDoc(BaseModel):
     id: Optional[str] = None
     userId: str
     name: str
-    rooms: list[str]
+    rooms: list[RoomModel] = Field(default_factory=list)
+    scene: HomeScene = Field(default_factory=HomeScene)
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AddRoomRequest(BaseModel):
+    name: str = Field(..., min_length=1, examples=["Garage"])
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +92,7 @@ class DevicePower(BaseModel):
     standby_watts_range: list[float] = Field(default=[0.5, 5.0], min_length=2, max_length=2)
     active_watts_typical: float = Field(default=75.0, ge=0)
     active_watts_range: list[float] = Field(default=[20, 200], min_length=2, max_length=2)
-    source: Literal[
-        "category_estimate", "ai_estimate", "measured", "energy_star", "user_input"
-    ] = "category_estimate"
+    source: str = "category_estimate"  # e.g. category_estimate, ai_estimate, measured, energy_star, user_input
     confidence: float = Field(default=0.5, ge=0, le=1)
 
 

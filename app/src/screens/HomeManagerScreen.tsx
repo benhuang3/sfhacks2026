@@ -12,6 +12,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { showAlert, showConfirm } from '../utils/alert';
 import {
   createHome,
@@ -76,12 +77,24 @@ export function HomeManagerScreen({
 
   useEffect(() => { loadHomes(); }, [loadHomes]);
 
+  // Refetch when screen gains focus (e.g., after adding device from scan)
+  useFocusEffect(
+    useCallback(() => {
+      loadHomes();
+    }, [loadHomes])
+  );
+
   const handleCreateHome = async () => {
     if (!newHomeName.trim()) return;
     try {
       setCreating(true);
-      const rooms = newHomeRooms.split(',').map(r => r.trim()).filter(Boolean);
-      await createHome(userId, newHomeName.trim(), rooms.length ? rooms : ['living-room']);
+      const roomStrings = newHomeRooms.split(',').map(r => r.trim()).filter(Boolean);
+      // Convert string array to RoomModel array
+      const roomModels = (roomStrings.length ? roomStrings : ['living-room']).map(r => ({
+        roomId: r.toLowerCase().replace(/\s+/g, '-'),
+        name: r.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      }));
+      await createHome(userId, newHomeName.trim(), roomModels);
       setNewHomeName('');
       setNewHomeRooms('living-room, kitchen');
       await loadHomes();

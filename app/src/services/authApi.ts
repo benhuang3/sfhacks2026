@@ -20,6 +20,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  homeId?: string | null;
 }
 
 export interface AuthResponse {
