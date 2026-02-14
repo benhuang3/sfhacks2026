@@ -21,6 +21,7 @@ export function ScanResultScreen({ onBack }: ScanResultScreenProps) {
 
   const renderItem = ({ item }: { item: TrackedObject }) => {
     const lookup = item.productInfo?.lookup;
+    const power = item.productInfo?.powerProfile;
     const name = item.productInfo?.displayName || getDisplayName(item.label);
 
     return (
@@ -41,6 +42,30 @@ export function ScanResultScreen({ onBack }: ScanResultScreenProps) {
               <Text style={styles.statLabel}>Region</Text>
             </View>
           </View>
+        )}
+        {power ? (
+          <View style={styles.powerSection}>
+            <Text style={styles.powerTitle}>Power Profile</Text>
+            <View style={styles.cardStats}>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{power.active_watts_typical}W</Text>
+                <Text style={styles.statLabel}>Active</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{power.standby_watts_typical}W</Text>
+                <Text style={styles.statLabel}>Standby</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{power.category}</Text>
+                <Text style={styles.statLabel}>Category</Text>
+              </View>
+            </View>
+            <Text style={styles.powerSource}>
+              Source: {power.source} (confidence: {Math.round(power.confidence * 100)}%)
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.loadingText}>Loading power data...</Text>
         )}
       </View>
     );
@@ -193,5 +218,29 @@ const styles = StyleSheet.create({
     color: '#aaa',
     fontSize: 12,
     marginTop: 2,
+  },
+  powerSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#3a3a4e',
+  },
+  powerTitle: {
+    color: '#FF9800',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  powerSource: {
+    color: '#888',
+    fontSize: 11,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  loadingText: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
