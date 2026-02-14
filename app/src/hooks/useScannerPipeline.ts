@@ -24,22 +24,27 @@ export function useScannerPipeline(): ScannerPipelineResult {
     async (imageUri: string): Promise<Detection[]> => {
       if (!detector.isReady) return [];
 
-      const results = await detector.forward(imageUri);
+      try {
+        const results = await detector.forward(imageUri);
 
-      // Map react-native-executorch detections to our Detection type
-      // and filter to appliance classes only
-      return results
-        .filter((r) => isApplianceClass(r.label))
-        .map((r) => ({
-          bbox: {
-            x1: r.bbox.x1,
-            y1: r.bbox.y1,
-            x2: r.bbox.x2,
-            y2: r.bbox.y2,
-          } as BBox,
-          label: r.label,
-          score: r.score,
-        }));
+        // Map react-native-executorch detections to our Detection type
+        // and filter to appliance classes only
+        return results
+          .filter((r) => isApplianceClass(r.label))
+          .map((r) => ({
+            bbox: {
+              x1: r.bbox.x1,
+              y1: r.bbox.y1,
+              x2: r.bbox.x2,
+              y2: r.bbox.y2,
+            } as BBox,
+            label: r.label,
+            score: r.score,
+          }));
+      } catch (e) {
+        console.warn('Detection failed:', e);
+        return [];
+      }
     },
     [detector.isReady]
   );

@@ -79,7 +79,7 @@ export function useProductIdentifier(): ProductIdentifierResult {
         processingIds.current.delete(trackedObject.id);
       }
     },
-    [ocr.isReady, markIdentificationAttempted, setPendingConfirmation]
+    [ocr.isReady, ocr.forward, markIdentificationAttempted, setPendingConfirmation]
   );
 
   return {
