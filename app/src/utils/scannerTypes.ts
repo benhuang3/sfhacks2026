@@ -22,6 +22,17 @@ export interface TrackedObject {
   croppedImageUri?: string;
 }
 
+export interface PowerProfileData {
+  category: string;
+  standby_watts_range: [number, number];
+  standby_watts_typical: number;
+  active_watts_range: [number, number];
+  active_watts_typical: number;
+  confidence: number;
+  source: string;
+  notes: string[];
+}
+
 export interface ProductInfo {
   brand: string;
   model: string;
@@ -29,6 +40,8 @@ export interface ProductInfo {
   confirmed: boolean;
   wattage?: number;
   lookup?: ApplianceLookupResult;
+  powerProfile?: PowerProfileData;
+  backendScanId?: string;
 }
 
 export interface ApplianceLookupResult {

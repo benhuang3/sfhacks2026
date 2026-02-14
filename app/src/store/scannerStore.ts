@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { ScannerState, TrackedObject, ProductInfo } from '../utils/scannerTypes';
+import { ScannerState, TrackedObject, ProductInfo, PowerProfileData } from '../utils/scannerTypes';
+import { fetchPowerProfile, saveScan } from '../services/apiClient';
 
 interface ScannerStore {
   state: ScannerState;
@@ -13,6 +14,7 @@ interface ScannerStore {
   markIdentificationAttempted: (trackId: string) => void;
   setPendingConfirmation: (object: TrackedObject) => void;
   confirmProduct: (productInfo: ProductInfo) => void;
+  updateProductPowerProfile: (trackId: string, profile: PowerProfileData, scanId?: string) => void;
   dismissProduct: () => void;
   setCurrentRoom: (room: string) => void;
   clearScan: () => void;
@@ -61,7 +63,45 @@ export const useScannerStore = create<ScannerStore>((set, get) => ({
           : obj
       ),
     }));
+
+    // Fire backend calls in the background (non-blocking)
+    const brand = productInfo.lookup?.brand || productInfo.brand || 'Generic';
+    const model = productInfo.lookup?.model || productInfo.model || 'unknown';
+    const name = productInfo.displayName || 'Unknown Appliance';
+
+    // 1. Fetch power profile from backend
+    fetchPowerProfile(brand, model, name)
+      .then((res) => {
+        get().updateProductPowerProfile(confirmed.id, res.profile);
+      })
+      .catch((err) => console.warn('[api] Power profile fetch failed:', err));
+
+    // 2. Save scan to backend DB
+    saveScan({
+      userId: 'default_user',
+      imageUrl: confirmed.croppedImageUri || 'no-image',
+      label: name,
+      confidence: confirmed.score,
+    })
+      .then((res) => {
+        console.log('[api] Scan saved:', res.insertedId);
+      })
+      .catch((err) => console.warn('[api] Scan save failed:', err));
   },
+
+  updateProductPowerProfile: (trackId, profile, scanId) =>
+    set((s) => ({
+      confirmedProducts: s.confirmedProducts.map((obj) =>
+        obj.id === trackId
+          ? {
+              ...obj,
+              productInfo: obj.productInfo
+                ? { ...obj.productInfo, powerProfile: profile, backendScanId: scanId }
+                : undefined,
+            }
+          : obj
+      ),
+    })),
 
   dismissProduct: () =>
     set({ pendingConfirmation: null, state: 'scanning' }),
