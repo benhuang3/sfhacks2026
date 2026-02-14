@@ -22,12 +22,12 @@ export function ProductConfirmCard({
   onConfirm,
   onDismiss,
 }: ProductConfirmCardProps) {
-  const info = trackedObject.productInfo;
+  const info = trackedObject.productInfo ?? null;
   const [brand, setBrand] = useState(info?.brand || '');
   const [model, setModel] = useState(info?.model || '');
 
   const displayName = info?.displayName || getDisplayName(trackedObject.label);
-  const lookup = info?.lookup;
+  const lookup = info?.lookup ?? null;
 
   const handleConfirm = () => {
     onConfirm({
@@ -36,7 +36,7 @@ export function ProductConfirmCard({
       displayName: brand && model ? `${brand} ${model}` : displayName,
       confirmed: true,
       wattage: info?.wattage,
-      lookup,
+      lookup: lookup || undefined,
     });
   };
 

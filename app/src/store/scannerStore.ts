@@ -36,8 +36,11 @@ export const useScannerStore = create<ScannerStore>((set, get) => ({
       ),
     })),
 
-  setPendingConfirmation: (object) =>
-    set({ pendingConfirmation: object, state: 'confirming' }),
+  setPendingConfirmation: (object) => {
+    // Don't overwrite if user is already reviewing a product
+    if (get().pendingConfirmation) return;
+    set({ pendingConfirmation: object, state: 'confirming' });
+  },
 
   confirmProduct: (productInfo) => {
     const { pendingConfirmation } = get();
