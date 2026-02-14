@@ -1,5 +1,6 @@
 import React, { useRef, useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+import { uploadScanImage } from '../services/apiService';
 import { CameraView, CameraViewRef } from '../components/scanner/CameraView';
 import { BoundingBoxOverlay } from '../components/scanner/BoundingBoxOverlay';
 import { ProductConfirmCard } from '../components/scanner/ProductConfirmCard';
@@ -70,10 +71,79 @@ export function ScannerScreen() {
     setIsScanning(true);
   }, [setState]);
 
-  const handleStopScan = useCallback(() => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const captureWebFrame = useCallback(async (): Promise<string | null> => {
+    // Directly grab from the <video> element on web
+    if (Platform.OS !== 'web') return null;
+    try {
+      const videoEl = document.querySelector('video');
+      if (!videoEl) { console.warn('No <video> element found'); return null; }
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth || 640;
+      canvas.height = videoEl.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      return new Promise<string | null>((resolve) => {
+        canvas.toBlob(
+          (blob) => resolve(blob ? URL.createObjectURL(blob) : null),
+          'image/jpeg',
+          0.8,
+        );
+      });
+    } catch (e) {
+      console.warn('Web frame capture failed:', e);
+      return null;
+    }
+  }, []);
+
+  const handleStopScan = useCallback(async () => {
     setState('idle');
     setIsScanning(false);
-  }, [setState]);
+
+    try {
+      setIsUploading(true);
+
+      // Try the CameraView ref first, then fall back to direct web capture
+      let photoUri = await cameraRef.current?.takePhoto();
+      console.log('takePhoto result:', photoUri ? 'got URI' : 'null');
+
+      if (!photoUri) {
+        console.log('Falling back to direct web capture...');
+        photoUri = await captureWebFrame();
+        console.log('Web capture result:', photoUri ? 'got URI' : 'null');
+      }
+
+      if (!photoUri) {
+        const msg = 'Could not capture image from camera. Make sure camera permission is granted.';
+        if (Platform.OS === 'web') window.alert(msg);
+        else Alert.alert('Capture Failed', msg);
+        setIsUploading(false);
+        return;
+      }
+
+      console.log('Uploading scan image...');
+      const result = await uploadScanImage(photoUri);
+      console.log('Scan uploaded:', JSON.stringify(result, null, 2));
+
+      if (Platform.OS === 'web') {
+        window.alert('Scan saved to database!');
+      } else {
+        Alert.alert('Scan Saved', 'Image uploaded and saved to the database.');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      console.error('Scan upload error:', msg);
+      if (Platform.OS === 'web') {
+        window.alert('Upload failed: ' + msg);
+      } else {
+        Alert.alert('Upload Failed', msg);
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  }, [setState, captureWebFrame]);
 
   // Loading state while models download
   if (!pipeline.isReady) {
@@ -109,7 +179,12 @@ export function ScannerScreen() {
         />
 
         <View style={styles.controls}>
-          {!isScanning ? (
+          {isUploading ? (
+            <View style={[styles.scanButton, { flexDirection: 'row', gap: 8 }]}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={styles.scanButtonText}>Uploading…</Text>
+            </View>
+          ) : !isScanning ? (
             <TouchableOpacity style={styles.scanButton} onPress={handleStartScan}>
               <Text style={styles.scanButtonText}>Start Scan</Text>
             </TouchableOpacity>
@@ -118,7 +193,7 @@ export function ScannerScreen() {
               style={[styles.scanButton, styles.stopButton]}
               onPress={handleStopScan}
             >
-              <Text style={styles.scanButtonText}>Stop Scan</Text>
+              <Text style={styles.scanButtonText}>Stop & Save</Text>
             </TouchableOpacity>
           )}
         </View>

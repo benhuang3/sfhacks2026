@@ -14,7 +14,7 @@ import axios, { AxiosError } from 'axios';
 // Use your local IP (not localhost) when testing on a physical device.
 // e.g. "http://192.168.1.42:8000"
 const API_BASE_URL = __DEV__
-  ? 'http://10.142.12.209:8000'   // ← Your machine's LAN IP
+  ? 'http://10.142.12.143:8000'   // ← Your machine's LAN IP
   : 'https://your-production-url.com';
 
 const api = axios.create({
@@ -37,32 +37,41 @@ export async function uploadScanImage(imageUri: string): Promise<Record<string, 
   // Build multipart/form-data
   const formData = new FormData();
 
-  // Extract filename from URI
-  const filename = imageUri.split('/').pop() ?? 'scan.jpg';
+  if (typeof window !== 'undefined' && (imageUri.startsWith('blob:') || imageUri.startsWith('data:'))) {
+    // ── Web: fetch the blob URL and append as a real File ──
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    const file = new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' });
+    formData.append('image', file);
+  } else {
+    // ── React Native: use the {uri, name, type} shape ──
+    const filename = imageUri.split('/').pop() ?? 'scan.jpg';
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
-  // Determine MIME type from extension
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
-
-  // Append file — React Native FormData accepts this shape
-  formData.append('image', {
-    uri: imageUri,
-    name: filename,
-    type: mimeType,
-  } as unknown as Blob);
+    formData.append('image', {
+      uri: imageUri,
+      name: filename,
+      type: mimeType,
+    } as unknown as Blob);
+  }
 
   try {
-    const response = await api.post('/scan', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    // On web, do NOT set Content-Type — the browser must auto-set it
+    // with the correct multipart boundary. On React Native, axios needs the hint.
+    const headers: Record<string, string> = {};
+    if (typeof window === 'undefined') {
+      headers['Content-Type'] = 'multipart/form-data';
+    }
+
+    const response = await api.post('/scan', formData, { headers });
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosErr = error as AxiosError<{ detail?: string; error?: string }>;
+      const detail = axiosErr.response?.data?.detail;
       const serverMessage =
-        axiosErr.response?.data?.detail ??
+        (typeof detail === 'string' ? detail : JSON.stringify(detail)) ??
         axiosErr.response?.data?.error ??
         axiosErr.message;
       throw new Error(`Scan failed (${axiosErr.response?.status ?? 'network'}): ${serverMessage}`);

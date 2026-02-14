@@ -25,9 +25,11 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
+import base64
 import shutil
 import uuid
 from pathlib import Path
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -194,8 +196,8 @@ async def scan_image(image: UploadFile = File(...)):
     file_path = UPLOAD_DIR / filename
 
     try:
+        content = await image.read()
         with open(file_path, "wb") as f:
-            content = await image.read()
             f.write(content)
         logger.info("Saved uploaded image: %s (%d bytes)", file_path, len(content))
     except Exception as exc:
@@ -206,12 +208,37 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # -------------------------------------------------------------------
+    # Store the image in MongoDB so it persists in the database
+    # -------------------------------------------------------------------
+    try:
+        db = get_motor_client()[os.getenv("MONGO_DB", "smartgrid_home")]
+        image_b64 = base64.b64encode(content).decode("utf-8")
+        doc = {
+            "filename": filename,
+            "contentType": image.content_type,
+            "sizeBytes": len(content),
+            "imageBase64": image_b64,
+            "status": "pending",          # awaiting AI recognition
+            "createdAt": datetime.now(timezone.utc),
+        }
+        result = await db["scans"].insert_one(doc)
+        inserted_id = str(result.inserted_id)
+        logger.info("Inserted scan image into MongoDB: %s", inserted_id)
+    except Exception as exc:
+        logger.exception("Failed to insert scan image into MongoDB")
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": f"Database insert failed: {str(exc)}"},
+        )
+
+    # -------------------------------------------------------------------
     # TODO: Run image recognition here (Meta on-device AI / Gemini Vision)
     # For now, return a placeholder response so the frontend flow works.
     # -------------------------------------------------------------------
     return {
         "success": True,
         "data": {
+            "scanId": inserted_id,
             "filename": filename,
             "size_bytes": len(content),
             "content_type": image.content_type,
@@ -222,7 +249,7 @@ async def scan_image(image: UploadFile = File(...)):
                 "category": "Unknown",
                 "confidence": 0.0,
             },
-            "message": "Image received. Appliance recognition not yet implemented.",
+            "message": "Image received and saved to database.",
         },
     }
 
