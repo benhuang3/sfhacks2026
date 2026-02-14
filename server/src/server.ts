@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { connectDB } from "./db";
 import scanRoutes from "./routes/scan";
 import healthRoutes from "./routes/health";
+import powerProfileRoutes from "./routes/powerProfile";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -20,6 +21,7 @@ app.use(express.json({ limit: "5mb" })); // embeddings can be large
 
 app.use("/scans", scanRoutes);
 app.use("/health", healthRoutes);
+app.use("/power-profile", powerProfileRoutes);
 
 // ---------------------------------------------------------------------------
 // Global error handler
