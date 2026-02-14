@@ -120,3 +120,280 @@ export async function checkHealth(): Promise<{ status: string; database: string 
   const data = await res.json();
   return data.data;
 }
+
+// ---------------------------------------------------------------------------
+// Generic GET helper
+// ---------------------------------------------------------------------------
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`);
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
+  }
+  return data.data as T;
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
+  }
+  return data.data as T;
+}
+
+// ---------------------------------------------------------------------------
+// Home types
+// ---------------------------------------------------------------------------
+
+export interface Home {
+  id: string;
+  userId: string;
+  name: string;
+  rooms: string[];
+  createdAt: string;
+}
+
+export interface DevicePower {
+  standby_watts_typical: number;
+  standby_watts_range: [number, number];
+  active_watts_typical: number;
+  active_watts_range: [number, number];
+  source: string;
+  confidence: number;
+}
+
+export interface Device {
+  id: string;
+  homeId: string;
+  roomId: string;
+  label: string;
+  brand: string;
+  model: string;
+  category: string;
+  power: DevicePower;
+  is_critical: boolean;
+  control: { type: string; device_id?: string; capabilities: string[] };
+  active_hours_per_day: number;
+  usage_profile: string;
+  addedAt: string;
+}
+
+export interface Assumptions {
+  rate_per_kwh: number;
+  kg_co2_per_kwh: number;
+  profile: string;
+  standby_reduction: number;
+}
+
+export interface DeviceBreakdown {
+  deviceId: string;
+  label: string;
+  category: string;
+  annual_kwh: number;
+  annual_kwh_min: number;
+  annual_kwh_max: number;
+  annual_cost: number;
+  annual_co2_kg: number;
+  standby_annual_kwh: number;
+  standby_annual_cost: number;
+}
+
+export interface HomeSummary {
+  homeId: string;
+  assumptions: Assumptions;
+  totals: {
+    device_count: number;
+    annual_kwh: number;
+    annual_kwh_min: number;
+    annual_kwh_max: number;
+    annual_cost: number;
+    annual_cost_min: number;
+    annual_cost_max: number;
+    annual_co2_kg: number;
+    monthly_cost: number;
+    daily_cost: number;
+    standby_annual_kwh: number;
+    standby_annual_cost: number;
+  };
+  by_device: DeviceBreakdown[];
+  action_savings?: {
+    executed_actions: number;
+    total_annual_kwh_saved: number;
+    total_annual_dollars_saved: number;
+    total_annual_co2_kg_saved: number;
+  };
+}
+
+export interface ActionProposal {
+  id: string;
+  deviceId: string;
+  label: string;
+  action_type: string;
+  parameters: {
+    cost_usd: number;
+    standby_reduction?: number;
+    schedule_off_start?: string;
+    schedule_off_end?: string;
+    plug_model?: string;
+    eco_mode?: string;
+    replacement_model?: string;
+    replacement_cost_usd?: number;
+  };
+  estimated_annual_kwh_saved: number;
+  estimated_annual_dollars_saved: number;
+  estimated_co2_kg_saved: number;
+  estimated_cost_usd: number;
+  payback_months: number;
+  feasibility_score: number;
+  rationale: string;
+  safety_flags: string[];
+}
+
+export interface ActionRecord {
+  id: string;
+  homeId: string;
+  deviceId: string;
+  label: string;
+  action_type: string;
+  status: string;
+  estimated_savings: {
+    dollars_per_year: number;
+    kwh_per_year: number;
+    co2_kg_per_year: number;
+  };
+  rationale: string;
+  createdAt: string;
+  executedAt?: string;
+  revertedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Homes API
+// ---------------------------------------------------------------------------
+
+export async function createHome(userId: string, name: string, rooms: string[] = ['living-room']): Promise<Home> {
+  return post<Home>('/homes', { userId, name, rooms });
+}
+
+export async function listHomes(userId: string): Promise<Home[]> {
+  return get<Home[]>(`/homes?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function getHome(homeId: string): Promise<Home> {
+  return get<Home>(`/homes/${homeId}`);
+}
+
+export async function deleteHome(homeId: string): Promise<void> {
+  await del(`/homes/${homeId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Devices API
+// ---------------------------------------------------------------------------
+
+export async function addDevice(homeId: string, device: {
+  roomId?: string;
+  label: string;
+  brand?: string;
+  model?: string;
+  category: string;
+  power?: Partial<DevicePower>;
+  is_critical?: boolean;
+  active_hours_per_day?: number;
+  usage_profile?: string;
+}): Promise<Device> {
+  return post<Device>(`/homes/${homeId}/devices`, device);
+}
+
+export async function listDevices(homeId: string): Promise<Device[]> {
+  return get<Device[]>(`/homes/${homeId}/devices`);
+}
+
+export async function deleteDevice(deviceId: string): Promise<void> {
+  await del(`/devices/${deviceId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Summary & Assumptions API
+// ---------------------------------------------------------------------------
+
+export async function getHomeSummary(homeId: string): Promise<HomeSummary> {
+  return get<HomeSummary>(`/homes/${homeId}/summary`);
+}
+
+export async function getAssumptions(homeId: string): Promise<Assumptions> {
+  return get<Assumptions>(`/homes/${homeId}/assumptions`);
+}
+
+export async function setAssumptions(homeId: string, updates: {
+  rate_per_kwh?: number;
+  kg_co2_per_kwh?: number;
+  profile?: string;
+}): Promise<Assumptions> {
+  return post<Assumptions>(`/homes/${homeId}/assumptions`, updates);
+}
+
+// ---------------------------------------------------------------------------
+// Actions API
+// ---------------------------------------------------------------------------
+
+export async function proposeActions(homeId: string, options?: {
+  top_n?: number;
+  constraints?: Record<string, unknown>;
+}): Promise<{ proposals: ActionProposal[] }> {
+  return post<{ proposals: ActionProposal[] }>(`/homes/${homeId}/actions/propose`, {
+    top_n: options?.top_n ?? 5,
+    constraints: options?.constraints,
+  });
+}
+
+export async function executeActions(homeId: string, actionIds: string[]): Promise<{
+  execution_results: Array<{ id: string; status: string; error?: string }>;
+  updated_summary: HomeSummary['totals'];
+  total_savings: HomeSummary['action_savings'];
+}> {
+  return post(`/homes/${homeId}/actions/execute`, { action_ids: actionIds });
+}
+
+export async function listActions(homeId: string): Promise<ActionRecord[]> {
+  return get<ActionRecord[]>(`/homes/${homeId}/actions`);
+}
+
+export async function revertAction(homeId: string, actionId: string): Promise<{ success: boolean }> {
+  return post(`/homes/${homeId}/actions/${actionId}/revert`, {});
+}
+
+// ---------------------------------------------------------------------------
+// Agent Command API — natural language home control
+// ---------------------------------------------------------------------------
+
+export interface AgentCommandResult {
+  intent: string;
+  message: string;
+  proposals: ActionProposal[];
+  executed: Array<{ id: string; status: string; error?: string }>;
+  auto_executed: boolean;
+}
+
+export async function sendAgentCommand(
+  homeId: string,
+  command: string,
+  constraints?: Record<string, unknown>,
+): Promise<AgentCommandResult> {
+  return post<AgentCommandResult>(`/homes/${homeId}/agent`, { command, constraints });
+}
+
+// ---------------------------------------------------------------------------
+// Categories API — for device search/confirm
+// ---------------------------------------------------------------------------
+
+export interface CategoryInfo {
+  category: string;
+  modelAsset: string;
+}
+
+export async function listCategories(): Promise<CategoryInfo[]> {
+  return get<CategoryInfo[]>('/categories');
+}
