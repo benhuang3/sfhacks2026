@@ -1,6 +1,9 @@
 """
 Vision Service — SSD MobileNet V3 Large + EasyOCR (backend ML)
 Same model architecture as react-native-executorch, running server-side.
+
+Returns top-3 category candidates with confidence scores so the user
+can confirm in 1 tap (human-in-the-loop).
 """
 
 from __future__ import annotations
@@ -39,7 +42,46 @@ LABEL_TO_CATEGORY = {
     "hair drier": "Hair Dryer", "cell phone": "Phone Charger",
     "clock": "Clock", "remote": "Remote / Standby Device",
     "keyboard": "Computer Peripheral", "mouse": "Computer Peripheral",
+    "couch": "Couch", "chair": "Chair", "bed": "Bed",
+    "dining table": "Dining Table", "sink": "Sink", "toilet": "Toilet",
+    "bottle": "Bottle", "cup": "Cup",
 }
+
+# ── Category → 3D model asset mapping ────────────────────────────────────
+CATEGORY_MODEL_ASSETS: dict[str, str] = {
+    "Television": "models/tv.glb",
+    "TV": "models/tv.glb",
+    "Laptop": "models/laptop.glb",
+    "Monitor": "models/monitor.glb",
+    "Microwave": "models/microwave.glb",
+    "Oven": "models/oven.glb",
+    "Toaster": "models/toaster.glb",
+    "Refrigerator": "models/fridge.glb",
+    "Hair Dryer": "models/hairdryer.glb",
+    "Phone Charger": "models/charger.glb",
+    "Clock": "models/clock.glb",
+    "Computer Peripheral": "models/peripheral.glb",
+    "Washing Machine": "models/washer.glb",
+    "Dryer": "models/dryer.glb",
+    "Air Conditioner": "models/ac.glb",
+    "Space Heater": "models/heater.glb",
+    "Light Bulb": "models/lamp.glb",
+    "Lamp": "models/lamp.glb",
+    "Dishwasher": "models/dishwasher.glb",
+    "Gaming Console": "models/console.glb",
+    "Router": "models/router.glb",
+    "Fan": "models/fan.glb",
+    "Water Heater": "models/waterheater.glb",
+}
+
+# ── All selectable categories (for search fallback) ───────────────────────
+ALL_CATEGORIES = sorted(set(CATEGORY_MODEL_ASSETS.keys()) | {
+    "Television", "Laptop", "Monitor", "Microwave", "Oven", "Toaster",
+    "Refrigerator", "Hair Dryer", "Phone Charger", "Clock",
+    "Washing Machine", "Dryer", "Air Conditioner", "Space Heater",
+    "Light Bulb", "Lamp", "Dishwasher", "Gaming Console", "Router",
+    "Fan", "Water Heater", "Computer Peripheral",
+})
 
 # ── Model singletons ──────────────────────────────────────────────────────
 _detector = None
@@ -93,11 +135,56 @@ def _parse_brand_model(ocr_texts: list[str]) -> tuple[str, str]:
     return brand, model_name
 
 
+def get_model_asset(category: str) -> str:
+    """Return the 3D model asset path for a category."""
+    return CATEGORY_MODEL_ASSETS.get(category, "models/generic.glb")
+
+
+def get_default_position(category: str, index: int = 0) -> dict:
+    """Return a sensible default 3D position for a device category."""
+    # Spread devices around the room based on index
+    positions = [
+        {"x": -2.0, "y": 0, "z": -2.0},
+        {"x": 2.0, "y": 0, "z": -2.0},
+        {"x": -2.0, "y": 0, "z": 2.0},
+        {"x": 2.0, "y": 0, "z": 2.0},
+        {"x": 0, "y": 0, "z": -2.5},
+        {"x": 0, "y": 0, "z": 2.5},
+        {"x": -2.5, "y": 0, "z": 0},
+        {"x": 2.5, "y": 0, "z": 0},
+    ]
+    # Some categories have preferred positions (e.g., TV on wall, fridge in corner)
+    category_positions = {
+        "Television": {"x": 0, "y": 1.0, "z": -3.0},
+        "TV": {"x": 0, "y": 1.0, "z": -3.0},
+        "Refrigerator": {"x": -2.5, "y": 0, "z": -2.5},
+        "Oven": {"x": -2.0, "y": 0, "z": -2.5},
+        "Microwave": {"x": -1.5, "y": 1.0, "z": -2.5},
+        "Washing Machine": {"x": 2.5, "y": 0, "z": 2.0},
+        "Router": {"x": 2.0, "y": 1.5, "z": -2.5},
+    }
+    if category in category_positions:
+        pos = category_positions[category].copy()
+        pos["x"] += index * 0.3  # offset if multiple of same type
+        return pos
+    return positions[index % len(positions)]
+
+
 # ── Main detection pipeline ───────────────────────────────────────────────
 
-def detect_appliance(image_path: str, confidence_threshold: float = 0.3) -> dict:
-    """Run SSD MobileNet V3 + EasyOCR on an image. Returns detections + OCR."""
+def detect_appliance(image_path: str, confidence_threshold: float = 0.25) -> dict:
+    """
+    Run SSD MobileNet V3 + EasyOCR on an image.
+
+    Returns:
+      - candidates: top-3 category guesses with confidence
+      - bbox: bounding box of best detection (normalized 0-1)
+      - detections: all raw detections
+      - ocr_texts: extracted text
+      - best_match: legacy single-best for backward compat
+    """
     img = Image.open(image_path).convert("RGB")
+    img_w, img_h = img.size
 
     # Object Detection
     detector = _get_detector()
@@ -114,11 +201,19 @@ def detect_appliance(image_path: str, confidence_threshold: float = 0.3) -> dict
             continue
         label_name = COCO_LABELS.get(label_id, f"class_{label_id}")
         category = LABEL_TO_CATEGORY.get(label_name, label_name.title())
+        # Normalize bbox to 0-1
+        norm_bbox = [
+            round(box[0] / img_w, 4),
+            round(box[1] / img_h, 4),
+            round(box[2] / img_w, 4),
+            round(box[3] / img_h, 4),
+        ]
         detections.append({
             "label": label_name,
             "category": category,
             "score": round(score, 3),
-            "bbox": [round(c, 1) for c in box],
+            "bbox": norm_bbox,
+            "bbox_pixel": [round(c, 1) for c in box],
         })
 
     detections.sort(key=lambda d: d["score"], reverse=True)
@@ -130,22 +225,68 @@ def detect_appliance(image_path: str, confidence_threshold: float = 0.3) -> dict
     ocr_texts = [text for (_, text, conf) in ocr_results if conf > 0.3]
     brand, model_name = _parse_brand_model(ocr_texts)
 
-    best = appliance_detections[0] if appliance_detections else (
+    # Build top-3 candidates (deduplicate by category)
+    seen_categories: set[str] = set()
+    candidates: list[dict] = []
+    source_dets = appliance_detections if appliance_detections else detections
+
+    for det in source_dets:
+        cat = det["category"]
+        if cat in seen_categories or cat in ("Person", "person"):
+            continue
+        seen_categories.add(cat)
+        candidates.append({
+            "category": cat,
+            "confidence": det["score"],
+            "modelAsset": get_model_asset(cat),
+        })
+        if len(candidates) >= 3:
+            break
+
+    # If we have fewer than 3 candidates, pad with common appliances
+    if len(candidates) < 3:
+        common_fallbacks = ["Television", "Lamp", "Monitor", "Microwave", "Laptop"]
+        for fb in common_fallbacks:
+            if fb not in seen_categories and len(candidates) < 3:
+                seen_categories.add(fb)
+                candidates.append({
+                    "category": fb,
+                    "confidence": round(max(0.05, 0.15 - len(candidates) * 0.05), 2),
+                    "modelAsset": get_model_asset(fb),
+                })
+
+    # Normalize confidences so they sum to ~1.0
+    total_conf = sum(c["confidence"] for c in candidates)
+    if total_conf > 0:
+        for c in candidates:
+            c["confidence"] = round(c["confidence"] / total_conf, 3)
+
+    # Best detection bbox (normalized)
+    best_bbox = None
+    best_det = appliance_detections[0] if appliance_detections else (
         detections[0] if detections else None
     )
+    if best_det:
+        best_bbox = best_det["bbox"]
 
+    # Legacy best_match
     best_match = None
-    if best:
+    if best_det:
         best_match = {
-            "label": best["label"],
-            "category": best["category"],
-            "score": best["score"],
+            "label": best_det["label"],
+            "category": best_det["category"],
+            "score": best_det["score"],
             "brand": brand,
             "model": model_name,
         }
 
     return {
+        "candidates": candidates,
+        "bbox": best_bbox,
         "detections": appliance_detections if appliance_detections else detections[:5],
         "ocr_texts": ocr_texts,
         "best_match": best_match,
+        "brand": brand,
+        "model_name": model_name,
+        "all_categories": ALL_CATEGORIES,
     }

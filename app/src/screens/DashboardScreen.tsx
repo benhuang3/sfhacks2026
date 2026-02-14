@@ -148,7 +148,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
     const monthlyKwh = dailyKwh * 30;
     const yearlyKwh = monthlyKwh * 12;
     
-    const costPerKwh = 0.12;
+    const costPerKwh = 0.30;
     const dailyCost = dailyKwh * costPerKwh;
     const monthlyCost = monthlyKwh * costPerKwh;
     const yearlyCost = yearlyKwh * costPerKwh;
@@ -156,9 +156,9 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
     // Standby-only cost (24h/day)
     const standbyYearlyCost = (totalStandby * 24 * 365 * costPerKwh) / 1000;
     
-    // Environmental impact
-    const CO2_PER_KWH = 0.92; // lbs (EPA 2024)
-    const TREE_ABSORBS = 48; // lbs CO2 per tree per year
+    // Environmental impact (kg CO₂ — consistent with backend)
+    const CO2_PER_KWH = 0.25; // kg CO₂/kWh
+    const TREE_ABSORBS = 21.77; // kg CO₂ per tree per year
     const yearlyCO2 = yearlyKwh * CO2_PER_KWH;
     const treesNeeded = yearlyCO2 / TREE_ABSORBS;
     
@@ -334,7 +334,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                     <View style={styles.envStat}>
                       <Text style={styles.envIcon}>💨</Text>
                       <Text style={styles.envValue}>{stats.yearlyCO2.toFixed(0)}</Text>
-                      <Text style={styles.envLabel}>lbs CO₂/year</Text>
+                      <Text style={styles.envLabel}>kg CO₂/year</Text>
                     </View>
                     <View style={styles.envDivider} />
                     <View style={styles.envStat}>
@@ -380,7 +380,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                 const p = device.power_profile?.profile;
                 if (!p) return null;
                 
-                const deviceMonthly = ((p.active_watts_typical * 4 + p.standby_watts_typical * 20) * 30 * 0.12) / 1000;
+                const deviceMonthly = ((p.active_watts_typical * 4 + p.standby_watts_typical * 20) * 30 * 0.30) / 1000;
                 
                 return (
                   <View key={index} style={styles.deviceCard}>
