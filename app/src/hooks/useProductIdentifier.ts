@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { useOCR, OCR_ENGLISH } from 'react-native-executorch';
+import { useOCR, OCR_ENGLISH } from '../shims/exec';
 import { TrackedObject, ProductInfo } from '../utils/scannerTypes';
 import { parseProductInfo, identificationConfidence } from '../utils/ocrParser';
 import { getCategory, getDisplayName } from '../utils/applianceClasses';
@@ -79,7 +79,7 @@ export function useProductIdentifier(): ProductIdentifierResult {
         processingIds.current.delete(trackedObject.id);
       }
     },
-    [ocr.isReady, markIdentificationAttempted, setPendingConfirmation]
+    [ocr.isReady, ocr.forward, markIdentificationAttempted, setPendingConfirmation]
   );
 
   return {

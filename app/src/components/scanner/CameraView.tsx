@@ -1,10 +1,6 @@
 import React, { useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-} from 'react-native-vision-camera';
+import { CameraView as ExpoCameraView, useCameraPermissions } from 'expo-camera';
 
 export interface CameraViewRef {
   takePhoto: () => Promise<string | null>;
@@ -17,24 +13,21 @@ interface CameraViewProps {
 
 export const CameraView = forwardRef<CameraViewRef, CameraViewProps>(
   ({ isActive, children }, ref) => {
-    const cameraRef = useRef<Camera>(null);
-    const device = useCameraDevice('back');
-    const { hasPermission, requestPermission } = useCameraPermission();
+    const cameraRef = useRef<any>(null);
+    const [permission, requestPermission] = useCameraPermissions();
 
     useEffect(() => {
-      if (!hasPermission) {
+      if (!permission) return;
+      if (!permission.granted) {
         requestPermission();
       }
-    }, [hasPermission, requestPermission]);
+    }, [permission, requestPermission]);
 
     const takePhoto = useCallback(async (): Promise<string | null> => {
       if (!cameraRef.current) return null;
       try {
-        const photo = await cameraRef.current.takePhoto({
-          flash: 'off',
-          enableShutterSound: false,
-        });
-        return `file://${photo.path}`;
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+        return photo?.uri ?? null;
       } catch {
         return null;
       }
@@ -42,7 +35,7 @@ export const CameraView = forwardRef<CameraViewRef, CameraViewProps>(
 
     useImperativeHandle(ref, () => ({ takePhoto }), [takePhoto]);
 
-    if (!hasPermission) {
+    if (!permission || !permission.granted) {
       return (
         <View style={styles.container}>
           <Text style={styles.message}>Camera permission is required to scan appliances.</Text>
@@ -50,24 +43,11 @@ export const CameraView = forwardRef<CameraViewRef, CameraViewProps>(
       );
     }
 
-    if (!device) {
-      return (
-        <View style={styles.container}>
-          <Text style={styles.message}>No camera device found.</Text>
-        </View>
-      );
-    }
-
     return (
       <View style={styles.container}>
-        <Camera
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill}
-          device={device}
-          isActive={isActive}
-          photo={true}
-        />
-        {children}
+        <ExpoCameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back">
+          {children}
+        </ExpoCameraView>
       </View>
     );
   }

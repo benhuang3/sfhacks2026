@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView } from 'react-native';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { ScanResultScreen } from './src/screens/ScanResultScreen';
+import { CameraScanScreen } from './src/screens/CameraScanScreen';
 
-type Screen = 'home' | 'scanner' | 'results';
+type Screen = 'home' | 'scanner' | 'camera-scan' | 'results';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -21,6 +22,15 @@ export default function App() {
             <Text style={styles.resultsText}>View Results</Text>
           </TouchableOpacity>
         </SafeAreaView>
+        <StatusBar style="light" />
+      </>
+    );
+  }
+
+  if (screen === 'camera-scan') {
+    return (
+      <>
+        <CameraScanScreen onBack={() => setScreen('home')} />
         <StatusBar style="light" />
       </>
     );
@@ -45,6 +55,10 @@ export default function App() {
       <View style={styles.actions}>
         <TouchableOpacity style={styles.scanButton} onPress={() => setScreen('scanner')}>
           <Text style={styles.scanButtonText}>Scan Room</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.cameraScanButton} onPress={() => setScreen('camera-scan')}>
+          <Text style={styles.cameraScanButtonText}>📷 Quick Scan</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.secondaryButton} onPress={() => setScreen('results')}>
@@ -90,6 +104,19 @@ const styles = StyleSheet.create({
   scanButtonText: {
     color: '#fff',
     fontSize: 20,
+    fontWeight: '700',
+  },
+  cameraScanButton: {
+    backgroundColor: '#1a6b3a',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  cameraScanButtonText: {
+    color: '#fff',
+    fontSize: 18,
     fontWeight: '700',
   },
   secondaryButton: {
