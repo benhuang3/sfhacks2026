@@ -866,8 +866,11 @@ async def chat_endpoint(req: ChatRequest):
     Energy advisor chatbot powered by Gemini 2.0 Flash.
     Accepts a user message + optional history, returns AI reply.
     """
+    import asyncio
     try:
         from agents import GOOGLE_API_KEY as _GKEY
+        if not _GKEY:
+            raise ValueError("GOOGLE_API_KEY not configured")
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
@@ -902,10 +905,15 @@ async def chat_endpoint(req: ChatRequest):
                     model=model_name,
                     google_api_key=_GKEY,
                     temperature=0.7,
+                    timeout=15,
                 )
-                result = await llm.ainvoke(messages)
+                result = await asyncio.wait_for(llm.ainvoke(messages), timeout=20)
                 reply = result.content if hasattr(result, "content") else str(result)
                 return {"success": True, "data": {"reply": reply}}
+            except asyncio.TimeoutError:
+                last_err = Exception(f"Model {model_name} timed out")
+                logger.warning("Model %s timed out — trying next", model_name)
+                continue
             except Exception as model_err:
                 last_err = model_err
                 logger.warning("Model %s failed: %s — trying next", model_name, model_err)
@@ -914,7 +922,48 @@ async def chat_endpoint(req: ChatRequest):
         raise last_err or Exception("All models failed")
     except Exception as exc:
         logger.exception("Chat endpoint failed")
+        # Return a helpful fallback instead of 500
+        fallback = _get_energy_fallback(req.message)
+        if fallback:
+            return {"success": True, "data": {"reply": fallback}}
         raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
+
+
+def _get_energy_fallback(question: str) -> str:
+    """Provide offline energy advice when Gemini is unavailable."""
+    q = question.lower()
+    if any(w in q for w in ["reduce", "save", "lower", "bill", "cut"]):
+        return ("💡 Here are top ways to reduce your energy bill:\n\n"
+                "1. **Unplug standby devices** — they can cost $100+/year\n"
+                "2. **Use LED bulbs** — 75% less energy than incandescent\n"
+                "3. **Set AC to 78°F / Heat to 68°F** — saves ~10% on HVAC\n"
+                "4. **Run full loads** in washer/dishwasher\n"
+                "5. **Use smart power strips** to cut phantom loads\n\n"
+                "⚡ At $0.30/kWh, even small changes add up!")
+    elif any(w in q for w in ["standby", "phantom", "vampire", "ghost"]):
+        return ("👻 **Standby (phantom) power** is electricity used by devices when \"off\" but still plugged in.\n\n"
+                "Common offenders:\n"
+                "• TV: 5-15W standby → ~$13-39/year\n"
+                "• Gaming console: 2-10W → ~$5-26/year\n"
+                "• Phone charger: 0.1-0.5W → ~$0.26-1.30/year\n"
+                "• Microwave (clock): 3-5W → ~$8-13/year\n\n"
+                "💡 **Tip:** Use smart power strips or unplug when not in use. Standby can account for 5-10% of your total bill!")
+    elif any(w in q for w in ["most energy", "highest", "biggest", "appliance"]):
+        return ("⚡ **Top energy-consuming home appliances** (typical US home):\n\n"
+                "1. 🌡️ **HVAC** — 2,000-5,000W → ~$600-1500/year\n"
+                "2. 🚿 **Water Heater** — 4,500W → ~$400-600/year\n"
+                "3. 👕 **Dryer** — 2,000-5,000W → ~$80-120/year\n"
+                "4. 🧊 **Refrigerator** — 100-400W (runs 24/7) → ~$50-150/year\n"
+                "5. 🍽️ **Dishwasher** — 1,200-2,400W → ~$35-65/year\n\n"
+                "💡 Focus on HVAC efficiency and water heating for the biggest savings!")
+    else:
+        return ("⚡ **SmartGrid AI Energy Tips:**\n\n"
+                "I'm currently in offline mode, but here are some quick facts:\n\n"
+                "• Average US home uses ~10,500 kWh/year (~$3,150 at $0.30/kWh)\n"
+                "• Standby power wastes 5-10% of your total bill\n"
+                "• LED bulbs use 75% less energy than incandescent\n"
+                "• ENERGY STAR appliances can save 10-50% vs standard models\n\n"
+                "📷 **Scan your appliances** with the Scan tab to get personalized energy insights!")
 
 
 # ---------------------------------------------------------------------------
@@ -925,6 +974,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "server:app",
         host="0.0.0.0",
-        port=int(os.getenv("PORT", "8000")),
+        port=int(os.getenv("PORT", "8001")),
         reload=True,
     )

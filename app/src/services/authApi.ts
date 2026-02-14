@@ -3,7 +3,7 @@
  */
 
 // Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://mode-because-consolidation-quantum.trycloudflare.com';
+const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
@@ -29,34 +29,63 @@ export interface AuthResponse {
 // API Helpers
 // ---------------------------------------------------------------------------
 
+function parseJsonSafe(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 async function authPost<T>(path: string, body: unknown, token?: string): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch (networkErr) {
+    throw new Error('Cannot reach server. Make sure the backend is running and the tunnel is active.');
+  }
 
-  const data = await res.json();
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+
+  if (data === null) {
+    // Server returned non-JSON (HTML error page, Cloudflare gateway, etc.)
+    throw new Error('Server returned an invalid response. The tunnel may be down — please restart it.');
+  }
 
   if (!res.ok) {
-    throw new Error(data.detail || data.error || `Auth error ${res.status}`);
+    throw new Error(data?.detail || data?.error || `Auth error ${res.status}`);
   }
 
   return (data.data ?? data) as T;
 }
 
 async function authGet<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+  } catch (networkErr) {
+    throw new Error('Cannot reach server. Make sure the backend is running and the tunnel is active.');
+  }
 
-  const data = await res.json();
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+
+  if (data === null) {
+    throw new Error('Server returned an invalid response. The tunnel may be down — please restart it.');
+  }
 
   if (!res.ok) {
-    throw new Error(data.detail || data.error || `Auth error ${res.status}`);
+    throw new Error(data?.detail || data?.error || `Auth error ${res.status}`);
   }
 
   return (data.data ?? data) as T;

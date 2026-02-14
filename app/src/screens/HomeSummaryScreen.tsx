@@ -21,6 +21,8 @@ import {
   type Assumptions,
   type DeviceBreakdown,
 } from '../services/apiClient';
+import { Appliance3DModel } from '../components/Appliance3DModel';
+import { useTheme } from '../../App';
 
 interface HomeSummaryScreenProps {
   homeId: string;
@@ -50,6 +52,7 @@ function getCategoryColor(cat: string): string {
 }
 
 export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummaryScreenProps) {
+  const { colors, isDark } = useTheme();
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -95,15 +98,15 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack}><Text style={styles.headerBtnText}>← Back</Text></TouchableOpacity>
-          <Text style={styles.headerTitle}>Home Summary</Text>
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={onBack}><Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text></TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Home Summary</Text>
           <View style={{ width: 50 }} />
         </View>
         <View style={styles.loadingBox}>
-          <ActivityIndicator color="#4CAF50" size="large" />
-          <Text style={styles.loadingText}>Computing summary...</Text>
+          <ActivityIndicator color={colors.accent} size="large" />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Computing summary...</Text>
         </View>
       </View>
     );
@@ -111,16 +114,16 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
 
   if (!summary) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack}><Text style={styles.headerBtnText}>← Back</Text></TouchableOpacity>
-          <Text style={styles.headerTitle}>Home Summary</Text>
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={onBack}><Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text></TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Home Summary</Text>
           <View style={{ width: 50 }} />
         </View>
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>📊</Text>
-          <Text style={styles.emptyTitle}>No Data</Text>
-          <Text style={styles.emptySubtitle}>Add devices to see energy summary.</Text>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Data</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Add devices to see energy summary.</Text>
         </View>
       </View>
     );
@@ -129,52 +132,52 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
   const { totals, by_device, action_savings } = summary;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>← Back</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Energy Summary</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Energy Summary</Text>
         <TouchableOpacity onPress={() => setShowSettings(!showSettings)} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>⚙️</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>⚙️</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Settings Panel */}
         {showSettings && (
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsTitle}>⚙️ Assumptions</Text>
+          <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
+            <Text style={[styles.settingsTitle, { color: colors.accent }]}>⚙️ Assumptions</Text>
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Rate ($/kWh)</Text>
+              <Text style={[styles.settingLabel, { color: colors.textSecondary }]}>Rate ($/kWh)</Text>
               <TextInput
-                style={styles.settingInput}
+                style={[styles.settingInput, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]}
                 value={rateInput}
                 onChangeText={setRateInput}
                 keyboardType="numeric"
-                placeholderTextColor="#666"
+                placeholderTextColor={colors.textSecondary}
               />
             </View>
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>CO₂ (kg/kWh)</Text>
+              <Text style={[styles.settingLabel, { color: colors.textSecondary }]}>CO₂ (kg/kWh)</Text>
               <TextInput
-                style={styles.settingInput}
+                style={[styles.settingInput, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]}
                 value={co2Input}
                 onChangeText={setCo2Input}
                 keyboardType="numeric"
-                placeholderTextColor="#666"
+                placeholderTextColor={colors.textSecondary}
               />
             </View>
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Profile</Text>
+              <Text style={[styles.settingLabel, { color: colors.textSecondary }]}>Profile</Text>
               <View style={styles.profileToggle}>
                 {(['light', 'typical', 'heavy'] as const).map(p => (
                   <TouchableOpacity
                     key={p}
-                    style={[styles.profileBtn, profileInput === p && styles.profileBtnActive]}
+                    style={[styles.profileBtn, { backgroundColor: isDark ? '#1a1a2e' : '#e8e8e8', borderColor: colors.border }, profileInput === p && { backgroundColor: colors.accent, borderColor: colors.accent }]}
                     onPress={() => setProfileInput(p)}
                   >
-                    <Text style={[styles.profileBtnText, profileInput === p && styles.profileBtnTextActive]}>
+                    <Text style={[styles.profileBtnText, { color: colors.textSecondary }, profileInput === p && styles.profileBtnTextActive]}>
                       {p.charAt(0).toUpperCase() + p.slice(1)}
                     </Text>
                   </TouchableOpacity>
@@ -197,73 +200,73 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
 
         {/* Main Stats */}
         <View style={styles.mainStats}>
-          <View style={styles.mainStatCard}>
+          <View style={[styles.mainStatCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={styles.mainStatIcon}>⚡</Text>
-            <Text style={styles.mainStatValue}>{totals.annual_kwh.toFixed(0)}</Text>
-            <Text style={styles.mainStatUnit}>kWh/year</Text>
-            <Text style={styles.mainStatRange}>
+            <Text style={[styles.mainStatValue, { color: colors.text }]}>{totals.annual_kwh.toFixed(0)}</Text>
+            <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}>kWh/year</Text>
+            <Text style={[styles.mainStatRange, { color: colors.textSecondary }]}>
               {totals.annual_kwh_min.toFixed(0)} – {totals.annual_kwh_max.toFixed(0)}
             </Text>
           </View>
-          <View style={[styles.mainStatCard, styles.costCard]}>
+          <View style={[styles.mainStatCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
             <Text style={styles.mainStatIcon}>💰</Text>
-            <Text style={styles.mainStatValue}>${totals.annual_cost.toFixed(0)}</Text>
-            <Text style={styles.mainStatUnit}>/year</Text>
-            <Text style={styles.mainStatRange}>
+            <Text style={[styles.mainStatValue, { color: colors.text }]}>${totals.annual_cost.toFixed(0)}</Text>
+            <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}>/year</Text>
+            <Text style={[styles.mainStatRange, { color: colors.textSecondary }]}>
               ${totals.annual_cost_min.toFixed(0)} – ${totals.annual_cost_max.toFixed(0)}
             </Text>
           </View>
         </View>
 
         {/* Quick Stats Row */}
-        <View style={styles.quickStats}>
+        <View style={[styles.quickStats, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.quickStat}>
-            <Text style={styles.qsValue}>{totals.device_count}</Text>
-            <Text style={styles.qsLabel}>Devices</Text>
+            <Text style={[styles.qsValue, { color: colors.text }]}>{totals.device_count}</Text>
+            <Text style={[styles.qsLabel, { color: colors.textSecondary }]}>Devices</Text>
           </View>
-          <View style={styles.qsDivider} />
+          <View style={[styles.qsDivider, { backgroundColor: colors.border }]} />
           <View style={styles.quickStat}>
-            <Text style={styles.qsValue}>${totals.monthly_cost.toFixed(2)}</Text>
-            <Text style={styles.qsLabel}>Monthly</Text>
+            <Text style={[styles.qsValue, { color: colors.text }]}>${totals.monthly_cost.toFixed(2)}</Text>
+            <Text style={[styles.qsLabel, { color: colors.textSecondary }]}>Monthly</Text>
           </View>
-          <View style={styles.qsDivider} />
+          <View style={[styles.qsDivider, { backgroundColor: colors.border }]} />
           <View style={styles.quickStat}>
             <Text style={[styles.qsValue, { color: '#FF9800' }]}>
               ${totals.standby_annual_cost.toFixed(0)}
             </Text>
-            <Text style={styles.qsLabel}>Standby/yr</Text>
+            <Text style={[styles.qsLabel, { color: colors.textSecondary }]}>Standby/yr</Text>
           </View>
-          <View style={styles.qsDivider} />
+          <View style={[styles.qsDivider, { backgroundColor: colors.border }]} />
           <View style={styles.quickStat}>
             <Text style={[styles.qsValue, { color: '#2196F3' }]}>
               {totals.annual_co2_kg.toFixed(0)}kg
             </Text>
-            <Text style={styles.qsLabel}>CO₂/yr</Text>
+            <Text style={[styles.qsLabel, { color: colors.textSecondary }]}>CO₂/yr</Text>
           </View>
         </View>
 
         {/* Savings from actions */}
         {action_savings && action_savings.executed_actions > 0 && (
           <View style={styles.savingsCard}>
-            <Text style={styles.savingsTitle}>✅ Savings from Actions</Text>
+            <Text style={[styles.savingsTitle, { color: colors.accent }]}>✅ Savings from Actions</Text>
             <View style={styles.savingsRow}>
               <View style={styles.savingsStat}>
-                <Text style={styles.savingsValue}>
+                <Text style={[styles.savingsValue, { color: colors.accent }]}>
                   ${action_savings.total_annual_dollars_saved.toFixed(0)}
                 </Text>
-                <Text style={styles.savingsLabel}>$/year saved</Text>
+                <Text style={[styles.savingsLabel, { color: colors.textSecondary }]}>$/year saved</Text>
               </View>
               <View style={styles.savingsStat}>
-                <Text style={styles.savingsValue}>
+                <Text style={[styles.savingsValue, { color: colors.accent }]}>
                   {action_savings.total_annual_kwh_saved.toFixed(0)}
                 </Text>
-                <Text style={styles.savingsLabel}>kWh saved</Text>
+                <Text style={[styles.savingsLabel, { color: colors.textSecondary }]}>kWh saved</Text>
               </View>
               <View style={styles.savingsStat}>
-                <Text style={styles.savingsValue}>
+                <Text style={[styles.savingsValue, { color: colors.accent }]}>
                   {action_savings.total_annual_co2_kg_saved.toFixed(1)}
                 </Text>
-                <Text style={styles.savingsLabel}>kg CO₂</Text>
+                <Text style={[styles.savingsLabel, { color: colors.textSecondary }]}>kg CO₂</Text>
               </View>
             </View>
           </View>
@@ -271,37 +274,37 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
 
         {/* Device Breakdown */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Device Breakdown</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Device Breakdown</Text>
           {by_device
             .sort((a, b) => b.annual_cost - a.annual_cost)
             .map((d, idx) => (
-            <View key={d.deviceId || idx} style={styles.deviceCard}>
+            <View key={d.deviceId || idx} style={[styles.deviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.deviceRow}>
                 <View style={[styles.deviceIconBox, { backgroundColor: getCategoryColor(d.category) + '20' }]}>
-                  <Text style={styles.deviceIconText}>{getCategoryIcon(d.category)}</Text>
+                  <Appliance3DModel category={d.category} size={28} showLabel={false} />
                 </View>
                 <View style={styles.deviceInfo}>
-                  <Text style={styles.deviceLabel}>{d.label}</Text>
-                  <Text style={styles.deviceCategory}>{d.category}</Text>
+                  <Text style={[styles.deviceLabel, { color: colors.text }]}>{d.label}</Text>
+                  <Text style={[styles.deviceCategory, { color: colors.textSecondary }]}>{d.category}</Text>
                 </View>
                 <View style={styles.deviceCost}>
-                  <Text style={styles.deviceCostValue}>${d.annual_cost.toFixed(0)}/yr</Text>
-                  <Text style={styles.deviceKwh}>{d.annual_kwh.toFixed(0)} kWh</Text>
+                  <Text style={[styles.deviceCostValue, { color: colors.accent }]}>${d.annual_cost.toFixed(0)}/yr</Text>
+                  <Text style={[styles.deviceKwh, { color: colors.textSecondary }]}>{d.annual_kwh.toFixed(0)} kWh</Text>
                 </View>
               </View>
-              <View style={styles.deviceDetails}>
-                <Text style={styles.detailItem}>
+              <View style={[styles.deviceDetails, { borderTopColor: colors.border }]}>
+                <Text style={[styles.detailItem, { color: colors.textSecondary }]}>
                   CO₂: {d.annual_co2_kg.toFixed(1)} kg
                 </Text>
-                <Text style={styles.detailItem}>
+                <Text style={[styles.detailItem, { color: colors.textSecondary }]}>
                   Standby: ${d.standby_annual_cost.toFixed(2)}/yr
                 </Text>
-                <Text style={styles.detailItem}>
+                <Text style={[styles.detailItem, { color: colors.textSecondary }]}>
                   Range: {d.annual_kwh_min.toFixed(0)}–{d.annual_kwh_max.toFixed(0)} kWh
                 </Text>
               </View>
               {/* Cost bar */}
-              <View style={styles.barTrack}>
+              <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
                 <View
                   style={[
                     styles.barFill,
@@ -326,7 +329,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
 
         {/* Assumptions footer */}
         <View style={styles.assumptionsFooter}>
-          <Text style={styles.footerText}>
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
             Rate: ${summary.assumptions.rate_per_kwh}/kWh · CO₂: {summary.assumptions.kg_co2_per_kwh} kg/kWh · Profile: {summary.assumptions.profile}
           </Text>
         </View>

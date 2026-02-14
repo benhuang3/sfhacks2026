@@ -6,13 +6,14 @@
  */
 
 import axios, { AxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
 // Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://mode-because-consolidation-quantum.trycloudflare.com';
+const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
 
 const API_BASE_URL = TUNNEL_URL;
 
