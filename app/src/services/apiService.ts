@@ -6,6 +6,7 @@
  */
 
 import axios, { AxiosError } from 'axios';
+import { Platform } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -30,24 +31,13 @@ const api = axios.create({
 /**
  * Upload a captured photo to the FastAPI /scan endpoint.
  *
- * @param imageUri  Local file URI from expo-camera (e.g. file:///…/photo.jpg)
- * @returns         Parsed JSON response from the backend
+ * @param image  File/Blob on web, or file URI string on native
+ * @returns      Parsed JSON response from the backend
  */
 export async function uploadScanImage(image: string | File | Blob): Promise<Record<string, unknown>> {
   // Build multipart/form-data
   const formData = new FormData();
-<<<<<<< HEAD
 
-  if (typeof window !== 'undefined' && (imageUri.startsWith('blob:') || imageUri.startsWith('data:'))) {
-    // ── Web: fetch the blob URL and append as a real File ──
-    const response = await fetch(imageUri);
-    const blob = await response.blob();
-    const file = new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' });
-    formData.append('image', file);
-  } else {
-    // ── React Native: use the {uri, name, type} shape ──
-    const filename = imageUri.split('/').pop() ?? 'scan.jpg';
-=======
   if (Platform.OS === 'web') {
     // If a File/Blob is passed (from input.files), append directly
     if (image instanceof File || image instanceof Blob) {
@@ -68,7 +58,6 @@ export async function uploadScanImage(image: string | File | Blob): Promise<Reco
       throw new Error('Native upload expects a file URI string');
     }
     const filename = image.split('/').pop() ?? 'scan.jpg';
->>>>>>> c193cea0e7f4a3027ddd8f71aa6103035c90c88f
     const ext = filename.split('.').pop()?.toLowerCase();
     const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
 

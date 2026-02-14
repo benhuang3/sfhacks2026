@@ -43,8 +43,6 @@ from agents import (
     _resolve_fallback,
 )
 
-<<<<<<< HEAD
-=======
 try:
     # import detector helpers to allow preloading models at startup
     from vision_service import detect_appliance, _get_detector, _get_ocr
@@ -54,7 +52,6 @@ except Exception:
     # logger may not yet be configured at import time — print fallback
     print("vision_service not available — install torch, torchvision, easyocr")
 
->>>>>>> c193cea0e7f4a3027ddd8f71aa6103035c90c88f
 from scans import (
     InsertScanRequest,
     SimilarSearchRequest,
@@ -258,23 +255,63 @@ async def scan_image(image: UploadFile = File(...)):
             detail={"success": False, "error": f"Database insert failed: {str(exc)}"},
         )
 
-<<<<<<< HEAD
     # -------------------------------------------------------------------
-    # TODO: Run image recognition here (Meta on-device AI / Gemini Vision)
-    # For now, return a placeholder response so the frontend flow works.
+    # Run vision detection if available, otherwise use placeholder
     # -------------------------------------------------------------------
-=======
-    # If no profile was found, fall back to category defaults so frontend can calculate
+    best = None
+    detections = []
+    ocr_texts = []
+    power_profile = None
+
+    if VISION_AVAILABLE:
+        try:
+            det_result = detect_appliance(str(file_path))
+            best = det_result.get("best")
+            detections = det_result.get("detections", [])
+            ocr_texts = det_result.get("ocr_texts", [])
+        except Exception as exc:
+            logger.warning("Vision detection failed: %s", exc)
+
+    # Build detected_appliance from vision result or placeholder
+    if best:
+        detected_appliance = {
+            "brand": best.get("brand", "Unknown"),
+            "model": best.get("model", "Unknown"),
+            "name": best.get("label", "Unknown Appliance"),
+            "category": best.get("category", "Unknown"),
+            "confidence": best.get("score", 0.0),
+        }
+    else:
+        detected_appliance = {
+            "brand": "Unknown",
+            "model": "Unknown",
+            "name": "Unidentified Appliance",
+            "category": "Unknown",
+            "confidence": 0.0,
+        }
+
+    # Try to get a power profile via the Power Agent
+    try:
+        from agents import DeviceLookupRequest as DLR
+        req = DLR(
+            brand=detected_appliance["brand"] or "Unknown",
+            model=detected_appliance["model"] or "Unknown",
+            name=detected_appliance["name"] or "Unknown",
+            region="US",
+        )
+        pp = await lookup_power_profile(req)
+        power_profile = pp.model_dump()
+    except Exception as exc:
+        logger.warning("Power profile lookup failed: %s", exc)
+
+    # If no profile was found, fall back to category defaults
     if power_profile is None:
-        fallback_input = None
-        if best:
-            fallback_input = best.get("category") or best.get("label") or best.get("model")
-        fallback_input = fallback_input or "Unknown"
+        fallback_input = detected_appliance.get("category") or detected_appliance.get("name") or "Unknown"
         try:
             fb = _resolve_fallback(fallback_input)
             power_profile = {
-                "brand": best.get("brand", "Unknown") if best else "Unknown",
-                "model": best.get("model", "Unknown") if best else "Unknown",
+                "brand": detected_appliance["brand"],
+                "model": detected_appliance["model"],
                 "name": fallback_input,
                 "region": "US",
                 "profile": fb.model_dump(),
@@ -284,7 +321,6 @@ async def scan_image(image: UploadFile = File(...)):
         except Exception:
             power_profile = None
 
->>>>>>> c193cea0e7f4a3027ddd8f71aa6103035c90c88f
     return {
         "success": True,
         "data": {
@@ -292,14 +328,11 @@ async def scan_image(image: UploadFile = File(...)):
             "filename": filename,
             "size_bytes": len(content),
             "content_type": image.content_type,
-            "detected_appliance": {
-                "brand": "Unknown",
-                "model": "Unknown",
-                "name": "Unidentified Appliance",
-                "category": "Unknown",
-                "confidence": 0.0,
-            },
-            "message": "Image received and saved to database.",
+            "detected_appliance": detected_appliance,
+            "power_profile": power_profile,
+            "ocr_texts": ocr_texts,
+            "detections": [{"label": d.get("label", ""), "category": d.get("category", ""), "score": d.get("score", 0)} for d in detections],
+            "message": "Image received and analyzed.",
         },
     }
 

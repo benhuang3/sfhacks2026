@@ -12,7 +12,6 @@ import { CameraScanScreen } from './src/screens/CameraScanScreen';
 type Screen = 'home' | 'upload' | 'camera-scan' | 'dashboard';
 
 export default function App() {
-  const systemScheme = useColorScheme();
   const [screen, setScreen] = useState<Screen>('home');
   const [scannedDevices, setScannedDevices] = useState<ScanResultData[]>([]);
 
@@ -20,7 +19,7 @@ export default function App() {
     setScannedDevices(prev => [...prev, result]);
   }, []);
 
-  if (screen === 'scanner') {
+  if (screen === 'upload') {
     return (
       <>
         <UploadScanScreen
@@ -41,7 +40,7 @@ export default function App() {
     );
   }
 
-  if (screen === 'results') {
+  if (screen === 'dashboard') {
     return (
       <>
         <DashboardScreen
@@ -53,17 +52,6 @@ export default function App() {
       </>
     );
   }
-
-  // Dynamic styles based on theme
-  const dynamicStyles = StyleSheet.create({
-    container: { ...styles.container, backgroundColor: colors.bg },
-    nav: { ...styles.nav },
-    navLogo: { ...styles.navLogo, color: colors.accent },
-    title: { ...styles.title, color: colors.text },
-    subtitle: { ...styles.subtitle, color: colors.textSecondary },
-    stepsContainer: { ...styles.stepsContainer, backgroundColor: colors.card, borderColor: colors.border },
-    stepText: { ...styles.stepText, color: isDark ? '#ccc' : '#555' },
-  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -128,13 +116,12 @@ export default function App() {
       </View>
 
       {/* Data source note */}
-      <Text style={[styles.footnote, { color: isDark ? '#555' : '#999' }]}>
+      <Text style={styles.footnote}>
         Power data based on Berkeley Lab and ENERGY STAR research
       </Text>
 
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style="light" />
     </SafeAreaView>
-    </ThemeContext.Provider>
   );
 }
 
@@ -237,13 +224,13 @@ const styles = StyleSheet.create({
   actions: {
     gap: 16,
   },
-  scanButton: {
+  primaryBtn: {
     backgroundColor: '#4CAF50',
     paddingVertical: 18,
     borderRadius: 12,
     alignItems: 'center',
   },
-  scanButtonText: {
+  primaryBtnText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',

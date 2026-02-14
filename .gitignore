@@ -1,0 +1,12 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+be/.env
+server/.env
+be/uploads/
+*.log
+.expo/
+dist/
+build/
+tmp/
