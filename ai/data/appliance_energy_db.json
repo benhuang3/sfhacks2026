@@ -1,0 +1,452 @@
+[
+  {
+    "brand": "Panasonic",
+    "model": "NN-SN686S",
+    "category": "kitchen",
+    "displayName": "Panasonic NN-SN686S Microwave",
+    "avgWatts": 1200,
+    "standbyWatts": 3.5,
+    "annualKwh": 65
+  },
+  {
+    "brand": "Samsung",
+    "model": "ME21R7051SS",
+    "category": "kitchen",
+    "displayName": "Samsung ME21R7051SS Microwave",
+    "avgWatts": 1000,
+    "standbyWatts": 2.8,
+    "annualKwh": 55
+  },
+  {
+    "brand": "GE",
+    "model": "JES1095SMSS",
+    "category": "kitchen",
+    "displayName": "GE JES1095SMSS Microwave",
+    "avgWatts": 950,
+    "standbyWatts": 3.0,
+    "annualKwh": 52
+  },
+  {
+    "brand": "LG",
+    "model": "LMC0975ST",
+    "category": "kitchen",
+    "displayName": "LG LMC0975ST Microwave",
+    "avgWatts": 1000,
+    "standbyWatts": 2.5,
+    "annualKwh": 56
+  },
+  {
+    "brand": "Whirlpool",
+    "model": "WMH31017HZ",
+    "category": "kitchen",
+    "displayName": "Whirlpool WMH31017HZ Microwave",
+    "avgWatts": 1000,
+    "standbyWatts": 3.2,
+    "annualKwh": 58
+  },
+  {
+    "brand": "Cuisinart",
+    "model": "TOA-60",
+    "category": "kitchen",
+    "displayName": "Cuisinart TOA-60 Toaster Oven",
+    "avgWatts": 1800,
+    "standbyWatts": 1.0,
+    "annualKwh": 72
+  },
+  {
+    "brand": "Breville",
+    "model": "BOV900BSS",
+    "category": "kitchen",
+    "displayName": "Breville BOV900BSS Smart Oven",
+    "avgWatts": 1800,
+    "standbyWatts": 1.5,
+    "annualKwh": 75
+  },
+  {
+    "brand": "Hamilton Beach",
+    "model": "31401",
+    "category": "kitchen",
+    "displayName": "Hamilton Beach 31401 Toaster Oven",
+    "avgWatts": 1400,
+    "standbyWatts": 0.5,
+    "annualKwh": 48
+  },
+  {
+    "brand": "Black+Decker",
+    "model": "TO3265XSSD",
+    "category": "kitchen",
+    "displayName": "Black+Decker TO3265XSSD Toaster Oven",
+    "avgWatts": 1500,
+    "standbyWatts": 0.8,
+    "annualKwh": 52
+  },
+  {
+    "brand": "Samsung",
+    "model": "RF28R7351SR",
+    "category": "kitchen",
+    "displayName": "Samsung RF28R7351SR Refrigerator",
+    "avgWatts": 150,
+    "standbyWatts": 150,
+    "annualKwh": 630
+  },
+  {
+    "brand": "LG",
+    "model": "LRFXS2503S",
+    "category": "kitchen",
+    "displayName": "LG LRFXS2503S Refrigerator",
+    "avgWatts": 140,
+    "standbyWatts": 140,
+    "annualKwh": 587
+  },
+  {
+    "brand": "Whirlpool",
+    "model": "WRS325SDHZ",
+    "category": "kitchen",
+    "displayName": "Whirlpool WRS325SDHZ Refrigerator",
+    "avgWatts": 130,
+    "standbyWatts": 130,
+    "annualKwh": 540
+  },
+  {
+    "brand": "GE",
+    "model": "GFE26JYMFS",
+    "category": "kitchen",
+    "displayName": "GE GFE26JYMFS Refrigerator",
+    "avgWatts": 145,
+    "standbyWatts": 145,
+    "annualKwh": 610
+  },
+  {
+    "brand": "Frigidaire",
+    "model": "FFSS2615TS",
+    "category": "kitchen",
+    "displayName": "Frigidaire FFSS2615TS Refrigerator",
+    "avgWatts": 135,
+    "standbyWatts": 135,
+    "annualKwh": 560
+  },
+  {
+    "brand": "GE",
+    "model": "JB645RKSS",
+    "category": "kitchen",
+    "displayName": "GE JB645RKSS Electric Range",
+    "avgWatts": 2500,
+    "standbyWatts": 2.0,
+    "annualKwh": 320
+  },
+  {
+    "brand": "Samsung",
+    "model": "NE63A6511SS",
+    "category": "kitchen",
+    "displayName": "Samsung NE63A6511SS Electric Range",
+    "avgWatts": 2600,
+    "standbyWatts": 2.5,
+    "annualKwh": 335
+  },
+  {
+    "brand": "Samsung",
+    "model": "QN65Q80B",
+    "category": "entertainment",
+    "displayName": "Samsung QN65Q80B 65\" QLED TV",
+    "avgWatts": 120,
+    "standbyWatts": 0.5,
+    "annualKwh": 175
+  },
+  {
+    "brand": "LG",
+    "model": "OLED55C2PUA",
+    "category": "entertainment",
+    "displayName": "LG OLED55C2PUA 55\" OLED TV",
+    "avgWatts": 100,
+    "standbyWatts": 0.5,
+    "annualKwh": 146
+  },
+  {
+    "brand": "Sony",
+    "model": "XR55A80K",
+    "category": "entertainment",
+    "displayName": "Sony XR55A80K 55\" OLED TV",
+    "avgWatts": 110,
+    "standbyWatts": 0.5,
+    "annualKwh": 158
+  },
+  {
+    "brand": "TCL",
+    "model": "55S546",
+    "category": "entertainment",
+    "displayName": "TCL 55S546 55\" 4K TV",
+    "avgWatts": 80,
+    "standbyWatts": 0.5,
+    "annualKwh": 118
+  },
+  {
+    "brand": "Vizio",
+    "model": "V555-J01",
+    "category": "entertainment",
+    "displayName": "Vizio V555-J01 55\" 4K TV",
+    "avgWatts": 75,
+    "standbyWatts": 0.5,
+    "annualKwh": 110
+  },
+  {
+    "brand": "Hisense",
+    "model": "55U8H",
+    "category": "entertainment",
+    "displayName": "Hisense 55U8H 55\" ULED TV",
+    "avgWatts": 85,
+    "standbyWatts": 0.5,
+    "annualKwh": 125
+  },
+  {
+    "brand": "Apple",
+    "model": "MacBook Pro 14",
+    "category": "electronics",
+    "displayName": "Apple MacBook Pro 14\"",
+    "avgWatts": 30,
+    "standbyWatts": 1.5,
+    "annualKwh": 25
+  },
+  {
+    "brand": "Dell",
+    "model": "XPS-15",
+    "category": "electronics",
+    "displayName": "Dell XPS 15 Laptop",
+    "avgWatts": 45,
+    "standbyWatts": 2.0,
+    "annualKwh": 35
+  },
+  {
+    "brand": "HP",
+    "model": "Spectre-x360",
+    "category": "electronics",
+    "displayName": "HP Spectre x360 Laptop",
+    "avgWatts": 40,
+    "standbyWatts": 1.8,
+    "annualKwh": 32
+  },
+  {
+    "brand": "Lenovo",
+    "model": "ThinkPad-X1",
+    "category": "electronics",
+    "displayName": "Lenovo ThinkPad X1 Carbon",
+    "avgWatts": 35,
+    "standbyWatts": 1.5,
+    "annualKwh": 28
+  },
+  {
+    "brand": "Asus",
+    "model": "ROG-Zephyrus",
+    "category": "electronics",
+    "displayName": "Asus ROG Zephyrus G14 Gaming Laptop",
+    "avgWatts": 80,
+    "standbyWatts": 2.5,
+    "annualKwh": 65
+  },
+  {
+    "brand": "Sony",
+    "model": "ICF-C1",
+    "category": "bedroom",
+    "displayName": "Sony ICF-C1 Alarm Clock Radio",
+    "avgWatts": 5,
+    "standbyWatts": 2.0,
+    "annualKwh": 18
+  },
+  {
+    "brand": "Philips",
+    "model": "TAR3505",
+    "category": "bedroom",
+    "displayName": "Philips TAR3505 Clock Radio",
+    "avgWatts": 4,
+    "standbyWatts": 1.8,
+    "annualKwh": 16
+  },
+  {
+    "brand": "Honeywell",
+    "model": "HCE200W",
+    "category": "bedroom",
+    "displayName": "Honeywell HCE200W Space Heater",
+    "avgWatts": 1500,
+    "standbyWatts": 0.5,
+    "annualKwh": 550
+  },
+  {
+    "brand": "Dyson",
+    "model": "HP07",
+    "category": "bedroom",
+    "displayName": "Dyson HP07 Hot+Cool Purifier",
+    "avgWatts": 1400,
+    "standbyWatts": 3.0,
+    "annualKwh": 520
+  },
+  {
+    "brand": "Dyson",
+    "model": "Supersonic",
+    "category": "personal_care",
+    "displayName": "Dyson Supersonic Hair Dryer",
+    "avgWatts": 1600,
+    "standbyWatts": 0.0,
+    "annualKwh": 32
+  },
+  {
+    "brand": "Panasonic",
+    "model": "EH-NA65-K",
+    "category": "personal_care",
+    "displayName": "Panasonic EH-NA65-K Hair Dryer",
+    "avgWatts": 1875,
+    "standbyWatts": 0.0,
+    "annualKwh": 38
+  },
+  {
+    "brand": "Philips",
+    "model": "Hue White A19",
+    "category": "lighting",
+    "displayName": "Philips Hue White A19 Smart Bulb",
+    "avgWatts": 9,
+    "standbyWatts": 0.4,
+    "annualKwh": 13
+  },
+  {
+    "brand": "GE",
+    "model": "Cync A19",
+    "category": "lighting",
+    "displayName": "GE Cync A19 Smart Bulb",
+    "avgWatts": 10,
+    "standbyWatts": 0.5,
+    "annualKwh": 15
+  },
+  {
+    "brand": "Generic",
+    "model": "Incandescent-60W",
+    "category": "lighting",
+    "displayName": "60W Incandescent Bulb",
+    "avgWatts": 60,
+    "standbyWatts": 0.0,
+    "annualKwh": 88
+  },
+  {
+    "brand": "Generic",
+    "model": "CFL-13W",
+    "category": "lighting",
+    "displayName": "13W CFL Bulb",
+    "avgWatts": 13,
+    "standbyWatts": 0.0,
+    "annualKwh": 19
+  },
+  {
+    "brand": "Generic",
+    "model": "LED-9W",
+    "category": "lighting",
+    "displayName": "9W LED Bulb",
+    "avgWatts": 9,
+    "standbyWatts": 0.0,
+    "annualKwh": 13
+  },
+  {
+    "brand": "Keurig",
+    "model": "K-Supreme",
+    "category": "kitchen",
+    "displayName": "Keurig K-Supreme Coffee Maker",
+    "avgWatts": 1470,
+    "standbyWatts": 4.0,
+    "annualKwh": 60
+  },
+  {
+    "brand": "Ninja",
+    "model": "AF101",
+    "category": "kitchen",
+    "displayName": "Ninja AF101 Air Fryer",
+    "avgWatts": 1550,
+    "standbyWatts": 0.5,
+    "annualKwh": 50
+  },
+  {
+    "brand": "Instant Pot",
+    "model": "Duo-7in1",
+    "category": "kitchen",
+    "displayName": "Instant Pot Duo 7-in-1 Pressure Cooker",
+    "avgWatts": 1000,
+    "standbyWatts": 1.0,
+    "annualKwh": 40
+  },
+  {
+    "brand": "Apple",
+    "model": "iPhone-charger",
+    "category": "electronics",
+    "displayName": "Apple iPhone 20W Charger",
+    "avgWatts": 20,
+    "standbyWatts": 0.3,
+    "annualKwh": 5
+  },
+  {
+    "brand": "Samsung",
+    "model": "25W-charger",
+    "category": "electronics",
+    "displayName": "Samsung 25W Phone Charger",
+    "avgWatts": 25,
+    "standbyWatts": 0.3,
+    "annualKwh": 6
+  },
+  {
+    "brand": "Generic",
+    "model": "Desktop-PC",
+    "category": "electronics",
+    "displayName": "Desktop PC (average)",
+    "avgWatts": 200,
+    "standbyWatts": 5.0,
+    "annualKwh": 300
+  },
+  {
+    "brand": "Generic",
+    "model": "Monitor-27in",
+    "category": "electronics",
+    "displayName": "27\" LCD Monitor",
+    "avgWatts": 30,
+    "standbyWatts": 0.5,
+    "annualKwh": 44
+  },
+  {
+    "brand": "Generic",
+    "model": "WiFi-Router",
+    "category": "electronics",
+    "displayName": "Wi-Fi Router (average)",
+    "avgWatts": 12,
+    "standbyWatts": 12,
+    "annualKwh": 105
+  },
+  {
+    "brand": "Generic",
+    "model": "Game-Console",
+    "category": "entertainment",
+    "displayName": "Game Console (average)",
+    "avgWatts": 120,
+    "standbyWatts": 8.0,
+    "annualKwh": 150
+  },
+  {
+    "brand": "Generic",
+    "model": "Washing-Machine",
+    "category": "laundry",
+    "displayName": "Washing Machine (average)",
+    "avgWatts": 500,
+    "standbyWatts": 1.0,
+    "annualKwh": 100
+  },
+  {
+    "brand": "Generic",
+    "model": "Clothes-Dryer",
+    "category": "laundry",
+    "displayName": "Clothes Dryer (average)",
+    "avgWatts": 3000,
+    "standbyWatts": 1.0,
+    "annualKwh": 600
+  },
+  {
+    "brand": "Generic",
+    "model": "Dishwasher",
+    "category": "kitchen",
+    "displayName": "Dishwasher (average)",
+    "avgWatts": 1800,
+    "standbyWatts": 1.0,
+    "annualKwh": 270
+  }
+]

@@ -55,13 +55,15 @@ export function ScannerScreen() {
         for (const obj of unidentified) {
           identifier.identify(photoUri, obj);
         }
+      } catch (e) {
+        console.warn('Scan loop error:', e);
       } finally {
         isProcessingRef.current = false;
       }
     }, SCAN_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [isScanning, pipeline.isReady]);
+  }, [isScanning, pipeline.isReady, pipeline.detect, tracker, updateTrackedObjects, identifier]);
 
   const handleStartScan = useCallback(() => {
     setState('scanning');

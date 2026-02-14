@@ -29,7 +29,6 @@ export interface ProductInfo {
   confirmed: boolean;
   wattage?: number;
   lookup?: ApplianceLookupResult;
-  energyProfile?: ApplianceEnergyProfile;
 }
 
 export interface ApplianceLookupResult {
