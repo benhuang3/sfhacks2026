@@ -17,3 +17,12 @@ langchain-google-genai>=2.0.0
 
 # Environment variable loading
 python-dotenv>=1.0.0
+
+# Multipart form data
+python-multipart>=0.0.9
+
+# Vision ML (SSD MobileNet V3 + EasyOCR)
+torch>=2.2.0
+torchvision>=0.17.0
+easyocr>=1.7.0
+Pillow>=10.0.0
