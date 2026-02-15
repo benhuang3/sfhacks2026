@@ -20,6 +20,7 @@ const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
 const API_BASE_URL = TUNNEL_URL;
 
 log.config('apiService API_BASE_URL', { url: API_BASE_URL });
+import { API_BASE_URL } from '../utils/apiConfig';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

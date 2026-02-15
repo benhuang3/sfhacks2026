@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert, showConfirm } from '../utils/alert';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 import {
   proposeActions,
   executeActions,

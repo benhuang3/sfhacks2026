@@ -3,6 +3,12 @@
  *
  * Captures photos from the camera and sends them to the backend /scan endpoint
  * which uses Gemini Vision AI for accurate appliance detection.
+ * LiveScanScreen — Real-time camera preview with on-device object detection
+ * and outline tracing via DeepLabV3 segmentation.
+ *
+ * SSDLite320 detects objects at ~1-2 FPS. DeepLabV3 generates contour outlines
+ * for supported classes (TV, chair, couch, dining table, bottle). Other classes
+ * fall back to bounding box rectangles.
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
@@ -22,6 +28,13 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { uploadScanImage } from '../services/apiService';
 import { getDisplayName } from '../utils/applianceClasses';
+import { useScannerPipeline } from '../hooks/useScannerPipeline';
+import { useObjectTracker } from '../hooks/useObjectTracker';
+import { useSegmentationOverlay } from '../hooks/useSegmentationOverlay';
+import { TrackedObject } from '../utils/scannerTypes';
+import { getDisplayName } from '../utils/applianceClasses';
+import { buildScanDataFromDetections } from '../utils/detectionBridge';
+import { OutlineOverlay } from '../components/scanner/OutlineOverlay';
 import { log } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -42,6 +55,16 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const isFocused = useIsFocused();
 
+  // Detection pipeline
+  const pipeline = useScannerPipeline();
+  const tracker = useObjectTracker(0.3, 10);
+  const segOverlay = useSegmentationOverlay();
+  // Stable ref to the tracker's update fn (the tracker object itself is new each render)
+  const updateWithDetectionsRef = useRef(tracker.updateWithDetections);
+  updateWithDetectionsRef.current = tracker.updateWithDetections;
+  const segRequestRef = useRef(segOverlay.requestSegmentation);
+  segRequestRef.current = segOverlay.requestSegmentation;
+
   // State
   const [isScanning, setIsScanning] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -49,12 +72,16 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   const [detectedItems, setDetectedItems] = useState<Array<{label: string; confidence: number}>>([]);
   const [cameraLayout, setCameraLayout] = useState({ width: 1, height: 1 });
   const [statusMsg, setStatusMsg] = useState('Ready to scan');
+  const photoDimsRef = useRef({ width: 640, height: 480 });
+  const cameraLayoutRef = useRef({ width: 1, height: 1 });
+  const isDetectingRef = useRef(false);
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Camera layout measurement
   const onCameraLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
+    cameraLayoutRef.current = { width, height };
     setCameraLayout({ width, height });
   }, []);
 
@@ -99,6 +126,27 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         setDetectedItems(items.slice(0, 4));
         setLastResult(result);
         setStatusMsg(`${items.length} detected`);
+      const detections = await pipeline.detect(photo.uri);
+      const tracked = updateWithDetectionsRef.current(detections);
+      setTrackedObjects(tracked);
+
+      // Trigger segmentation for outline tracing (non-blocking, throttled)
+      if (tracked.length > 0) {
+        segRequestRef.current(
+          photo.uri,
+          tracked,
+          photoDimsRef.current.width,
+          photoDimsRef.current.height,
+          cameraLayoutRef.current.width,
+          cameraLayoutRef.current.height
+        );
+      }
+
+      // Detect stub mode: if we get many consecutive empty frames, the native
+      // module is probably stubbed out (Expo Go without dev client).
+      if (detections.length === 0) {
+        emptyFrameCountRef.current += 1;
+        if (emptyFrameCountRef.current >= 8) setIsStubMode(true);
       } else {
         setDetectedItems([]);
         setStatusMsg('No appliance detected');
@@ -113,7 +161,11 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
 
   // Resume scanning when screen regains focus
   useEffect(() => {
-    if (isFocused) setIsScanning(true);
+    if (isFocused) {
+      setIsScanning(true);
+      emptyFrameCountRef.current = 0;
+      setIsStubMode(false);
+    }
   }, [isFocused]);
 
   // Start/stop auto-scan interval
@@ -181,6 +233,21 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         })),
       };
 
+      // Run one final detection on the full-res image
+      const detections = await pipeline.detect(photo.uri);
+      const finalTracked =
+        detections.length > 0
+          ? tracker.updateWithDetections(detections)
+          : trackedObjects;
+
+      const scanData = buildScanDataFromDetections(finalTracked, photo.uri, {
+        width: photo.width,
+        height: photo.height,
+      });
+      log.scan('Capture complete', {
+        detections: finalTracked.length,
+        topLabel: scanData.detected_appliance.name,
+      });
       isCapturingRef.current = false;
       setIsAnalyzing(false);
       onCapture?.(scanData, photo.uri);
@@ -246,6 +313,20 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
           <View style={styles.analyzingOverlay}>
             <ActivityIndicator size="small" color="#4CAF50" />
             <Text style={styles.analyzingText}>Gemini Vision AI</Text>
+        {/* Object outlines (SVG) + fallback bounding boxes */}
+        <OutlineOverlay
+          overlays={segOverlay.overlays}
+          trackedObjects={trackedObjects}
+          photoDims={photoDimsRef.current}
+          cameraLayout={cameraLayout}
+        />
+
+        {/* Stub mode warning */}
+        {isStubMode && (
+          <View style={styles.stubBanner}>
+            <Text style={styles.stubBannerText}>
+              Detection unavailable — requires a development build
+            </Text>
           </View>
         )}
 
@@ -265,6 +346,14 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
             />
             <Text style={styles.statusText}>{statusMsg}</Text>
           </View>
+          {/* Segmentation model download progress */}
+          {!segOverlay.isReady && segOverlay.downloadProgress < 1 && (
+            <View style={[styles.statusPill, { marginLeft: 8 }]}>
+              <Text style={styles.statusText}>
+                Outline: {Math.round(segOverlay.downloadProgress * 100)}%
+              </Text>
+            </View>
+          )}
         </SafeAreaView>
 
         {/* Detection chips */}
@@ -295,7 +384,10 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
           {/* Toggle scanning */}
           <TouchableOpacity
             style={styles.toggleButton}
-            onPress={() => setIsScanning((s) => !s)}
+            onPress={() => {
+              setIsScanning((s) => !s);
+              emptyFrameCountRef.current = 0;
+            }}
           >
             <Ionicons name={isScanning ? 'pause' : 'play'} size={18} color="#fff" />
             <Text style={styles.toggleButtonText}>
