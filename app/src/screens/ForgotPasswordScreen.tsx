@@ -8,6 +8,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { apiForgotPassword, apiResetPassword } from '../services/authApi';
+import { Ionicons } from '@expo/vector-icons';
 import { log } from '../utils/logger';
 
 interface Props {
@@ -67,7 +68,7 @@ export function ForgotPasswordScreen({ onGoLogin }: Props) {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.logoBox}>
-          <Text style={styles.logoIcon}>🔐</Text>
+          <Ionicons name="lock-closed-outline" size={40} color="#00e676" />
         </View>
 
         <Text style={styles.title}>
@@ -100,7 +101,7 @@ export function ForgotPasswordScreen({ onGoLogin }: Props) {
             <Text style={styles.subtitle}>Check your email for the 6-digit code</Text>
             {!!debugOtp && (
               <View style={styles.debugBox}>
-                <Text style={styles.debugText}>🔧 Debug OTP: {debugOtp}</Text>
+                <Text style={styles.debugText}><Ionicons name="build-outline" size={12} color="#ffa726" /> Debug OTP: {debugOtp}</Text>
               </View>
             )}
             <TextInput

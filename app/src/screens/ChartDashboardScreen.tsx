@@ -261,6 +261,7 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text }]}><Ionicons name="bar-chart-outline" size={18} color={colors.accent} /> Energy Dashboard</Text>
         {home && <Text style={[styles.headerSub, { color: colors.textSecondary }]}>{home.name}</Text>}
+        <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>Cost by category · 7-day trend below</Text>
       </View>
 
       {/* Timeframe Toggle */}
@@ -340,10 +341,20 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
               backgroundColor: 'transparent',
               backgroundGradientFrom: isDark ? '#12121a' : '#ffffff',
               backgroundGradientTo: isDark ? '#12121a' : '#ffffff',
+              backgroundGradientFromOpacity: 0,
+              backgroundGradientToOpacity: 0,
               decimalPlaces: 2,
               color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
               labelColor: () => isDark ? '#888' : '#555',
-              propsForDots: { r: '4', strokeWidth: '2', stroke: '#4CAF50' },
+              propsForDots: { r: '5', strokeWidth: '2', stroke: '#4CAF50' },
+              propsForBackgroundLines: {
+                strokeDasharray: '4',
+                stroke: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+              },
+              fillShadowGradientFrom: '#4CAF50',
+              fillShadowGradientFromOpacity: 0.3,
+              fillShadowGradientTo: '#4CAF50',
+              fillShadowGradientToOpacity: 0.01,
             }}
             bezier
             style={{ borderRadius: 12, marginLeft: -16 }}
@@ -360,8 +371,21 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
               yAxisLabel="$"
               chartConfig={{
                 backgroundColor: 'transparent',
+                backgroundGradientFrom: isDark ? '#12121a' : '#ffffff',
+                backgroundGradientTo: isDark ? '#12121a' : '#ffffff',
+                backgroundGradientFromOpacity: 0,
+                backgroundGradientToOpacity: 0,
                 color: () => 'rgba(76, 175, 80, 0.3)',
                 labelColor: () => colors.textSecondary,
+                propsForDots: { r: '4', strokeWidth: '1', stroke: 'rgba(76, 175, 80, 0.4)' },
+                propsForBackgroundLines: {
+                  strokeDasharray: '4',
+                  stroke: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                },
+                fillShadowGradientFrom: '#4CAF50',
+                fillShadowGradientFromOpacity: 0.15,
+                fillShadowGradientTo: '#4CAF50',
+                fillShadowGradientToOpacity: 0.01,
               }}
               bezier
               style={{ borderRadius: 12, marginLeft: -16 }}

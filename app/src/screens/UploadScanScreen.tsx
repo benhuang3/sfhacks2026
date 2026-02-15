@@ -15,12 +15,14 @@ import {
   Animated,
   TextInput,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadScanImage, checkHealth } from '../services/apiService';
 import { listHomes, addDevice, Home, RoomModel } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { useTheme } from '../../App';
+import { Ionicons } from '@expo/vector-icons';
 import { log } from '../utils/logger';
 
 interface UploadScanScreenProps {
@@ -66,15 +68,16 @@ export interface ScanResultData {
 type ScanStep = 'idle' | 'uploading' | 'detecting' | 'analyzing' | 'complete' | 'error';
 
 const SCAN_STEPS = [
-  { key: 'uploading', label: 'Uploading image...', icon: '📤' },
-  { key: 'detecting', label: 'AI detecting appliance...', icon: '🔍' },
-  { key: 'analyzing', label: 'Analyzing power usage...', icon: '⚡' },
-  { key: 'complete', label: 'Analysis complete!', icon: '✅' },
+  { key: 'uploading', label: 'Uploading image...', icon: 'cloud-upload-outline' },
+  { key: 'detecting', label: 'AI detecting appliance...', icon: 'search-outline' },
+  { key: 'analyzing', label: 'Analyzing power usage...', icon: 'flash-outline' },
+  { key: 'complete', label: 'Analysis complete!', icon: 'checkmark-circle-outline' },
 ];
 
 export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOpenCamera }: UploadScanScreenProps) {
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanStep, setScanStep] = useState<ScanStep>('idle');
@@ -332,7 +335,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border, paddingTop: Math.max(insets.top, 12) }]}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
           <Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text>
         </TouchableOpacity>
@@ -357,26 +360,44 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
         {/* Upload area */}
         {!imageUri ? (
           <View>
-            <TouchableOpacity style={[styles.dropZone, { borderColor: colors.border, backgroundColor: colors.card }]} onPress={handlePickImage}>
-              <View style={[styles.dropIconContainer, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : 'rgba(76,175,80,0.08)' }]}>
-                <Text style={styles.dropIcon}>📷</Text>
+            <TouchableOpacity style={[styles.dropZone, { borderColor: colors.accent + '40', backgroundColor: colors.card }]} onPress={handlePickImage}>
+              <View style={[styles.dropIconContainer, { backgroundColor: isDark ? 'rgba(76,175,80,0.12)' : 'rgba(76,175,80,0.08)' }]}>
+                <Ionicons name="camera-outline" size={36} color={colors.accent} />
               </View>
-              <Text style={[styles.dropTitle, { color: colors.text }]}>Upload Appliance Photo</Text>
+              <Text style={[styles.dropTitle, { color: colors.text }]}>Scan Your Appliance</Text>
               <Text style={[styles.dropSubtitle, { color: colors.textSecondary }]}>
-                Take a clear photo of your appliance's front or label
+                Snap a photo of any home appliance to analyze its energy usage
               </Text>
-              <View style={styles.browseButton}>
+              <View style={[styles.browseButton, { backgroundColor: colors.accent }]}>
+                <Ionicons name="images-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
                 <Text style={styles.browseText}>Select from Gallery</Text>
               </View>
             </TouchableOpacity>
+
+            {/* Scan tips */}
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 16, marginBottom: 4 }}>
+              <View style={{ alignItems: 'center', gap: 4 }}>
+                <Ionicons name="sunny-outline" size={20} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Good lighting</Text>
+              </View>
+              <View style={{ alignItems: 'center', gap: 4 }}>
+                <Ionicons name="expand-outline" size={20} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Full appliance</Text>
+              </View>
+              <View style={{ alignItems: 'center', gap: 4 }}>
+                <Ionicons name="barcode-outline" size={20} color={colors.textSecondary} />
+                <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Include label</Text>
+              </View>
+            </View>
+
             {Platform.OS !== 'web' && (
               <TouchableOpacity style={[styles.primaryBtn, { marginTop: 12 }]} onPress={handleTakePhoto}>
-                <Text style={styles.primaryBtnText}>📸 Take Photo</Text>
+                <Text style={styles.primaryBtnText}><Ionicons name="camera" size={16} color="#fff" /> Take Photo</Text>
               </TouchableOpacity>
             )}
             {onOpenCamera && (
               <TouchableOpacity style={[styles.cameraScanBtn, { marginTop: 12 }]} onPress={onOpenCamera}>
-                <Text style={styles.cameraScanBtnText}>🎥 Scan with Camera</Text>
+                <Text style={styles.cameraScanBtnText}><Ionicons name="videocam-outline" size={16} color="#fff" /> Scan with Camera</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -390,7 +411,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
             {/* Scanning Progress */}
             {isScanning && (
               <Animated.View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border, transform: [{ scale: pulseAnim }] }]}>
-                <Text style={[styles.progressTitle, { color: colors.text }]}>✨ Analyzing...</Text>
+                <Text style={[styles.progressTitle, { color: colors.text }]}><Ionicons name="sparkles-outline" size={18} color={colors.accent} /> Analyzing...</Text>
                 <View style={styles.stepsContainer}>
                   {SCAN_STEPS.map((step, idx) => {
                     const currentIdx = SCAN_STEPS.findIndex(s => s.key === scanStep);
@@ -405,11 +426,11 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                           isActive && styles.stepActive,
                         ]}>
                           {isDone ? (
-                            <Text style={styles.stepCheck}>✓</Text>
+                            <Ionicons name="checkmark" size={14} color="#fff" />
                           ) : isActive ? (
                             <ActivityIndicator size="small" color={colors.accent} />
                           ) : (
-                            <Text style={styles.stepIcon}>{step.icon}</Text>
+                            <Ionicons name={step.icon as any} size={16} color={colors.textSecondary} />
                           )}
                         </View>
                         <Text style={[
@@ -433,7 +454,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                   <Text style={[styles.secondaryBtnText, { color: isDark ? '#aaa' : '#555' }]}>Change</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.primaryBtn} onPress={handleUpload}>
-                  <Text style={styles.primaryBtnText}>⚡ Analyze Power</Text>
+                  <Text style={styles.primaryBtnText}><Ionicons name="flash-outline" size={14} color="#fff" /> Analyze Power</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -441,7 +462,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
             {/* Error */}
             {error && (
               <View style={styles.errorBox}>
-                <Text style={styles.errorText}>⚠️ {error}</Text>
+                <Text style={styles.errorText}><Ionicons name="warning-outline" size={14} color="#ff6b6b" /> {error}</Text>
                 <TouchableOpacity onPress={handleUpload} style={styles.retryBtn}>
                   <Text style={styles.retryBtnText}>Try Again</Text>
                 </TouchableOpacity>
@@ -456,7 +477,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
               ]}>
                 {/* Success celebration */}
                 <View style={styles.successBanner}>
-                  <Text style={styles.successIcon}>🎉</Text>
+                  <Ionicons name="checkmark-circle-outline" size={32} color="#4CAF50" />
                   <Text style={styles.successText}>Device Identified!</Text>
                 </View>
                 
@@ -544,7 +565,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                     {/* Tip */}
                     {standbyYearlyCost > 5 && (
                       <View style={styles.tipBox}>
-                        <Text style={styles.tipIcon}>💡</Text>
+                        <Text style={styles.tipIcon}><Ionicons name="bulb-outline" size={18} color="#FFD700" /></Text>
                         <Text style={styles.tipText}>
                           Standby power costs ${standbyYearlyCost.toFixed(0)}/year! 
                           Use a smart power strip to save.
@@ -557,14 +578,14 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                 {/* Environmental Impact Card */}
                 {power && yearlyKwh > 0 && (
                   <View style={[styles.envCard, { backgroundColor: colors.card, borderColor: '#2E7D32' }]}>
-                    <Text style={[styles.envTitle, { color: colors.accent }]}>🌍 Environmental Impact</Text>
+                    <Text style={[styles.envTitle, { color: colors.accent }]}><Ionicons name="globe-outline" size={14} color={colors.accent} /> Environmental Impact</Text>
                     <View style={styles.envGrid}>
                       <View style={[styles.envItem, { backgroundColor: isDark ? '#1a1a24' : '#f0f0f0' }]}>
                         <Text style={[styles.envValue, { color: colors.text }]}>{yearlyCO2.toFixed(1)}</Text>
                         <Text style={[styles.envLabel, { color: colors.textSecondary }]}>kg CO₂/year</Text>
                       </View>
                       <View style={[styles.envItem, { backgroundColor: isDark ? '#1a1a24' : '#f0f0f0' }]}>
-                        <Text style={[styles.envValue, styles.treeValue]}>🌳 {treesNeeded.toFixed(1)}</Text>
+                        <Text style={[styles.envValue, styles.treeValue]}><Ionicons name="leaf-outline" size={14} color="#4CAF50" /> {treesNeeded.toFixed(1)}</Text>
                         <Text style={[styles.envLabel, { color: colors.textSecondary }]}>trees to offset</Text>
                       </View>
                     </View>
@@ -576,7 +597,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                       comparedToAvg <= 120 ? styles.efficiencyAvg : styles.efficiencyPoor
                     ]}>
                       <Text style={styles.efficiencyIcon}>
-                        {comparedToAvg <= 80 ? '🏆' : comparedToAvg <= 120 ? '👍' : '⚠️'}
+                        <Ionicons name={comparedToAvg <= 80 ? 'trophy-outline' : comparedToAvg <= 120 ? 'thumbs-up-outline' : 'warning-outline'} size={18} color={comparedToAvg <= 80 ? '#4CAF50' : comparedToAvg <= 120 ? '#FF9800' : '#F44336'} />
                       </Text>
                       <Text style={[styles.efficiencyText, { color: colors.textSecondary }]}>
                         {comparedToAvg <= 80 
@@ -606,7 +627,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                 {/* Add to Home */}
                 {!addedToHome && homes.length > 0 && (
                   <View style={[styles.addToHomeCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8f8f8', borderColor: colors.border }]}>
-                    <Text style={[styles.addToHomeTitle, { color: colors.text }]}>📥 Add to My Home</Text>
+                    <Text style={[styles.addToHomeTitle, { color: colors.text }]}><Ionicons name="download-outline" size={16} color={colors.accent} /> Add to My Home</Text>
                     <Text style={[styles.addToHomeSub, { color: colors.textSecondary }]}>Save this device to track energy</Text>
                     
                     {!showAddToHome ? (
@@ -674,7 +695,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                             {addingToHome ? (
                               <ActivityIndicator size="small" color="#fff" />
                             ) : (
-                              <Text style={styles.primaryBtnText}>✓ Confirm</Text>
+                              <Text style={styles.primaryBtnText}><Ionicons name="checkmark" size={16} color="#fff" /> Confirm</Text>
                             )}
                           </TouchableOpacity>
                         </View>
@@ -686,7 +707,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
                 {addedToHome && (
                   <View style={[styles.addToHomeCard, { borderColor: '#4CAF50' }]}>
                     <Text style={{ color: '#4CAF50', fontSize: 16, fontWeight: '700' }}>
-                      ✅ Added to home! View in My Home tab.
+                      <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> Added to home! View in My Home tab.
                     </Text>
                   </View>
                 )}
@@ -709,22 +730,22 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
 
 function getCategoryIcon(category: string): string {
   const icons: Record<string, string> = {
-    'Television': '📺',
-    'Refrigerator': '🧊',
-    'Microwave': '📻',
-    'Laptop': '💻',
-    'Oven': '🔥',
-    'Toaster': '🍞',
-    'Hair Dryer': '💨',
-    'Washing Machine': '🧺',
-    'Dryer': '🌀',
-    'Air Conditioner': '❄️',
-    'Space Heater': '🔥',
-    'Monitor': '🖥️',
-    'Light Bulb': '💡',
-    'Phone Charger': '🔌',
+    'Television': 'tv-outline',
+    'Refrigerator': 'snow-outline',
+    'Microwave': 'restaurant-outline',
+    'Laptop': 'laptop-outline',
+    'Oven': 'flame-outline',
+    'Toaster': 'cafe-outline',
+    'Hair Dryer': 'cut-outline',
+    'Washing Machine': 'water-outline',
+    'Dryer': 'water-outline',
+    'Air Conditioner': 'snow-outline',
+    'Space Heater': 'flame-outline',
+    'Monitor': 'desktop-outline',
+    'Light Bulb': 'bulb-outline',
+    'Phone Charger': 'battery-charging-outline',
   };
-  return icons[category] || '🔌';
+  return icons[category] || 'power-outline';
 }
 
 const styles = StyleSheet.create({
@@ -788,6 +809,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   browseText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 

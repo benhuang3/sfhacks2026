@@ -11,7 +11,9 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../utils/alert';
 import {
   getHomeSummary,
@@ -33,12 +35,12 @@ interface HomeSummaryScreenProps {
 
 function getCategoryIcon(cat: string): string {
   const icons: Record<string, string> = {
-    TV: '📺', Television: '📺', Refrigerator: '🧊', Microwave: '📻',
-    Laptop: '💻', Oven: '🔥', Toaster: '🍞', 'Hair Dryer': '💨',
-    'Washing Machine': '🧺', Dryer: '🌀', 'Air Conditioner': '❄️',
-    'Space Heater': '🔥', Monitor: '🖥️', 'Light Bulb': '💡', Light: '💡',
+    TV: 'tv-outline', Television: 'tv-outline', Refrigerator: 'snow-outline', Microwave: 'restaurant-outline',
+    Laptop: 'laptop-outline', Oven: 'flame-outline', Toaster: 'cafe-outline', 'Hair Dryer': 'cut-outline',
+    'Washing Machine': 'water-outline', Dryer: 'water-outline', 'Air Conditioner': 'snow-outline',
+    'Space Heater': 'flame-outline', Monitor: 'desktop-outline', 'Light Bulb': 'bulb-outline', Light: 'bulb-outline',
   };
-  return icons[cat] || '🔌';
+  return icons[cat] || 'power-outline';
 }
 
 function getCategoryColor(cat: string): string {
@@ -127,7 +129,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
           <View style={{ width: 50 }} />
         </View>
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📊</Text>
+          <Ionicons name="bar-chart-outline" size={48} color="#555" style={{ marginBottom: 12 }} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>No Data</Text>
           <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Add devices to see energy summary.</Text>
         </View>
@@ -145,7 +147,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Energy Summary</Text>
         <TouchableOpacity onPress={() => setShowSettings(!showSettings)} style={styles.headerBtn}>
-          <Text style={[styles.headerBtnText, { color: colors.accent }]}>⚙️</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}><Ionicons name="settings-outline" size={18} color={colors.accent} /></Text>
         </TouchableOpacity>
       </View>
 
@@ -153,7 +155,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
         {/* Settings Panel */}
         {showSettings && (
           <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
-            <Text style={[styles.settingsTitle, { color: colors.accent }]}>⚙️ Assumptions</Text>
+            <Text style={[styles.settingsTitle, { color: colors.accent }]}><Ionicons name="settings-outline" size={16} color={colors.accent} /> Assumptions</Text>
             <View style={styles.settingRow}>
               <Text style={[styles.settingLabel, { color: colors.textSecondary }]}>Rate ($/kWh)</Text>
               <TextInput
@@ -207,7 +209,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
         {/* Main Stats */}
         <View style={styles.mainStats}>
           <View style={[styles.mainStatCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={styles.mainStatIcon}>⚡</Text>
+            <Text style={styles.mainStatIcon}><Ionicons name="flash-outline" size={28} color="#4CAF50" /></Text>
             <Text style={[styles.mainStatValue, { color: colors.text }]}>{totals.annual_kwh.toFixed(0)}</Text>
             <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}>kWh/year</Text>
             <Text style={[styles.mainStatRange, { color: colors.textSecondary }]}>
@@ -215,7 +217,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
             </Text>
           </View>
           <View style={[styles.mainStatCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
-            <Text style={styles.mainStatIcon}>💰</Text>
+            <Text style={styles.mainStatIcon}><Ionicons name="wallet-outline" size={28} color="#4CAF50" /></Text>
             <Text style={[styles.mainStatValue, { color: colors.text }]}>${totals.annual_cost.toFixed(0)}</Text>
             <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}>/year</Text>
             <Text style={[styles.mainStatRange, { color: colors.textSecondary }]}>
@@ -254,7 +256,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
         {/* Savings from actions */}
         {action_savings && action_savings.executed_actions > 0 && (
           <View style={styles.savingsCard}>
-            <Text style={[styles.savingsTitle, { color: colors.accent }]}>✅ Savings from Actions</Text>
+            <Text style={[styles.savingsTitle, { color: colors.accent }]}><Ionicons name="checkmark-circle" size={16} color={colors.accent} /> Savings from Actions</Text>
             <View style={styles.savingsRow}>
               <View style={styles.savingsStat}>
                 <Text style={[styles.savingsValue, { color: colors.accent }]}>
@@ -330,7 +332,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
           style={styles.optimizeBtn}
           onPress={() => onViewActions(homeId)}
         >
-          <Text style={styles.optimizeBtnText}>🤖 Get AI Optimization Proposals</Text>
+          <Text style={styles.optimizeBtnText}><Image source={require('../../assets/gemini.png')} style={{ width: 16, height: 16 }} /> Get AI Optimization Proposals</Text>
         </TouchableOpacity>
 
         {/* Assumptions footer */}

@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import {
-  StyleSheet, View, Text, TextInput, TouchableOpacity,
+  StyleSheet, View, Text, TextInput, TouchableOpacity, Image,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
@@ -43,8 +43,10 @@ export function LoginScreen({ onGoSignup, onGoForgot }: Props) {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.logoBox}>
-          <Text style={styles.logoIcon}>⚡</Text>
-          <Text style={styles.logoText}>SmartGrid Home</Text>
+          <View style={styles.logoRow}>
+            <Image source={require('../../assets/image.png')} style={styles.logoImage} resizeMode="contain" />
+            <Text style={styles.logoText}>SmartGrid Home</Text>
+          </View>
         </View>
 
         <Text style={styles.title}>Welcome Back</Text>
@@ -98,6 +100,8 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32 },
   logoBox: { alignItems: 'center', marginBottom: 32 },
   logoIcon: { fontSize: 48, marginBottom: 8 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  logoImage: { width: 44, height: 44, marginRight: 10 },
   logoText: { color: '#4CAF50', fontSize: 24, fontWeight: '800' },
   title: { color: '#fff', fontSize: 28, fontWeight: '700', textAlign: 'center' },
   subtitle: { color: '#888', fontSize: 15, textAlign: 'center', marginTop: 8, marginBottom: 24 },

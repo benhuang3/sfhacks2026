@@ -14,7 +14,7 @@ import { log } from '../utils/logger';
 // ---------------------------------------------------------------------------
 
 // Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
+const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
 
 // API base — paths already include /api/v1 prefix where needed
 const API_BASE_URL = TUNNEL_URL;

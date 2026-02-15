@@ -6,7 +6,7 @@
  */
 
 // Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
+const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 

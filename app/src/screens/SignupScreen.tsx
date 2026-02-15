@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { log } from '../utils/logger';
@@ -46,7 +46,7 @@ export function SignupScreen({ onGoLogin }: Props) {
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.logoBox}>
-          <Text style={styles.logoIcon}>⚡</Text>
+          <Image source={require('../../assets/image.png')} style={{ width: 44, height: 44, marginRight: 10 }} />
           <Text style={styles.logoText}>SmartGrid Home</Text>
         </View>
 

@@ -12,8 +12,8 @@
  *  - Runs inside WebView (Expo Go compatible)
  */
 
-import React, { useMemo, useCallback } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import { View, StyleSheet, Platform, Text, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 interface DeviceInfo {
@@ -279,8 +279,8 @@ export function House3DViewer({
     if (l.includes('bath'))   return 'bathroom';
     if (l.includes('dining')) return 'dining';
     if (l.includes('office') || l.includes('study')) return 'office';
-    if (l.includes('garage')) return 'garage';
     if (l.includes('laundry')) return 'laundry';
+    if (l.includes('garage')) return 'garage';
     return 'living';
   }
 
@@ -710,16 +710,162 @@ export function House3DViewer({
     chinaCabinet(2.5);
   }
 
+  function buildOffice(g) {
+    // === L-shaped desk (against back wall) ===
+    // Main desk surface
+    box(1.8, 0.06, 0.7, M.darkWood, 0, 0.72, -1.6, g);
+    // Desk legs
+    box(0.06, 0.7, 0.06, M.metal, -0.85, 0.36, -1.9, g);
+    box(0.06, 0.7, 0.06, M.metal, 0.85, 0.36, -1.9, g);
+    box(0.06, 0.7, 0.06, M.metal, -0.85, 0.36, -1.3, g);
+    box(0.06, 0.7, 0.06, M.metal, 0.85, 0.36, -1.3, g);
+    // L extension (right side)
+    box(0.7, 0.06, 0.5, M.darkWood, 1.15, 0.72, -1.1, g);
+    box(0.06, 0.7, 0.06, M.metal, 1.45, 0.36, -0.88, g);
+    // Under-desk drawer unit
+    box(0.4, 0.45, 0.5, M.wood, -0.5, 0.25, -1.6, g);
+    // Drawer fronts
+    box(0.38, 0.12, 0.02, new THREE.MeshStandardMaterial({ color: 0x6B5B40, roughness: 0.5 }), -0.5, 0.38, -1.34, g);
+    box(0.38, 0.12, 0.02, new THREE.MeshStandardMaterial({ color: 0x6B5B40, roughness: 0.5 }), -0.5, 0.22, -1.34, g);
+    // Drawer handles
+    box(0.08, 0.02, 0.02, M.metal, -0.5, 0.38, -1.33, g);
+    box(0.08, 0.02, 0.02, M.metal, -0.5, 0.22, -1.33, g);
+
+    // === Monitor stand + keyboard area on desk ===
+    box(0.3, 0.04, 0.2, M.metal, 0.1, 0.78, -1.65, g);   // monitor riser
+    box(0.45, 0.02, 0.15, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0.1, 0.76, -1.35, g); // keyboard
+    box(0.1, 0.02, 0.08, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0.6, 0.76, -1.4, g);  // mouse
+
+    // === Ergonomic office chair ===
+    // Chair base (5-star)
+    cyl(0.03, 0.03, 0.38, 8, M.metal, 0.1, 0.21, -0.7, g);  // stem
+    for (var ci = 0; ci < 5; ci++) {
+      var angle = ci * Math.PI * 2 / 5;
+      var cx = 0.1 + Math.cos(angle) * 0.25;
+      var cz = -0.7 + Math.sin(angle) * 0.25;
+      box(0.25, 0.03, 0.04, M.metal, cx, 0.04, cz, g);
+      cyl(0.025, 0.025, 0.04, 6, new THREE.MeshStandardMaterial({ color: 0x222222 }), cx + Math.cos(angle) * 0.12, 0.02, cz + Math.sin(angle) * 0.12, g);
+    }
+    // Seat
+    box(0.42, 0.06, 0.4, M.leather, 0.1, 0.43, -0.7, g);
+    // Backrest (curved)
+    box(0.42, 0.5, 0.04, M.leather, 0.1, 0.72, -0.48, g);
+    // Armrests
+    box(0.04, 0.04, 0.22, M.metal, -0.18, 0.52, -0.65, g);
+    box(0.04, 0.04, 0.22, M.metal, 0.38, 0.52, -0.65, g);
+    box(0.1, 0.025, 0.2, new THREE.MeshStandardMaterial({ color: 0x444444 }), -0.18, 0.56, -0.65, g);
+    box(0.1, 0.025, 0.2, new THREE.MeshStandardMaterial({ color: 0x444444 }), 0.38, 0.56, -0.65, g);
+
+    // === Bookshelf (left wall) ===
+    box(0.35, 1.6, 0.8, M.wood, -1.7, 0.8, 0.3, g);       // frame
+    // Shelves
+    box(0.3, 0.025, 0.7, M.wood, -1.7, 0.35, 0.3, g);
+    box(0.3, 0.025, 0.7, M.wood, -1.7, 0.7, 0.3, g);
+    box(0.3, 0.025, 0.7, M.wood, -1.7, 1.05, 0.3, g);
+    box(0.3, 0.025, 0.7, M.wood, -1.7, 1.4, 0.3, g);
+    // Books (colorful spines on shelves)
+    var bookColors = [0xCC3333, 0x3366CC, 0x339933, 0xCC9933, 0x9933CC, 0x336666, 0xCC6633];
+    for (var si = 0; si < 4; si++) {
+      var sy = [0.18, 0.53, 0.88, 1.23][si];
+      for (var bi = 0; bi < 5; bi++) {
+        var bh = 0.12 + Math.random() * 0.06;
+        box(0.04, bh, 0.15 + Math.random() * 0.05, new THREE.MeshStandardMaterial({ color: bookColors[(si * 5 + bi) % bookColors.length], roughness: 0.8 }),
+          -1.7, sy + bh / 2, 0.0 + bi * 0.14, g);
+      }
+    }
+
+    // === Filing cabinet (right of desk) ===
+    box(0.4, 0.9, 0.45, M.metal, 1.6, 0.45, -0.3, g);
+    // Drawer fronts
+    for (var fi = 0; fi < 3; fi++) {
+      box(0.38, 0.22, 0.02, new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.4, roughness: 0.3 }),
+        1.6, 0.2 + fi * 0.28, -0.07, g);
+      box(0.12, 0.02, 0.03, M.metal, 1.6, 0.2 + fi * 0.28, -0.05, g);    // handles
+    }
+
+    // === Area rug ===
+    box(2.0, 0.02, 1.5, M.rug, 0, 0.01, -0.5, g);
+
+    // === Small plant on desk ===
+    cyl(0.06, 0.05, 0.08, 8, M.pot, 0.7, 0.79, -1.7, g);
+    // Leafy top
+    var plantMat = new THREE.MeshStandardMaterial({ color: 0x2E7D32, roughness: 0.7 });
+    cyl(0.08, 0.04, 0.1, 6, plantMat, 0.7, 0.88, -1.7, g);
+
+    // === Wall clock (back wall) ===
+    cyl(0.18, 0.18, 0.03, 20, M.white, -1.0, 2.0, -1.95, g);
+    cyl(0.16, 0.16, 0.01, 20, new THREE.MeshStandardMaterial({ color: 0xFFFFF0, roughness: 0.2 }), -1.0, 2.0, -1.93, g);
+    // Clock hands
+    box(0.01, 0.1, 0.01, new THREE.MeshStandardMaterial({ color: 0x111111 }), -1.0, 2.05, -1.92, g);
+    box(0.01, 0.06, 0.01, new THREE.MeshStandardMaterial({ color: 0x111111 }), -0.97, 2.0, -1.92, g);
+  }
+
+  function buildLaundryRoom(g) {
+    // Folding table
+    box(1.4, 0.06, 0.6, M.wood, 0, 0.78, -1.4, g);
+    box(0.05, 0.76, 0.05, M.metal, -0.65, 0.39, -1.65, g);
+    box(0.05, 0.76, 0.05, M.metal, 0.65, 0.39, -1.65, g);
+    box(0.05, 0.76, 0.05, M.metal, -0.65, 0.39, -1.15, g);
+    box(0.05, 0.76, 0.05, M.metal, 0.65, 0.39, -1.15, g);
+    // Laundry basket
+    box(0.4, 0.5, 0.35, new THREE.MeshStandardMaterial({ color: 0x8D6E63, roughness: 0.9 }), 1.2, 0.25, 0.5, g);
+    // Drying rack
+    box(0.05, 1.2, 0.05, M.metal, -1.3, 0.6, 0.8, g);
+    box(0.05, 1.2, 0.05, M.metal, -0.5, 0.6, 0.8, g);
+    box(0.85, 0.03, 0.03, M.metal, -0.9, 1.2, 0.8, g);
+    box(0.85, 0.03, 0.03, M.metal, -0.9, 0.9, 0.8, g);
+    box(0.85, 0.03, 0.03, M.metal, -0.9, 0.6, 0.8, g);
+    // Detergent bottles on shelf
+    box(1.0, 0.04, 0.3, M.wood, 0, 1.4, -1.85, g);
+    cyl(0.05, 0.05, 0.18, 8, new THREE.MeshStandardMaterial({ color: 0x2196F3 }), -0.2, 1.53, -1.85, g);
+    cyl(0.05, 0.05, 0.18, 8, new THREE.MeshStandardMaterial({ color: 0xFF9800 }), 0.15, 1.53, -1.85, g);
+  }
+
+  function buildGarage(g) {
+    // Workbench
+    box(2.0, 0.08, 0.7, M.darkWood, 0, 0.85, -1.5, g);
+    box(0.08, 0.84, 0.08, M.metal, -0.9, 0.42, -1.8, g);
+    box(0.08, 0.84, 0.08, M.metal, 0.9, 0.42, -1.8, g);
+    box(0.08, 0.84, 0.08, M.metal, -0.9, 0.42, -1.2, g);
+    box(0.08, 0.84, 0.08, M.metal, 0.9, 0.42, -1.2, g);
+    // Tool pegboard
+    box(2.0, 1.0, 0.05, new THREE.MeshStandardMaterial({ color: 0x8D6E63, roughness: 0.8 }), 0, 1.8, -1.9, g);
+    // Tool outlines
+    for (var ti = 0; ti < 5; ti++) {
+      box(0.12, 0.3, 0.02, M.metal, -0.7 + ti * 0.35, 1.75, -1.86, g);
+    }
+    // Storage shelves
+    box(0.4, 1.5, 0.8, M.metal, -1.5, 0.75, 0.5, g);
+    box(0.38, 0.02, 0.75, M.metal, -1.5, 0.4, 0.5, g);
+    box(0.38, 0.02, 0.75, M.metal, -1.5, 0.8, 0.5, g);
+    box(0.38, 0.02, 0.75, M.metal, -1.5, 1.2, 0.5, g);
+    // Storage boxes on shelves
+    box(0.25, 0.2, 0.3, new THREE.MeshStandardMaterial({ color: 0x4CAF50 }), -1.5, 0.52, 0.3, g);
+    box(0.25, 0.2, 0.3, new THREE.MeshStandardMaterial({ color: 0x2196F3 }), -1.5, 0.92, 0.5, g);
+  }
+
   function buildGenericRoom(g) {
-    box(1.2, 0.06, 1.2, M.wood, 0, 0.75, 0, g);
-    cyl(0.04, 0.04, 0.72, 8, M.metal, -0.5, 0.37, -0.5, g);
-    cyl(0.04, 0.04, 0.72, 8, M.metal, 0.5, 0.37, -0.5, g);
-    cyl(0.04, 0.04, 0.72, 8, M.metal, -0.5, 0.37, 0.5, g);
-    cyl(0.04, 0.04, 0.72, 8, M.metal, 0.5, 0.37, 0.5, g);
+    // Simple furnished room for unknown types
+    // Center table
+    box(1.2, 0.06, 0.8, M.wood, 0, 0.55, 0, g);
+    box(0.05, 0.53, 0.05, M.metal, -0.5, 0.27, -0.3, g);
+    box(0.05, 0.53, 0.05, M.metal, 0.5, 0.27, -0.3, g);
+    box(0.05, 0.53, 0.05, M.metal, -0.5, 0.27, 0.3, g);
+    box(0.05, 0.53, 0.05, M.metal, 0.5, 0.27, 0.3, g);
+    // Two chairs
     for (var cx of [-0.6, 0.6]) {
       box(0.35, 0.04, 0.35, M.leather, cx, 0.45, -1.0, g);
       box(0.35, 0.35, 0.04, M.leather, cx, 0.65, -1.17, g);
+      box(0.04, 0.43, 0.04, M.metal, cx - 0.15, 0.22, -1.15, g);
+      box(0.04, 0.43, 0.04, M.metal, cx + 0.15, 0.22, -1.15, g);
+      box(0.04, 0.43, 0.04, M.metal, cx - 0.15, 0.22, -0.85, g);
+      box(0.04, 0.43, 0.04, M.metal, cx + 0.15, 0.22, -0.85, g);
     }
+    // Side shelf
+    box(0.5, 0.8, 0.3, M.wood, -1.4, 0.4, 1.2, g);
+    box(0.45, 0.02, 0.25, M.wood, -1.4, 0.55, 1.2, g);
+    // Rug
+    box(1.6, 0.015, 1.2, M.rug, 0, 0.01, 0, g);
   }
 
   var furnitureBuilders = {
@@ -728,7 +874,9 @@ export function House3DViewer({
     bedroom: buildBedroom,
     bathroom: buildBathroom,
     dining: buildDiningRoom,
-    office: buildGenericRoom,
+    office: buildOffice,
+    laundry: buildLaundryRoom,
+    garage: buildGarage,
   };
 
   // ================================================================
@@ -1199,9 +1347,21 @@ export function House3DViewer({
       pos = GRID[slotIdx];
       usedSlots[slotIdx] = true;
     } else {
-      // Extra room: place as extension wing
-      pos = EXTENSIONS[EXT_IDX % EXTENSIONS.length];
-      EXT_IDX++;
+      // Place in first available GRID slot to keep room INSIDE the house
+      var placed = false;
+      for (var si = 0; si < GRID.length; si++) {
+        if (!usedSlots[si]) {
+          pos = GRID[si];
+          usedSlots[si] = true;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        // Only use extensions if ALL 5 grid slots are taken
+        pos = EXTENSIONS[EXT_IDX % EXTENSIONS.length];
+        EXT_IDX++;
+      }
     }
 
     var rg = new THREE.Group();
@@ -1675,12 +1835,25 @@ export function House3DViewer({
     } catch {}
   }, [onDevicePress]);
 
+  const [showWebView, setShowWebView] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShowWebView(true), 400);
+    return () => clearTimeout(t);
+  }, [rooms.length, devices.length]);
+
+  const containerHeight = Math.max(height, 280);
   return (
-    <View style={[styles.container, { height: Math.max(height, 280) }]}>
+    <View style={[styles.container, { height: containerHeight }]}>
+      {!showWebView ? (
+        <View style={[styles.loadingWrap, { height: containerHeight }]}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.loadingText}>Loading 3D house…</Text>
+        </View>
+      ) : null}
       <WebView
         key={`house3d-${rooms.length}-${devices.length}`}
         source={{ html: htmlContent }}
-        style={[styles.webview, { minHeight: 280 }]}
+        style={[styles.webview, { minHeight: 280, opacity: showWebView ? 1 : 0 }]}
         scrollEnabled={false}
         bounces={false}
         javaScriptEnabled={true}
@@ -1702,6 +1875,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     width: '100%',
+  },
+  loadingWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0d0d1a',
+  },
+  loadingText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    marginTop: 12,
   },
   webview: {
     flex: 1,
