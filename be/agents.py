@@ -55,6 +55,14 @@ MONGO_DB = os.getenv("MONGO_DB", "smartgrid_home")
 _motor_client: Optional[AsyncIOMotorClient] = None
 
 
+def reset_motor_client():
+    """Close and discard the singleton Motor client (call on shutdown)."""
+    global _motor_client
+    if _motor_client is not None:
+        _motor_client.close()
+        _motor_client = None
+
+
 def get_motor_client() -> AsyncIOMotorClient:
     """Return a reusable Motor async client (singleton)."""
     global _motor_client

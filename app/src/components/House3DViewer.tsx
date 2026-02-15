@@ -51,7 +51,7 @@ export function House3DViewer({
   ],
   devices = [],
   isDark = true,
-  height = 400,
+  height,
   onDevicePress,
 }: House3DViewerProps) {
 
@@ -663,28 +663,28 @@ export function House3DViewer({
 
   function buildBedroom(g) {
     // === NEW BED MODEL (detailed wooden frame with headboard carving) ===
-    // Bed frame base with carved legs
-    box(1.5, 0.12, 1.9, M.darkWood, -0.4, 0.06, -1.0, g);
+    // Bed frame base with carved legs (moved toward top-left to match floorplan)
+    box(1.5, 0.12, 1.9, M.darkWood, -1.0, 0.06, -1.4, g);
     // Four decorative corner posts
     box(0.08, 0.35, 0.08, M.darkWood, -1.1, 0.24, -1.9, g);
     box(0.08, 0.35, 0.08, M.darkWood, 0.3, 0.24, -1.9, g);
     box(0.06, 0.25, 0.06, M.darkWood, -1.1, 0.18, -0.08, g);
     box(0.06, 0.25, 0.06, M.darkWood, 0.3, 0.18, -0.08, g);
-    // Headboard with panels
-    box(1.5, 0.7, 0.06, M.darkWood, -0.4, 0.48, -1.93, g);
+    // Headboard with panels (adjusted position)
+    box(1.5, 0.7, 0.06, M.darkWood, -1.0, 0.48, -1.93, g);
+    box(0.55, 0.45, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6 }), -1.3, 0.52, -1.91, g);
     box(0.55, 0.45, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6 }), -0.7, 0.52, -1.91, g);
-    box(0.55, 0.45, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6 }), -0.1, 0.52, -1.91, g);
     // Footboard
     box(1.5, 0.28, 0.06, M.darkWood, -0.4, 0.26, -0.05, g);
-    // Mattress with quilted texture
-    box(1.35, 0.2, 1.75, M.mattress, -0.4, 0.23, -0.98, g);
+    // Mattress with quilted texture (shifted with bed)
+    box(1.35, 0.2, 1.75, M.mattress, -1.0, 0.23, -1.38, g);
     // Pillows (rounded)
     var pillow1 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), M.pillow);
-    pillow1.position.set(-0.7, 0.42, -1.6); pillow1.scale.set(1.1, 0.5, 0.7); g.add(pillow1);
+    pillow1.position.set(-1.3, 0.42, -1.8); pillow1.scale.set(1.1, 0.5, 0.7); g.add(pillow1);
     var pillow2 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), M.pillow);
-    pillow2.position.set(-0.1, 0.42, -1.6); pillow2.scale.set(1.1, 0.5, 0.7); g.add(pillow2);
+    pillow2.position.set(-0.7, 0.42, -1.8); pillow2.scale.set(1.1, 0.5, 0.7); g.add(pillow2);
     // Blanket folded
-    box(1.25, 0.06, 0.9, new THREE.MeshStandardMaterial({ color: 0x4A6FA5, roughness: 0.9 }), -0.4, 0.38, -0.5, g);
+    box(1.25, 0.06, 0.9, new THREE.MeshStandardMaterial({ color: 0x4A6FA5, roughness: 0.9 }), -1.0, 0.38, -0.9, g);
 
     // === NEW STUDY TABLE MODEL (L-shaped desk with drawers) ===
     // Main desktop
@@ -983,7 +983,7 @@ export function House3DViewer({
     // === NEW MAIN TABLE MODEL (glass coffee table) ===
     // Tempered glass top
     var glassTop = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.02, 24), new THREE.MeshStandardMaterial({ color: 0xE0FFFF, transparent: true, opacity: 0.5, roughness: 0.05, metalness: 0.1 }));
-    glassTop.position.set(0, 0.42, 0.4); glassTop.scale.set(1.3, 1, 0.9); g.add(glassTop);
+    glassTop.position.set(-0.1, 0.42, 0.4); glassTop.scale.set(1.3, 1, 0.9); g.add(glassTop);
     // Chrome X-base
     box(0.8, 0.02, 0.02, M.metal, 0, 0.2, 0.4, g);
     box(0.02, 0.02, 0.55, M.metal, 0, 0.2, 0.4, g);
@@ -994,29 +994,29 @@ export function House3DViewer({
     baseRing.position.set(0, 0.02, 0.4); baseRing.rotation.x = Math.PI / 2; baseRing.scale.set(1.5, 1, 1); g.add(baseRing);
 
     // === NEW SOFA MODEL (L-shaped sectional) ===
-    // Main seat
-    box(1.6, 0.28, 0.7, new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }), 0, 0.14, 2.0, g);
+    // Main seat (moved left to match living layout)
+    box(1.6, 0.28, 0.7, new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }), -0.6, 0.14, 1.8, g);
     // Back cushions (tufted)
-    box(1.6, 0.38, 0.15, new THREE.MeshStandardMaterial({ color: 0x3A3A3A, roughness: 0.9 }), 0, 0.42, 2.28, g);
+    box(1.6, 0.38, 0.15, new THREE.MeshStandardMaterial({ color: 0x3A3A3A, roughness: 0.9 }), -0.6, 0.42, 2.08, g);
     // Tufting buttons
-    for (var bx = -0.6; bx <= 0.6; bx += 0.3) {
+    for (var bx = -1.2; bx <= 0.0; bx += 0.3) {
       for (var by = 0.32; by <= 0.52; by += 0.15) {
-        cyl(0.015, 0.015, 0.02, 8, new THREE.MeshStandardMaterial({ color: 0x2A2A2A }), bx, by, 2.2, g);
+        cyl(0.015, 0.015, 0.02, 8, new THREE.MeshStandardMaterial({ color: 0x2A2A2A }), bx, by, 1.95, g);
       }
     }
     // Arms (rounded)
     var armL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 12), new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }));
-    armL.position.set(-0.85, 0.35, 2.0); armL.rotation.x = Math.PI / 2; g.add(armL);
+    armL.position.set(-1.25, 0.35, 1.8); armL.rotation.x = Math.PI / 2; g.add(armL);
     var armR = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 12), new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }));
-    armR.position.set(0.85, 0.35, 2.0); armR.rotation.x = Math.PI / 2; g.add(armR);
+    armR.position.set(0.05, 0.35, 1.8); armR.rotation.x = Math.PI / 2; g.add(armR);
     // Seat cushions
-    box(0.7, 0.1, 0.55, M.cushion, -0.4, 0.33, 1.95, g);
-    box(0.7, 0.1, 0.55, M.cushion, 0.4, 0.33, 1.95, g);
+    box(0.7, 0.1, 0.55, M.cushion, -0.85, 0.33, 1.85, g);
+    box(0.7, 0.1, 0.55, M.cushion, -0.15, 0.33, 1.85, g);
     // Throw pillows
     var pill1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0xB8860B, roughness: 0.9 }));
-    pill1.position.set(-0.55, 0.45, 2.15); pill1.scale.set(1, 0.7, 0.7); g.add(pill1);
+    pill1.position.set(-1.05, 0.45, 1.95); pill1.scale.set(1, 0.7, 0.7); g.add(pill1);
     var pill2 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0x708090, roughness: 0.9 }));
-    pill2.position.set(0.55, 0.45, 2.15); pill2.scale.set(1, 0.7, 0.7); g.add(pill2);
+    pill2.position.set(-0.05, 0.45, 1.95); pill2.scale.set(1, 0.7, 0.7); g.add(pill2);
 
     // === NEW PLANT MODEL (fiddle leaf fig in decorative pot) ===
     // Ceramic pot with pattern
@@ -1354,20 +1354,11 @@ export function House3DViewer({
   // ================================================================
   // 3D Appliance Model Builders — recognizable shapes per category
   // ================================================================
-  function buildDevice3D(cat, g, dc, glowMat, bodyMat) {
-    // === COMPACT DEVICE INDICATOR ONLY ===
-    // Full-size 3D appliance models are DISABLED to prevent overlap
-    // with room furniture. Devices render as small floor markers
-    // with glow ring + label sprite + emoji badge.
-    var indicator = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.1, 0.12, 0.06, 12),
-      glowMat
-    );
-    indicator.position.y = 0.03;
-    indicator.castShadow = true;
-    g.add(indicator);
-    return;
-    // --- Below is disabled: full-size device models ---
+  function buildDevice3D(cat, parentG, dc, glowMat, bodyMat) {
+    // Device mesh sub-group — scaled to 55% to fit alongside furniture
+    var g = new THREE.Group();
+    g.scale.set(0.55, 0.55, 0.55);
+    parentG.add(g);
     var c = (cat || '').toLowerCase();
 
     // ---- TV / Television ----
@@ -1808,61 +1799,72 @@ export function House3DViewer({
   function getSmartSpot(rType, cat, idx, used, roomW, roomD) {
     var c = (cat || '').toLowerCase();
 
-    // --- LIVING ROOM spots ---
+    // --- LIVING ROOM spots (aligned to buildLivingRoom furniture) ---
+    // TV stand/entertainment center at (-0.8, -2.0)
+    // Lamp table at (-1.4, 0.3), Coffee table at (0, 0.4)
+    // Sofa at (0, 2.0), Arc floor lamp at (1.5, -1.5)
     var livingSpots = {
-      'tv': { x: 0, z: -1.9, key: 'tv-stand' },
-      'television': { x: 0, z: -1.9, key: 'tv-stand' },
-      'gaming': { x: 0.5, z: -1.9, key: 'console' },
-      'console': { x: 0.5, z: -1.9, key: 'console' },
-      'lamp': { x: -1.4, z: 0, key: 'lamp-table' },
-      'light': { x: -1.4, z: 0, key: 'lamp-spot' },
-      'router': { x: 1.3, z: -1.5, key: 'shelf' },
+      'tv': { x: -0.8, z: -1.8, key: 'tv-stand' },
+      'television': { x: -0.8, z: -1.8, key: 'tv-stand' },
+      'gaming': { x: -0.3, z: -1.8, key: 'console' },
+      'console': { x: -0.3, z: -1.8, key: 'console' },
+      'lamp': { x: -1.4, z: 0.3, key: 'lamp-table' },
+      'light': { x: -1.4, z: 0.3, key: 'lamp-spot' },
+      'router': { x: -1.1, z: -1.8, key: 'shelf' },
       'fan': { x: 1.4, z: 0.5, key: 'corner-fan' },
       'air conditioner': { x: 0, z: -2.2, key: 'wall-ac' },
-      'space heater': { x: -1.4, z: 1.0, key: 'heater' },
-      'speaker': { x: -0.5, z: -1.9, key: 'speaker' },
+      'space heater': { x: -1.4, z: 1.5, key: 'heater' },
+      'speaker': { x: -0.5, z: -1.8, key: 'speaker' },
     };
 
-    // --- KITCHEN spots ---
+    // --- KITCHEN spots (aligned to buildKitchen furniture) ---
+    // Sink counter at (0, -1.72), Cooking counter/stove at (-0.5, -0.72)
+    // Island at (0.5, 0.8), Fridge corner
     var kitchenSpots = {
       'refrigerator': { x: -1.8, z: 1.6, key: 'fridge-corner' },
       'fridge': { x: -1.8, z: 1.6, key: 'fridge-corner' },
-      'oven': { x: -0.8, z: -1.95, key: 'counter-oven' },    // on counter
-      'stove': { x: -0.8, z: -1.95, key: 'counter-stove' },
-      'microwave': { x: 0.8, z: -1.7, key: 'counter-mw' },   // on counter
-      'toaster': { x: 1.5, z: -1.7, key: 'counter-toast' },
-      'coffee': { x: -0.3, z: -1.7, key: 'counter-coffee' },
-      'blender': { x: 0.2, z: -1.7, key: 'counter-blend' },
-      'dishwasher': { x: 1.8, z: -1.5, key: 'dw-spot' },
+      'oven': { x: -0.5, z: -0.7, key: 'counter-oven' },
+      'stove': { x: -0.5, z: -0.7, key: 'counter-stove' },
+      'microwave': { x: 0.5, z: -0.7, key: 'counter-mw' },
+      'toaster': { x: 1.0, z: -1.5, key: 'counter-toast' },
+      'coffee': { x: -1.0, z: -1.5, key: 'counter-coffee' },
+      'blender': { x: 0, z: -0.7, key: 'counter-blend' },
+      'dishwasher': { x: 1.5, z: -1.5, key: 'dw-spot' },
       'light': { x: 0, z: 0, key: 'ceiling-light' },
     };
 
-    // --- BEDROOM spots ---
+    // --- BEDROOM spots (aligned to buildBedroom furniture) ---
+    // Bed at (-0.4, -1.0), Study desk at (-1.52, 0.5)
+    // Dresser at (0.5, 0.5), Nightstand at (0.6, -1.5)
+    // Wardrobe at (1.6, 0.1)
     var bedroomSpots = {
-      'tv': { x: 0, z: 1.8, key: 'wall-tv' },
-      'television': { x: 0, z: 1.8, key: 'wall-tv' },
-      'laptop': { x: -1.5, z: 0.4, key: 'desk-laptop' },
-      'monitor': { x: -1.5, z: 0.4, key: 'desk-mon' },
-      'lamp': { x: 1.05, z: -1.55, key: 'nightstand-lamp' },
-      'light': { x: 1.05, z: -1.55, key: 'nightstand-light' },
+      'tv': { x: 0.5, z: 0.5, key: 'dresser-tv' },
+      'television': { x: 0.5, z: 0.5, key: 'dresser-tv' },
+      'laptop': { x: -1.52, z: 0.5, key: 'desk-laptop' },
+      'monitor': { x: -1.52, z: 0.5, key: 'desk-mon' },
+      'lamp': { x: 0.6, z: -1.5, key: 'nightstand-lamp' },
+      'light': { x: 0.6, z: -1.5, key: 'nightstand-light' },
       'fan': { x: 1.5, z: 1.5, key: 'corner-fan' },
       'air conditioner': { x: 0, z: -1.9, key: 'wall-ac' },
       'space heater': { x: 1.5, z: 0, key: 'heater' },
-      'charger': { x: 1.05, z: -1.55, key: 'nightstand-charge' },
-      'phone': { x: 1.05, z: -1.55, key: 'nightstand-phone' },
-      'router': { x: 1.2, z: 1.5, key: 'dresser-router' },
+      'charger': { x: 0.6, z: -1.5, key: 'nightstand-charge' },
+      'phone': { x: 0.6, z: -1.5, key: 'nightstand-phone' },
+      'router': { x: 0.5, z: 0.7, key: 'dresser-router' },
     };
 
-    // --- BATHROOM spots ---
+    // --- BATHROOM spots (aligned to buildBathroom furniture) ---
+    // Bathtub at (0.5, -1.2), Toilet at (-0.5, 0.2)
+    // Sink/basin at (0.6, 1.4), Mirror at (0.6, 1.74)
+    // Towel rack at (1.1, 0.0)
     var bathroomSpots = {
-      'hair dryer': { x: 1.5, z: 1.7, key: 'vanity-dryer' },
-      'hair': { x: 1.5, z: 1.7, key: 'vanity-dryer' },
+      'hair dryer': { x: 0.6, z: 1.4, key: 'vanity-dryer' },
+      'hair': { x: 0.6, z: 1.4, key: 'vanity-dryer' },
       'light': { x: 0, z: 0, key: 'ceiling-light' },
-      'space heater': { x: -1.8, z: 0, key: 'heater' },
-      'fan': { x: 1.8, z: -0.5, key: 'exhaust-fan' },
-      'washing': { x: -1.8, z: 1.5, key: 'washer' },
-      'washer': { x: -1.8, z: 1.5, key: 'washer' },
-      'dryer': { x: -1.2, z: 1.5, key: 'dryer' },
+      'space heater': { x: -0.8, z: -0.5, key: 'heater' },
+      'fan': { x: 1.1, z: -0.5, key: 'exhaust-fan' },
+      'washing': { x: -1.5, z: 1.5, key: 'washer' },
+      'washer': { x: -1.5, z: 1.5, key: 'washer' },
+      'dryer': { x: -1.0, z: 1.5, key: 'dryer' },
     };
 
     // --- OFFICE spots ---
@@ -1894,7 +1896,34 @@ export function House3DViewer({
       'television': { x: 0, z: -2.0, key: 'wall-tv' },
     };
 
-    var spotMaps = { living: livingSpots, kitchen: kitchenSpots, bedroom: bedroomSpots, bathroom: bathroomSpots, office: officeSpots, dining: diningSpots };
+    // --- LAUNDRY spots ---
+    var laundrySpots = {
+      'washing': { x: -0.9, z: 0.8, key: 'washer' },
+      'washer':  { x: -0.9, z: 0.8, key: 'washer' },
+      'dryer':   { x: -0.2, z: 0.8, key: 'dryer' },
+      'light':   { x: 0, z: 0, key: 'ceiling-light' },
+      'iron':    { x: 0, z: -1.4, key: 'fold-table-iron' },
+      'fan':     { x: 1.2, z: -0.5, key: 'corner-fan' },
+      'space heater': { x: 1.2, z: 0.5, key: 'heater' },
+      'water heater': { x: 1.5, z: -1.5, key: 'water-heater' },
+    };
+
+    // --- GARAGE spots ---
+    var garageSpots = {
+      'light':        { x: 0, z: 0, key: 'ceiling-light' },
+      'fan':          { x: 1.5, z: 0, key: 'corner-fan' },
+      'space heater': { x: -1.5, z: -0.5, key: 'heater' },
+      'water heater': { x: 1.5, z: -1.5, key: 'water-heater' },
+      'refrigerator': { x: 1.5, z: 0.8, key: 'garage-fridge' },
+      'fridge':       { x: 1.5, z: 0.8, key: 'garage-fridge' },
+      'tv':           { x: 0, z: -1.5, key: 'workbench-tv' },
+      'television':   { x: 0, z: -1.5, key: 'workbench-tv' },
+      'charger':      { x: 0.5, z: -1.5, key: 'workbench-charger' },
+      'router':       { x: -1.5, z: 0.9, key: 'shelf-router' },
+      'lamp':         { x: -0.9, z: -1.5, key: 'workbench-lamp' },
+    };
+
+    var spotMaps = { living: livingSpots, kitchen: kitchenSpots, bedroom: bedroomSpots, bathroom: bathroomSpots, office: officeSpots, dining: diningSpots, laundry: laundrySpots, garage: garageSpots };
     var spots = spotMaps[rType] || livingSpots;
 
     // Try to find a matching spot for this device category
@@ -2804,11 +2833,14 @@ export function House3DViewer({
     return () => window.removeEventListener('message', handler);
   }, [handleMessage]);
 
-  const containerHeight = Math.max(height, 280);
+  const containerHeight = height ? Math.max(height, 280) : undefined;
+  const containerStyle = containerHeight
+    ? [styles.container, { height: containerHeight }]
+    : [styles.container, { flex: 1, minHeight: 280 }];
   return (
-    <View style={[styles.container, { height: containerHeight }]}>
+    <View style={containerStyle}>
       {!showWebView ? (
-        <View style={[styles.loadingWrap, { height: containerHeight }]}>
+        <View style={[styles.loadingWrap, containerHeight ? { height: containerHeight } : { flex: 1 }]}>
           <ActivityIndicator size="large" color="#4CAF50" />
           <Text style={styles.loadingText}>Loading 3D house…</Text>
         </View>
@@ -2819,7 +2851,7 @@ export function House3DViewer({
           srcDoc={htmlContent}
           style={{
             width: '100%',
-            height: containerHeight,
+            height: containerHeight || '100%',
             border: 'none',
             borderRadius: 16,
             opacity: showWebView ? 1 : 0,
@@ -2858,6 +2890,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#0d0d1a',
