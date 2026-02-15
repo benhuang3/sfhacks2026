@@ -142,7 +142,7 @@ export async function identifyBrand(
   imageUris: string[],
   category: string
 ): Promise<BrandIdentification> {
-  log.api('POST /api/v1/identify-brand', { category, imageCount: imageUris.length });
+  console.log(`[GEMINI] Identifying brand for "${category}" — converting ${imageUris.length} images to base64...`);
   try {
     // Convert image URIs to base64
     const base64Images: string[] = [];
@@ -161,23 +161,26 @@ export async function identifyBrand(
       }
     }
 
+    console.log(`[GEMINI] Sending ${base64Images.length} images (${base64Images.map(b => Math.round(b.length / 1024) + 'KB').join(', ')}) to Gemini...`);
+    const t0 = Date.now();
+
     const response = await api.post('/api/v1/identify-brand', {
       category,
       image_uris: base64Images,
     });
 
-    log.api('POST /api/v1/identify-brand -> success', response.data?.data);
+    const elapsed = Date.now() - t0;
     const data = response.data?.data;
-    return {
-      brand: data?.brand ?? 'Unknown',
-      model: data?.model ?? 'Unknown',
-    };
+    const brand = data?.brand ?? 'Unknown';
+    const model = data?.model ?? 'Unknown';
+    console.log(`[GEMINI] Response (${elapsed}ms): brand="${brand}", model="${model}"`);
+    return { brand, model };
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosErr = error as AxiosError<{ detail?: string }>;
-      log.error('api', `Brand identification failed (${axiosErr.response?.status ?? 'network'})`, axiosErr);
+      console.log(`[GEMINI] FAILED (${axiosErr.response?.status ?? 'network'}): ${axiosErr.response?.data?.detail ?? axiosErr.message}`);
     } else {
-      log.error('api', 'Brand identification failed', error);
+      console.log('[GEMINI] FAILED:', error);
     }
     return { brand: 'Unknown', model: 'Unknown' };
   }

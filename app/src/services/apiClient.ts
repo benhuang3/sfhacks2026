@@ -188,6 +188,33 @@ async function del<T>(path: string): Promise<T> {
   return data.data as T;
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    throw new Error(`Cannot reach server: ${err instanceof Error ? err.message : 'Network error'}. Make sure the backend & tunnel are running.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+  if (data === null) {
+    throw new Error('Server returned an invalid response. The tunnel may be down.');
+  }
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
+  }
+  return data.data as T;
+}
+
 // ---------------------------------------------------------------------------
 // Home types
 // ---------------------------------------------------------------------------
@@ -406,6 +433,10 @@ export async function listDevices(homeId: string): Promise<Device[]> {
 
 export async function deleteDevice(deviceId: string): Promise<void> {
   await del(`/devices/${deviceId}`);
+}
+
+export async function updateDevice(deviceId: string, updates: Partial<Device>): Promise<Device> {
+  return patch<Device>(`/devices/${deviceId}`, updates);
 }
 
 // ---------------------------------------------------------------------------

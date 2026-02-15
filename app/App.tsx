@@ -17,10 +17,10 @@
 import React, { useEffect, useState, useCallback, createContext, useContext } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Image,
-  Platform, useColorScheme, ActivityIndicator, ScrollView, Modal,
+  Platform, useColorScheme, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,6 +47,7 @@ import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
 import { MultiAngleReviewScreen } from './src/screens/MultiAngleReviewScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
+import { DeviceDetailScreen } from './src/screens/DeviceDetailScreen';
 
 // 3D Scene Component
 import { Scene3D } from './src/components/Scene3D';
@@ -73,6 +74,7 @@ const AuthStackNav = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const ScanStackNav = createNativeStackNavigator();
 const HomeStackNav = createNativeStackNavigator();
+const LandingStackNav = createNativeStackNavigator();
 
 // ---------------------------------------------------------------------------
 // Auth Navigator
@@ -130,9 +132,19 @@ function ScanNavigator() {
             scanData={(route.params as any)?.scanData}
             imageUri={(route.params as any)?.imageUri}
             onBack={() => navigation.goBack()}
-            onDeviceAdded={() => {
-              // Go back to scan home after adding device
-              navigation.navigate('ScanHome' as never);
+            onDeviceAdded={(_homeId: string, device: any, rooms: any[]) => {
+              // Refresh dashboard data
+              deviceUpdatedRef.current?.();
+              // Navigate to Home tab → DeviceDetail
+              const parent = navigation.getParent();
+              if (parent && device) {
+                parent.navigate('Home' as never, {
+                  screen: 'DeviceDetail',
+                  params: { device, rooms: rooms ?? [] },
+                } as never);
+              } else {
+                navigation.navigate('ScanHome' as never);
+              }
             }}
           />
         )}
@@ -258,6 +270,33 @@ function DashboardWrapper() {
 }
 
 // ---------------------------------------------------------------------------
+// Shared ref so DeviceDetail can trigger a refresh without passing functions in nav params
+const deviceUpdatedRef: { current: (() => void) | null } = { current: null };
+
+// Landing (Home tab) Navigator
+// ---------------------------------------------------------------------------
+function LandingNavigator() {
+  return (
+    <LandingStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <LandingStackNav.Screen name="LandingHome" component={LandingScreen} />
+      <LandingStackNav.Screen name="DeviceDetail">
+        {({ route, navigation }) => {
+          const { device, rooms } = route.params as any;
+          return (
+            <DeviceDetailScreen
+              device={device}
+              rooms={rooms}
+              onBack={() => navigation.goBack()}
+              onDeviceUpdated={() => deviceUpdatedRef.current?.()}
+            />
+          );
+        }}
+      </LandingStackNav.Screen>
+    </LandingStackNav.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Tabs
 // ---------------------------------------------------------------------------
 function MainTabs() {
@@ -281,7 +320,7 @@ function MainTabs() {
     >
       <Tab.Screen
         name="Home"
-        component={LandingScreen}
+        component={LandingNavigator}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Image source={require('./assets/home.png')} style={{ width: size, height: size, tintColor: color }} />
@@ -324,6 +363,7 @@ function MainTabs() {
 function LandingScreen() {
   const { colors, isDark, setThemeMode } = useTheme();
   const { user, logout } = useAuth();
+  const navigation = useNavigation();
 
   const [stats, setStats] = React.useState<{
     deviceCount: number;
@@ -337,7 +377,6 @@ function LandingScreen() {
   const [devices, setDevices] = React.useState<Device[]>([]);
   const [homes, setHomes] = React.useState<Home[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [tappedDevice, setTappedDevice] = React.useState<{ label: string; category: string; roomId?: string; roomName?: string } | null>(null);
 
   const loadHomeData = React.useCallback(async () => {
     try {
@@ -372,6 +411,9 @@ function LandingScreen() {
       setLoading(false);
     }
   }, [user]);
+
+  // Expose loadHomeData so DeviceDetailScreen can trigger refresh
+  deviceUpdatedRef.current = loadHomeData;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -543,9 +585,10 @@ function LandingScreen() {
                 onDevicePress={(dev) => {
                   const matched = devices.find(d => d.label === dev.label || d.category === dev.category);
                   if (matched) {
-                    setTappedDevice({ label: matched.label, category: matched.category, roomId: matched.roomId, roomName: dev.roomName });
-                  } else {
-                    setTappedDevice(dev);
+                    (navigation as any).navigate('DeviceDetail', {
+                      device: matched,
+                      rooms: homes[0]?.rooms ?? [],
+                    });
                   }
                 }}
               />
@@ -559,8 +602,15 @@ function LandingScreen() {
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {devices.map(device => (
-                    <View
+                    <TouchableOpacity
                       key={device.id}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        (navigation as any).navigate('DeviceDetail', {
+                          device,
+                          rooms: homes[0]?.rooms ?? [],
+                        });
+                      }}
                       style={{
                         backgroundColor: colors.card,
                         borderRadius: 16,
@@ -591,7 +641,7 @@ function LandingScreen() {
                           </Text>
                         </View>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
@@ -623,82 +673,8 @@ function LandingScreen() {
         </Text>
       </ScrollView>
 
-      {/* Device Detail Modal */}
-      <Modal
-        visible={tappedDevice !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setTappedDevice(null)}
-      >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
-          activeOpacity={1}
-          onPress={() => setTappedDevice(null)}
-        >
-          <View style={{
-            backgroundColor: isDark ? '#1a1a2e' : '#ffffff',
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            padding: 24,
-            paddingBottom: 40,
-          }}>
-            <View style={{ width: 40, height: 4, backgroundColor: isDark ? '#444' : '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
-            {tappedDevice && (() => {
-              const matchedDev = devices.find(d => d.label === tappedDevice.label || d.category === tappedDevice.category);
-              const power = matchedDev?.power;
 
-              return (
-                <>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                    <Appliance3DModel category={tappedDevice.category} size={48} showLabel={false} />
-                    <View style={{ marginLeft: 12, flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>{tappedDevice.label || tappedDevice.category}</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>{tappedDevice.roomName || tappedDevice.roomId || 'Unknown room'}</Text>
-                    </View>
-                  </View>
 
-                  {power && (
-                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                      <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : '#E8F5E9', borderRadius: 12, padding: 14, alignItems: 'center' }}>
-                        <Text style={{ color: colors.accent, fontSize: 24, fontWeight: '800' }}>{power.active_watts_typical}W</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>Active</Text>
-                      </View>
-                      <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(255,152,0,0.1)' : '#FFF3E0', borderRadius: 12, padding: 14, alignItems: 'center' }}>
-                        <Text style={{ color: '#FF9800', fontSize: 24, fontWeight: '800' }}>{power.standby_watts_typical}W</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>Standby</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {power && (
-                    <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f5', borderRadius: 12, padding: 14 }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Monthly cost</Text>
-                        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>${((power.active_watts_typical * 4 + power.standby_watts_typical * 20) * 30 * 0.30 / 1000).toFixed(2)}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Annual cost</Text>
-                        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>${((power.active_watts_typical * 4 + power.standby_watts_typical * 20) * 365 * 0.30 / 1000).toFixed(2)}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Standby waste/yr</Text>
-                        <Text style={{ color: '#FF9800', fontSize: 12, fontWeight: '600' }}>${(power.standby_watts_typical * 24 * 365 * 0.30 / 1000).toFixed(2)}</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    style={{ backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 }}
-                    onPress={() => setTappedDevice(null)}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Close</Text>
-                  </TouchableOpacity>
-                </>
-              );
-            })()}
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }

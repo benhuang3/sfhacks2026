@@ -16,6 +16,8 @@ Endpoints:
   GET  /api/v1/homes/{homeId}                   → Get home
   POST /api/v1/homes/{homeId}/devices           → Add device
   GET  /api/v1/homes/{homeId}/devices           → List devices
+  PATCH /api/v1/devices/{deviceId}              → Update device
+  DELETE /api/v1/devices/{deviceId}             → Delete device
   GET  /api/v1/homes/{homeId}/summary           → Aggregated totals
   POST /api/v1/homes/{homeId}/assumptions       → Set rate/CO₂/profile
   POST /api/v1/homes/{homeId}/actions/propose   → AI propose actions
@@ -42,7 +44,7 @@ import uuid
 from pathlib import Path
 
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Body
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -84,6 +86,7 @@ from homes_devices import (
     add_device,
     list_devices,
     delete_device,
+    update_device,
     set_assumptions,
     get_assumptions,
 )
@@ -840,6 +843,15 @@ async def delete_device_endpoint(device_id: str):
     return {"success": True, "data": {"deleted": True}}
 
 
+@app.patch("/api/v1/devices/{device_id}")
+async def update_device_endpoint(device_id: str, body: dict = Body(...)):
+    """Update a device (partial update)."""
+    updated = await update_device(device_id, body)
+    if not updated:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Device not found"})
+    return {"success": True, "data": updated}
+
+
 # ===========================================================================
 # SUMMARY & ASSUMPTIONS
 # ===========================================================================
@@ -1167,9 +1179,9 @@ async def chat_endpoint(req: ChatRequest):
                 config = genai_types.GenerateContentConfig(
                     system_instruction=system_msg,
                     temperature=0.7,
-                    http_options=genai_types.HttpOptions(timeout=3_000),  # 3s - faster fallback
+                    http_options=genai_types.HttpOptions(timeout=15_000),  # 15s
                 )
-                # Run in thread with strict asyncio timeout
+                # Run in thread with asyncio timeout
                 result = await asyncio.wait_for(
                     asyncio.get_event_loop().run_in_executor(
                         None,
@@ -1177,9 +1189,10 @@ async def chat_endpoint(req: ChatRequest):
                             model=m, contents=contents, config=config,
                         ),
                     ),
-                    timeout=5,  # 5s total timeout - faster fallback
+                    timeout=20,  # 20s total timeout
                 )
                 reply = result.text or "No response received."
+                logger.info("Chat Gemini response from %s: %s", model_name, reply[:80])
                 return {"success": True, "data": {"reply": reply}}
             except asyncio.TimeoutError:
                 last_err = Exception(f"Model {model_name} timed out")

@@ -60,7 +60,7 @@ interface Props {
   scanData: ScanData;
   imageUri?: string | null;
   onBack: () => void;
-  onDeviceAdded: (homeId: string) => void;
+  onDeviceAdded: (homeId: string, device: any, rooms: any[]) => void;
 }
 
 export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }: Props) {
@@ -75,6 +75,8 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
   const [selectedHomeId, setSelectedHomeId] = useState<string | null>(null);
   const [selectedRoom, setSelectedRoom] = useState('r1');
   const [deviceLabel, setDeviceLabel] = useState('');
+  const [deviceBrand, setDeviceBrand] = useState(scanData.detected_appliance?.brand || '');
+  const [deviceModel, setDeviceModel] = useState(scanData.detected_appliance?.model || '');
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +127,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
   // Update device label when category changes
   useEffect(() => {
     if (selectedCategory) {
-      const brand = scanData.detected_appliance?.brand;
+      const brand = deviceBrand && deviceBrand !== 'Unknown' ? deviceBrand : scanData.detected_appliance?.brand;
       setDeviceLabel(
         brand && brand !== 'Unknown'
           ? `${brand} ${selectedCategory}`
@@ -155,11 +157,11 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
 
     try {
       const pp = scanData.power_profile?.profile;
-      await addDevice(selectedHomeId, {
+      const newDevice = await addDevice(selectedHomeId, {
         roomId: selectedRoom,
         label: deviceLabel || selectedCategory,
-        brand: scanData.detected_appliance?.brand || 'Unknown',
-        model: scanData.detected_appliance?.model || 'Unknown',
+        brand: deviceBrand || 'Unknown',
+        model: deviceModel || 'Unknown',
         category: selectedCategory,
         power: pp ? {
           standby_watts_typical: pp.standby_watts_typical,
@@ -172,7 +174,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
       });
       setAdded(true);
       log.scan('Device confirmed and added', { category: selectedCategory, label: deviceLabel });
-      setTimeout(() => onDeviceAdded(selectedHomeId), 1200);
+      setTimeout(() => onDeviceAdded(selectedHomeId, newDevice, rooms), 1200);
     } catch (e: unknown) {
       log.error('scan', 'Confirm device failed', e);
       setError(e instanceof Error ? e.message : 'Failed to add device');
@@ -350,11 +352,11 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
           </View>
         )}
 
-        {/* Device label input */}
+        {/* Device info inputs */}
         {selectedCategory && (
           <>
             <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>
-              Device Label
+              Device Name
             </Text>
             <TextInput
               style={[styles.labelInput, {
@@ -365,6 +367,36 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
               value={deviceLabel}
               onChangeText={setDeviceLabel}
               placeholder="e.g., Living Room TV"
+              placeholderTextColor={colors.textSecondary}
+            />
+
+            <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>
+              Brand
+            </Text>
+            <TextInput
+              style={[styles.labelInput, {
+                backgroundColor: isDark ? '#1a1a2a' : '#f0f0f0',
+                color: colors.text,
+                borderColor: colors.border,
+              }]}
+              value={deviceBrand}
+              onChangeText={setDeviceBrand}
+              placeholder="e.g., Samsung"
+              placeholderTextColor={colors.textSecondary}
+            />
+
+            <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>
+              Model
+            </Text>
+            <TextInput
+              style={[styles.labelInput, {
+                backgroundColor: isDark ? '#1a1a2a' : '#f0f0f0',
+                color: colors.text,
+                borderColor: colors.border,
+              }]}
+              value={deviceModel}
+              onChangeText={setDeviceModel}
+              placeholder="e.g., QN55Q80B"
               placeholderTextColor={colors.textSecondary}
             />
           </>

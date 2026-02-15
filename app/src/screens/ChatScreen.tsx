@@ -46,25 +46,29 @@ async function sendChatMessage(
   history: { role: string; content: string }[]
 ): Promise<string> {
   const url = `${API_V1_URL}/chat`;
-  console.log('[ChatScreen] Sending to URL:', url);
-  console.log('[ChatScreen] Message:', message);
-  
+  console.log(`[GEMINI] Chat request: "${message}" (${history.length} messages in history)`);
+  const t0 = Date.now();
+
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
   });
-  console.log('[ChatScreen] Response status:', resp.status);
-  
-  const text = await resp.text();
-  console.log('[ChatScreen] Response text:', text);
-  
+
+  const elapsed = Date.now() - t0;
+
   if (!resp.ok) {
-    throw new Error(`Chat failed: ${resp.status} — ${text}`);
+    const errText = await resp.text();
+    console.log(`[GEMINI] Chat FAILED (${resp.status}, ${elapsed}ms): ${errText}`);
+    throw new Error(`Chat failed: ${resp.status} — ${errText}`);
   }
+
+  const text = await resp.text();
   let json: any;
   try { json = JSON.parse(text); } catch { throw new Error('Server returned invalid response'); }
-  return json?.data?.reply ?? 'No response received.';
+  const reply = json?.data?.reply ?? 'No response received.';
+  console.log(`[GEMINI] Chat response (${elapsed}ms): "${reply.slice(0, 100)}${reply.length > 100 ? '...' : ''}"`);
+  return reply;
 }
 
 // ---------------------------------------------------------------------------

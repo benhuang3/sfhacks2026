@@ -49,10 +49,12 @@ export function MultiAngleReviewScreen({
 
     async function identify() {
       try {
+        console.log('[BrandID] Sending', imageUris.length, 'images for category:', category);
         const result = await identifyBrand(imageUris, category);
+        console.log('[BrandID] Result:', JSON.stringify(result));
         if (!cancelled) setBrandResult(result);
-      } catch {
-        // Fallback silently — brand stays Unknown
+      } catch (err) {
+        console.log('[BrandID] Error:', err);
       } finally {
         if (!cancelled) setIdentifying(false);
       }
