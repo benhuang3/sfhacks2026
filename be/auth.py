@@ -127,7 +127,12 @@ class _MemCollection:
             match = True
             for k, v in filt.items():
                 if isinstance(v, dict):
-                    continue  # skip $gt / $lt operators
+                    # Handle $gt operator (used for OTP expiry check)
+                    if "$gt" in v:
+                        if doc.get(k) is None or doc.get(k) <= v["$gt"]:
+                            match = False
+                            break
+                    continue
                 if doc.get(k) != v:
                     match = False
                     break

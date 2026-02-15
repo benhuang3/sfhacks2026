@@ -17,6 +17,7 @@ import {
 } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
+import { log } from '../utils/logger';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -149,6 +150,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
     if (!selectedCategory || !selectedHomeId) return;
     setAdding(true);
     setError(null);
+    log.scan('Confirm device pressed', { category: selectedCategory, homeId: selectedHomeId, room: selectedRoom });
 
     try {
       const pp = scanData.power_profile?.profile;
@@ -168,8 +170,10 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
         } : undefined,
       });
       setAdded(true);
+      log.scan('Device confirmed and added', { category: selectedCategory, label: deviceLabel });
       setTimeout(() => onDeviceAdded(selectedHomeId), 1200);
     } catch (e: unknown) {
+      log.error('scan', 'Confirm device failed', e);
       setError(e instanceof Error ? e.message : 'Failed to add device');
     } finally {
       setAdding(false);

@@ -6,6 +6,7 @@ import {
 import { useCallback, useMemo } from 'react';
 import { Detection, BBox } from '../utils/scannerTypes';
 import { isApplianceClass } from '../utils/applianceClasses';
+import { log } from '../utils/logger';
 
 interface ScannerPipelineResult {
   detect: (imageUri: string) => Promise<Detection[]>;
@@ -16,8 +17,9 @@ interface ScannerPipelineResult {
 }
 
 export function useScannerPipeline(): ScannerPipelineResult {
+  // SSDLITE_320_MOBILENET_V3_LARGE is already { modelSource: url }
   const detector = useObjectDetection({
-    model: { modelSource: SSDLITE_320_MOBILENET_V3_LARGE },
+    model: SSDLITE_320_MOBILENET_V3_LARGE,
   });
 
   const detect = useCallback(
@@ -25,24 +27,41 @@ export function useScannerPipeline(): ScannerPipelineResult {
       if (!detector.isReady) return [];
 
       try {
-        const results = await detector.forward(imageUri);
+        // Use a lower threshold (0.3) to catch more objects — default 0.7 is too strict
+        const results = await detector.forward(imageUri, 0.3);
 
-        // Map react-native-executorch detections to our Detection type
-        // and filter to appliance classes only
-        return results
-          .filter((r) => isApplianceClass(r.label))
-          .map((r) => ({
+        log.scan(`forward() returned ${results.length} raw detections`, {
+          labels: results.map((r: any) => `${r.label}:${r.score?.toFixed(2)}`),
+        });
+
+        // Executorch returns UPPERCASE_SNAKE labels (e.g. "MICROWAVE",
+        // "CELL_PHONE", "HAIR_DRIER"). Normalize to lowercase + spaces to
+        // match our applianceClasses mapping.
+        const normalize = (lbl: string) =>
+          lbl.toLowerCase().replace(/_/g, ' ');
+
+        const filtered = results
+          .filter((r: any) => isApplianceClass(normalize(r.label)))
+          .map((r: any) => ({
             bbox: {
               x1: r.bbox.x1,
               y1: r.bbox.y1,
               x2: r.bbox.x2,
               y2: r.bbox.y2,
             } as BBox,
-            label: r.label,
+            label: normalize(r.label),
             score: r.score,
           }));
+
+        if (results.length > 0 && filtered.length === 0) {
+          log.scan('All detections filtered out by isApplianceClass', {
+            rejected: results.map((r: any) => normalize(r.label)),
+          });
+        }
+
+        return filtered;
       } catch (e) {
-        console.warn('Detection failed:', e);
+        log.error('scan', 'Detection forward() failed', e);
         return [];
       }
     },

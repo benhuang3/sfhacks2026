@@ -26,6 +26,7 @@ import {
 } from '../services/apiClient';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { useTheme } from '../../App';
+import { log } from '../utils/logger';
 
 interface HomeManagerScreenProps {
   onBack: () => void;
@@ -59,10 +60,12 @@ export function HomeManagerScreen({
   const [addingDevice, setAddingDevice] = useState(false);
 
   const loadHomes = useCallback(async () => {
+    log.home('Loading homes', { userId });
     try {
       setLoading(true);
       const h = await listHomes(userId);
       setHomes(h);
+      log.home(`Loaded ${h.length} home(s)`);
       // Load devices for each home
       const devMap: Record<string, Device[]> = {};
       for (const home of h) {
@@ -72,7 +75,7 @@ export function HomeManagerScreen({
       }
       setDevices(devMap);
     } catch (err) {
-      console.warn('Failed to load homes:', err);
+      log.error('home', 'Failed to load homes', err);
     } finally {
       setLoading(false);
     }
@@ -89,6 +92,7 @@ export function HomeManagerScreen({
 
   const handleCreateHome = async () => {
     if (!newHomeName.trim()) return;
+    log.home('Create home pressed', { name: newHomeName });
     try {
       setCreating(true);
       const roomStrings = newHomeRooms.split(',').map(r => r.trim()).filter(Boolean);
@@ -98,22 +102,27 @@ export function HomeManagerScreen({
         name: r.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       }));
       await createHome(userId, newHomeName.trim(), roomModels);
+      log.home('Home created', { name: newHomeName });
       setNewHomeName('');
       setNewHomeRooms('living-room, kitchen');
       await loadHomes();
-    } catch (err: any) {
-      showAlert('Error', err.message || 'Failed to create home');
+    } catch (err: unknown) {
+      log.error('home', 'Create home failed', err);
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to create home');
     } finally {
       setCreating(false);
     }
   };
 
   const handleDeleteHome = async (homeId: string) => {
+    log.home('Delete home pressed', { homeId });
     showConfirm('Delete Home', 'This will delete the home and all its devices. Continue?', async () => {
       try {
         await deleteHome(homeId);
+        log.home('Home deleted', { homeId });
         await loadHomes();
       } catch (err: any) {
+        log.error('home', 'Delete home failed', err);
         showAlert('Error', err.message);
       }
     });
@@ -124,6 +133,7 @@ export function HomeManagerScreen({
       showAlert('Required', 'Label and category are required.');
       return;
     }
+    log.home('Add device pressed', { homeId, label: deviceForm.label, category: deviceForm.category });
     try {
       setAddingDevice(true);
       await addDevice(homeId, {
@@ -134,22 +144,27 @@ export function HomeManagerScreen({
         model: deviceForm.model.trim() || 'Unknown',
         is_critical: deviceForm.is_critical,
       });
+      log.home('Device added', { homeId, label: deviceForm.label });
       setDeviceForm({ label: '', category: '', brand: '', model: '', roomId: 'living-room', is_critical: false });
       setShowAddDevice(null);
       await loadHomes();
-    } catch (err: any) {
-      showAlert('Error', err.message || 'Failed to add device');
+    } catch (err: unknown) {
+      log.error('home', 'Add device failed', err);
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to add device');
     } finally {
       setAddingDevice(false);
     }
   };
 
   const handleDeleteDevice = async (deviceId: string) => {
+    log.home('Delete device pressed', { deviceId });
     try {
       await deleteDevice(deviceId);
+      log.home('Device deleted', { deviceId });
       await loadHomes();
-    } catch (err: any) {
-      showAlert('Error', err.message);
+    } catch (err: unknown) {
+      log.error('home', 'Delete device failed', err);
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to delete device');
     }
   };
 

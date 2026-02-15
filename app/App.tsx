@@ -41,6 +41,7 @@ import { HomeManagerScreen } from './src/screens/HomeManagerScreen';
 import { HomeSummaryScreen } from './src/screens/HomeSummaryScreen';
 import { ActionsScreen } from './src/screens/ActionsScreen';
 import { CameraScanScreen } from './src/screens/CameraScanScreen';
+import { LiveScanScreen } from './src/screens/LiveScanScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
@@ -131,6 +132,7 @@ function ScanNavigator() {
               const parent = navigation.getParent();
               if (parent) parent.navigate('Dashboard' as never);
             }}
+            onOpenCamera={() => navigation.navigate('LiveScan' as never)}
           />
         )}
       </ScanStackNav.Screen>
@@ -143,6 +145,16 @@ function ScanNavigator() {
             onDeviceAdded={() => {
               // Go back to scan home after adding device
               navigation.navigate('ScanHome' as never);
+            }}
+          />
+        )}
+      </ScanStackNav.Screen>
+      <ScanStackNav.Screen name="LiveScan">
+        {({ navigation }) => (
+          <LiveScanScreen
+            onBack={() => navigation.goBack()}
+            onCapture={(scanData: any, imageUri: string) => {
+              navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
             }}
           />
         )}
