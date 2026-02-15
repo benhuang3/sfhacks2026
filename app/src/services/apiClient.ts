@@ -557,6 +557,7 @@ export interface ResearchAlternative {
   annual_savings_dollars: number;
   energy_star_certified: boolean;
   source_url: string;
+  image_base64?: string | null;
 }
 
 export interface ResearchResult {
@@ -583,4 +584,47 @@ export interface CategoryInfo {
 
 export async function listCategories(): Promise<CategoryInfo[]> {
   return get<CategoryInfo[]>('/categories');
+}
+
+// ---------------------------------------------------------------------------
+// Demo Product API — replace scanned appliance with alternative in image
+// ---------------------------------------------------------------------------
+
+export interface DemoProductResult {
+  demo_image_base64: string;
+  alt_brand: string;
+  alt_model: string;
+}
+
+export async function demoProduct(params: {
+  scan_image_base64: string;
+  bbox: [number, number, number, number];
+  alt_brand: string;
+  alt_model: string;
+  alt_category: string;
+}): Promise<DemoProductResult> {
+  // Use longer timeout for image generation
+  let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    res = await fetch(`${BASE_URL}/demo-product`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    throw new Error(`Cannot reach server: ${err instanceof Error ? err.message : 'Network error'}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+  if (data === null) throw new Error('Server returned an invalid response.');
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
+  }
+  return data.data as DemoProductResult;
 }

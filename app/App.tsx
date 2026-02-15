@@ -41,12 +41,14 @@ import { HomeManagerScreen } from './src/screens/HomeManagerScreen';
 import { HomeSummaryScreen } from './src/screens/HomeSummaryScreen';
 import { ActionsScreen } from './src/screens/ActionsScreen';
 import { CameraScanScreen } from './src/screens/CameraScanScreen';
-import { LiveScanScreen } from './src/screens/LiveScanScreen';
+import { AdvancedScanScreen } from './src/screens/AdvancedScanScreen';
+import { DeviceQueueScreen } from './src/screens/DeviceQueueScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
 import { MultiAngleReviewScreen } from './src/screens/MultiAngleReviewScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
+import { ScanQueueProvider, useScanQueue } from './src/context/ScanQueueContext';
 import { DeviceDetailScreen } from './src/screens/DeviceDetailScreen';
 
 // 3D Scene Component
@@ -109,59 +111,118 @@ function AuthNavigator() {
 // ---------------------------------------------------------------------------
 // Scan Navigator
 // ---------------------------------------------------------------------------
-function ScanNavigator() {
+function ScanNavigatorInner() {
+  const { queue, setProcessingIndex, clearQueue } = useScanQueue();
+
   return (
     <ScanStackNav.Navigator screenOptions={{ headerShown: false }}>
       <ScanStackNav.Screen name="ScanHome">
         {({ navigation }) => (
+          <AdvancedScanScreen
+            onBack={() => {
+              const parent = navigation.getParent();
+              if (parent) parent.goBack();
+              else navigation.goBack();
+            }}
+            onUpload={() => navigation.navigate('UploadScan' as never)}
+            onNavigateQueue={() => navigation.navigate('DeviceQueue' as never)}
+          />
+        )}
+      </ScanStackNav.Screen>
+      <ScanStackNav.Screen name="DeviceQueue">
+        {({ navigation }) => (
+          <DeviceQueueScreen
+            onBack={() => navigation.goBack()}
+            onProcessComplete={(enrichedQueue) => {
+              // Start batch confirm flow: navigate to ScanConfirm for first device
+              if (enrichedQueue.length === 0) return;
+              setProcessingIndex(0);
+              const first = enrichedQueue[0];
+              navigation.navigate('ScanConfirm' as never, {
+                scanData: first.scanData,
+                imageUri: first.primaryImage,
+                angleUris: first.angleImages,
+                batchMode: true,
+                batchIndex: 0,
+                batchTotal: enrichedQueue.length,
+              } as never);
+            }}
+          />
+        )}
+      </ScanStackNav.Screen>
+      <ScanStackNav.Screen name="ScanConfirm">
+        {({ navigation, route }) => {
+          const params = route.params as any;
+          const isBatch = params?.batchMode === true;
+          const batchIndex: number = params?.batchIndex ?? 0;
+          const batchTotal: number = params?.batchTotal ?? queue.length;
+
+          return (
+            <ScanConfirmScreen
+              scanData={params?.scanData}
+              imageUri={params?.imageUri}
+              angleUris={params?.angleUris}
+              batchInfo={isBatch ? { current: batchIndex + 1, total: batchTotal } : undefined}
+              onBack={() => navigation.goBack()}
+              onDeviceAdded={(_homeId: string, device: any, rooms: any[]) => {
+                deviceUpdatedRef.current?.();
+
+                if (isBatch) {
+                  const nextIdx = batchIndex + 1;
+
+                  if (nextIdx < queue.length) {
+                    setProcessingIndex(nextIdx);
+                    const next = queue[nextIdx];
+                    navigation.replace('ScanConfirm' as never, {
+                      scanData: next.scanData,
+                      imageUri: next.primaryImage,
+                      angleUris: next.angleImages,
+                      batchMode: true,
+                      batchIndex: nextIdx,
+                      batchTotal: batchTotal,
+                    } as never);
+                  } else {
+                    // Last device — clear queue and go to Home
+                    clearQueue();
+                    const parent = navigation.getParent();
+                    if (parent && device) {
+                      parent.navigate('Home' as never, {
+                        screen: 'DeviceDetail',
+                        params: { device, rooms: rooms ?? [], fromScan: true },
+                      } as never);
+                    } else {
+                      navigation.navigate('ScanHome' as never);
+                    }
+                  }
+                } else {
+                  // Single device flow (unchanged)
+                  const parent = navigation.getParent();
+                  if (parent && device) {
+                    parent.navigate('Home' as never, {
+                      screen: 'DeviceDetail',
+                      params: { device, rooms: rooms ?? [], fromScan: true },
+                    } as never);
+                  } else {
+                    navigation.navigate('ScanHome' as never);
+                  }
+                }
+              }}
+            />
+          );
+        }}
+      </ScanStackNav.Screen>
+      <ScanStackNav.Screen name="UploadScan">
+        {({ navigation }) => (
           <UploadScanScreen
             onBack={() => navigation.goBack()}
             onScanComplete={(scanData: ScanResultData, imageUri?: string) => {
-              // Navigate to confirm screen with scan data
               navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
             }}
             onViewDashboard={() => {
               const parent = navigation.getParent();
               if (parent) parent.navigate('Dashboard' as never);
             }}
-            onOpenCamera={() => navigation.navigate('LiveScan' as never)}
-          />
-        )}
-      </ScanStackNav.Screen>
-      <ScanStackNav.Screen name="ScanConfirm">
-        {({ navigation, route }) => (
-          <ScanConfirmScreen
-            scanData={(route.params as any)?.scanData}
-            imageUri={(route.params as any)?.imageUri}
-            angleUris={(route.params as any)?.angleUris}
-            onBack={() => navigation.goBack()}
-            onDeviceAdded={(_homeId: string, device: any, rooms: any[]) => {
-              // Refresh dashboard data
-              deviceUpdatedRef.current?.();
-              // Navigate to Home tab → DeviceDetail
-              const parent = navigation.getParent();
-              if (parent && device) {
-                parent.navigate('Home' as never, {
-                  screen: 'DeviceDetail',
-                  params: { device, rooms: rooms ?? [], fromScan: true },
-                } as never);
-              } else {
-                navigation.navigate('ScanHome' as never);
-              }
-            }}
-          />
-        )}
-      </ScanStackNav.Screen>
-      <ScanStackNav.Screen name="LiveScan">
-        {({ navigation }) => (
-          <LiveScanScreen
-            onBack={() => navigation.goBack()}
-            onCapture={(scanData: any, imageUri: string) => {
-              navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
-            }}
-            onMultiAngleComplete={(scanData: any, imageUris: string[], primaryUri: string) => {
-              navigation.navigate('MultiAngleReview' as never, { scanData, imageUris, primaryUri } as never);
-            }}
+            onOpenCamera={() => navigation.navigate('ScanHome' as never)}
           />
         )}
       </ScanStackNav.Screen>
@@ -193,6 +254,14 @@ function ScanNavigator() {
         )}
       </ScanStackNav.Screen>
     </ScanStackNav.Navigator>
+  );
+}
+
+function ScanNavigator() {
+  return (
+    <ScanQueueProvider>
+      <ScanNavigatorInner />
+    </ScanQueueProvider>
   );
 }
 

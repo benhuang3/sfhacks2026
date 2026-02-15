@@ -93,8 +93,8 @@ function containment(a: BBox, b: BBox): number {
  */
 export function nms<T extends { bbox: BBox; score: number }>(
   items: T[],
-  iouThreshold: number = 0.45,
-  containmentThreshold: number = 0.7
+  iouThreshold: number = 0.55,
+  containmentThreshold: number = 0.85
 ): T[] {
   if (items.length <= 1) return items;
 

@@ -230,7 +230,7 @@ async def _find_energystar_alternatives(
 # ---------------------------------------------------------------------------
 
 async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]:
-    """Single Gemini call to get power specs + one alternative."""
+    """Single Gemini call to get power specs + 2-3 alternatives."""
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         logger.info("  Gemini: GOOGLE_API_KEY not set, skipping")
@@ -242,15 +242,16 @@ async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]
 
         prompt = (
             f"Power consumption of {brand} {model} ({category}). "
+            "Also suggest 2-3 more energy-efficient alternatives in the same category. "
             "Reply ONLY valid JSON, no markdown:\n"
             '{"active_watts":<num>,"standby_watts":<num>,'
-            '"alt_brand":"<str>","alt_model":"<str>","alt_watts":<num>}'
+            '"alternatives":[{"brand":"<str>","model":"<str>","watts":<num>},'
+            '{"brand":"<str>","model":"<str>","watts":<num>}]}'
         )
 
         logger.info("  Gemini: sending prompt (%d chars) to gemini-2.0-flash-lite", len(prompt))
         client = genai.Client(api_key=api_key)
 
-        # Use cheapest model
         resp = await asyncio.to_thread(
             lambda: client.models.generate_content(
                 model="gemini-2.0-flash-lite",
@@ -260,7 +261,7 @@ async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]
                 ),
                 config=genai_types.GenerateContentConfig(
                     temperature=0.1,
-                    max_output_tokens=200,
+                    max_output_tokens=400,
                 ),
             )
         )
@@ -270,7 +271,7 @@ async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]
             return None
 
         text = resp.text.strip()
-        logger.info("  Gemini: raw response: %s", text[:200])
+        logger.info("  Gemini: raw response: %s", text[:300])
         if text.startswith("```"):
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
@@ -295,27 +296,100 @@ async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]
         }
 
         alternatives = []
-        alt_brand = data.get("alt_brand")
-        alt_watts = _safe_float(data.get("alt_watts"))
-        if alt_brand and alt_watts > 0 and alt_watts < active_w:
-            savings_kwh = (active_w - alt_watts) * 4 * 365 / 1000
-            alternatives.append({
-                "brand": alt_brand,
-                "model": data.get("alt_model", "Unknown"),
-                "category": category,
-                "active_watts_typical": alt_watts,
-                "standby_watts_typical": round(standby_w * 0.5, 2),
-                "annual_savings_kwh": round(savings_kwh, 1),
-                "annual_savings_dollars": round(savings_kwh * 0.30, 2),
-                "energy_star_certified": False,
-                "source_url": "",
-            })
+        alt_list = data.get("alternatives", [])
+        for alt_data in alt_list[:3]:
+            alt_brand = alt_data.get("brand")
+            alt_watts = _safe_float(alt_data.get("watts"))
+            alt_model = alt_data.get("model", "Unknown")
+            if alt_brand and alt_watts > 0 and alt_watts < active_w:
+                savings_kwh = (active_w - alt_watts) * 4 * 365 / 1000
+                alternatives.append({
+                    "brand": alt_brand,
+                    "model": alt_model,
+                    "category": category,
+                    "active_watts_typical": alt_watts,
+                    "standby_watts_typical": round(standby_w * 0.5, 2),
+                    "annual_savings_kwh": round(savings_kwh, 1),
+                    "annual_savings_dollars": round(savings_kwh * 0.30, 2),
+                    "energy_star_certified": False,
+                    "source_url": "",
+                })
 
         return {"power_profile": power_profile, "alternatives": alternatives}
 
     except Exception as e:
         logger.warning("Gemini research failed: %s", e)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Product image generation
+# ---------------------------------------------------------------------------
+
+async def _generate_product_image(brand: str, model: str, category: str) -> Optional[str]:
+    """Generate a product photo using Gemini image generation. Returns base64 PNG or None."""
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+    try:
+        import base64
+        from google import genai
+        from google.genai import types as genai_types
+
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            f"Generate a clean product photo of a {brand} {model} {category} "
+            f"on a plain white background. The image should look like an "
+            f"e-commerce product listing photo. No text overlays."
+        )
+
+        resp = await asyncio.to_thread(
+            lambda: client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+        )
+
+        if resp and resp.candidates:
+            for part in resp.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data and \
+                   part.inline_data.mime_type.startswith("image/"):
+                    return base64.standard_b64encode(part.inline_data.data).decode("utf-8")
+        return None
+    except Exception as e:
+        logger.warning("Product image generation failed for %s %s: %s", brand, model, e)
+        return None
+
+
+async def _add_product_images(result: dict, category: str) -> None:
+    """Generate product images for alternatives in parallel."""
+    alts = result.get("alternatives", [])
+    if not alts:
+        return
+
+    tasks = [
+        _generate_product_image(
+            alt.get("brand", "Unknown"),
+            alt.get("model", "Unknown"),
+            alt.get("category", category),
+        )
+        for alt in alts
+    ]
+
+    try:
+        images = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=20.0,
+        )
+        for alt, img in zip(alts, images):
+            alt["image_base64"] = img if isinstance(img, str) else None
+    except asyncio.TimeoutError:
+        logger.warning("Product image generation timed out")
+        for alt in alts:
+            alt.setdefault("image_base64", None)
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +426,7 @@ async def research_device(brand: str, model: str, category: str) -> dict:
     cached = await _check_cache(brand, model, category)
     if cached:
         logger.info("Step 1 result: CACHE HIT — returning cached data")
-        return cached
+        return _enforce_alt_count(cached)
     logger.info("Step 1 result: cache miss")
 
     # 2. Try ENERGY STAR API (free)
@@ -362,6 +436,8 @@ async def research_device(brand: str, model: str, category: str) -> dict:
         alts = len(result.get("alternatives", []))
         watts = result.get("power_profile", {}).get("active_watts_typical", "?")
         logger.info("Step 2 result: ENERGY STAR HIT — %sW active, %d alternatives", watts, alts)
+        _enforce_alt_count(result)
+        await _add_product_images(result, category)
         await _save_cache(brand, model, category, result)
         return result
     logger.info("Step 2 result: no ENERGY STAR data (category '%s' %s mapped)",
@@ -374,6 +450,8 @@ async def research_device(brand: str, model: str, category: str) -> dict:
         alts = len(result.get("alternatives", []))
         watts = result.get("power_profile", {}).get("active_watts_typical", "?")
         logger.info("Step 3 result: GEMINI HIT — %sW active, %d alternatives", watts, alts)
+        _enforce_alt_count(result)
+        await _add_product_images(result, category)
         await _save_cache(brand, model, category, result)
         return result
     logger.info("Step 3 result: Gemini returned no usable data")
@@ -381,6 +459,17 @@ async def research_device(brand: str, model: str, category: str) -> dict:
     # Nothing found
     logger.info("Research complete: NO DATA FOUND for %s %s (%s)", brand, model, category)
     return {"power_profile": None, "alternatives": []}
+
+
+def _enforce_alt_count(result: dict) -> dict:
+    """Enforce 0 or 2-3 alternatives (never exactly 1)."""
+    alts = result.get("alternatives", [])
+    if len(alts) == 1:
+        logger.info("Dropping single alternative (must be 0 or 2-3)")
+        result["alternatives"] = []
+    elif len(alts) > 3:
+        result["alternatives"] = alts[:3]
+    return result
 
 
 # ---------------------------------------------------------------------------

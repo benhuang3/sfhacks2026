@@ -677,6 +677,93 @@ async def research_device_endpoint(req: ResearchDeviceRequest):
         )
 
 
+class DemoProductRequest(BaseModel):
+    scan_image_base64: str
+    bbox: list[float]
+    alt_brand: str
+    alt_model: str
+    alt_category: str
+
+
+@app.post("/api/v1/demo-product")
+async def demo_product_endpoint(req: DemoProductRequest):
+    """
+    Generate an image showing the scanned scene with the original appliance
+    replaced by the alternative product using Gemini image editing.
+    """
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail={"success": False, "error": "GOOGLE_API_KEY not set"})
+
+    try:
+        import asyncio as _asyncio
+        import base64
+        from google import genai
+        from google.genai import types as genai_types
+
+        if len(req.bbox) != 4:
+            raise HTTPException(status_code=422, detail={"success": False, "error": "bbox must have exactly 4 elements [x1, y1, x2, y2]"})
+
+        img_bytes = base64.standard_b64decode(req.scan_image_base64)
+
+        # Detect MIME type from image bytes
+        mime_type = "image/jpeg"
+        if img_bytes[:8].startswith(b'\x89PNG\r\n\x1a\n'):
+            mime_type = "image/png"
+
+        client = genai.Client(api_key=api_key)
+
+        x1, y1, x2, y2 = [max(0.0, min(1.0, v)) for v in req.bbox]
+        prompt = (
+            f"In this photo, there is an appliance located in the region from "
+            f"({int(x1*100)}%, {int(y1*100)}%) to ({int(x2*100)}%, {int(y2*100)}%) "
+            f"of the image. "
+            f"Please edit the image to replace that appliance with a {req.alt_brand} "
+            f"{req.alt_model} {req.alt_category}. "
+            f"Keep the rest of the scene exactly the same — same room, same lighting, "
+            f"same surroundings. Only replace the appliance in that region. "
+            f"The replacement should look natural and realistic in the scene."
+        )
+
+        resp = await _asyncio.to_thread(
+            lambda: client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=genai_types.Content(
+                    role="user",
+                    parts=[
+                        genai_types.Part.from_bytes(data=img_bytes, mime_type=mime_type),
+                        genai_types.Part.from_text(text=prompt),
+                    ],
+                ),
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+        )
+
+        if resp and resp.candidates:
+            for part in resp.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data and \
+                   part.inline_data.mime_type.startswith("image/"):
+                    result_b64 = base64.standard_b64encode(part.inline_data.data).decode("utf-8")
+                    return {
+                        "success": True,
+                        "data": {
+                            "demo_image_base64": result_b64,
+                            "alt_brand": req.alt_brand,
+                            "alt_model": req.alt_model,
+                        },
+                    }
+
+        raise HTTPException(status_code=500, detail={"success": False, "error": "Gemini did not return an image"})
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Demo product generation failed")
+        raise HTTPException(status_code=500, detail={"success": False, "error": f"Demo generation failed: {str(exc)}"})
+
+
 @app.post("/api/v1/seed-defaults")
 async def seed_defaults_endpoint():
     """Seed the category_defaults collection in MongoDB."""

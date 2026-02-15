@@ -81,3 +81,14 @@ export type ScannerState =
   | 'scanning'
   | 'identifying'
   | 'confirming';
+
+/** A device queued for batch processing in the Advanced Scan flow. */
+export interface QueuedDevice {
+  id: string;
+  label: string;               // detected category display name
+  confidence: number;
+  bbox: BBox;
+  angleImages: string[];       // up to 4 cropped image URIs
+  primaryImage: string;        // first angle or full-frame
+  scanData: any;               // ScanDataFromDetections shape (from detectionBridge.ts)
+}

@@ -6,7 +6,7 @@
 import { TrackedObject } from './scannerTypes';
 import { getDisplayName, getCategory } from './applianceClasses';
 
-interface ScanDataFromDetections {
+export interface ScanDataFromDetections {
   candidates: Array<{ category: string; confidence: number; modelAsset: string }>;
   bbox: number[] | null;
   detected_appliance: {

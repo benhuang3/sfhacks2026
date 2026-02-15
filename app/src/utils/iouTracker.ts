@@ -95,8 +95,8 @@ export function updateTracks(
   return pruneOverlappingTracks(updatedTracks);
 }
 
-const OVERLAP_IOU_THRESHOLD = 0.35;
-const OVERLAP_CONTAINMENT_THRESHOLD = 0.6;
+const OVERLAP_IOU_THRESHOLD = 0.5;
+const OVERLAP_CONTAINMENT_THRESHOLD = 0.8;
 
 function pruneOverlappingTracks(tracks: TrackedObject[]): TrackedObject[] {
   if (tracks.length <= 1) return tracks;

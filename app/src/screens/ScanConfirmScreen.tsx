@@ -5,17 +5,18 @@
  * On confirm → adds device to selected home with the matching 3D model.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity, ScrollView,
   TextInput, Image, ActivityIndicator, Dimensions, Animated,
-  Platform,
+  Platform, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
   researchDevice, ResearchResult, ResearchAlternative,
+  demoProduct,
 } from '../services/apiClient';
 import { identifyBrand } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -64,9 +65,11 @@ interface Props {
   angleUris?: string[];
   onBack: () => void;
   onDeviceAdded: (homeId: string, device: any, rooms: any[]) => void;
+  /** When set, shows "Add & Next (X of Y)" instead of "Add to Home" */
+  batchInfo?: { current: number; total: number };
 }
 
-export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDeviceAdded }: Props) {
+export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDeviceAdded, batchInfo }: Props) {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
 
@@ -88,6 +91,10 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
   const [researchVersion, setResearchVersion] = useState(0);
   const [recalculating, setRecalculating] = useState(false);
   const originalCategory = useRef(scanData.candidates[0]?.category ?? null);
+  const [demoLoadingIdx, setDemoLoadingIdx] = useState<number | null>(null);
+  const [demoImage, setDemoImage] = useState<string | null>(null);
+  const [demoModalVisible, setDemoModalVisible] = useState(false);
+  const [selectedAlt, setSelectedAlt] = useState<{ alt: ResearchAlternative; idx: number } | null>(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -184,6 +191,54 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
     const q = searchQuery.toLowerCase();
     return allCategories.filter(c => c.category.toLowerCase().includes(q));
   }, [searchQuery, allCategories]);
+
+  const handleDemo = useCallback(async (alt: ResearchAlternative, idx: number) => {
+    if (!imageUri) return;
+    setDemoLoadingIdx(idx);
+    setError(null);
+    try {
+      // Convert imageUri to base64
+      let scanB64: string;
+      if (Platform.OS === 'web') {
+        const resp = await fetch(imageUri);
+        const blob = await resp.blob();
+        scanB64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1] || result);
+          };
+          reader.onerror = () => reject(new Error('Failed to read image'));
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const FileSystem = await import('expo-file-system/legacy');
+        scanB64 = await FileSystem.readAsStringAsync(imageUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      }
+
+      // Use bbox if available, otherwise let Gemini use the full image
+      const bbox = (scanData.bbox && scanData.bbox.length === 4
+        ? scanData.bbox
+        : [0, 0, 1, 1]) as [number, number, number, number];
+
+      const result = await demoProduct({
+        scan_image_base64: scanB64,
+        bbox,
+        alt_brand: alt.brand,
+        alt_model: alt.model,
+        alt_category: alt.category || selectedCategory || '',
+      });
+      setDemoImage(result.demo_image_base64);
+      setDemoModalVisible(true);
+    } catch (e) {
+      log.error('scan', 'Demo product failed', e);
+      setError(e instanceof Error ? e.message : 'Demo generation failed');
+    } finally {
+      setDemoLoadingIdx(null);
+    }
+  }, [imageUri, scanData.bbox, selectedCategory]);
 
   const handleConfirm = async () => {
     if (!selectedCategory || !selectedHomeId) return;
@@ -604,29 +659,48 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
             <Text style={[styles.powerTitle, { color: colors.text }]}>
               <Ionicons name="leaf-outline" size={14} color="#4CAF50" /> Efficient Alternatives
             </Text>
-            {researchData.alternatives.slice(0, 2).map((alt, i) => (
-              <View key={i} style={{
-                flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-                paddingVertical: 8, borderTopWidth: i > 0 ? 1 : 0,
-                borderTopColor: isDark ? '#1a2a1a' : '#ddeedd',
-              }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
-                    {alt.brand} {alt.model}
-                  </Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-                    {alt.active_watts_typical}W active
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: '#4CAF50', fontSize: 13, fontWeight: '700' }}>
-                    Save ${alt.annual_savings_dollars}/yr
-                  </Text>
-                  {alt.energy_star_certified && (
-                    <Text style={{ color: '#2196F3', fontSize: 10, fontWeight: '600' }}>ENERGY STAR</Text>
+            {researchData.alternatives.slice(0, 3).map((alt, i) => (
+              <TouchableOpacity
+                key={i}
+                activeOpacity={0.7}
+                onPress={() => setSelectedAlt({ alt, idx: i })}
+                style={{
+                  paddingVertical: 8, borderTopWidth: i > 0 ? 1 : 0,
+                  borderTopColor: isDark ? '#1a2a1a' : '#ddeedd',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {/* Product image thumbnail */}
+                  {alt.image_base64 ? (
+                    <Image
+                      source={{ uri: `data:image/png;base64,${alt.image_base64}` }}
+                      style={styles.altThumbnail}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={[styles.altThumbnail, { justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? '#1a2a1a' : '#e8f5e9' }]}>
+                      <Appliance3DModel category={alt.category || selectedCategory || ''} size={36} showLabel={false} />
+                    </View>
                   )}
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
+                      {alt.brand} {alt.model}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                      {alt.active_watts_typical}W active
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: '#4CAF50', fontSize: 13, fontWeight: '700' }}>
+                      Save ${alt.annual_savings_dollars}/yr
+                    </Text>
+                    {alt.energy_star_certified && (
+                      <Text style={{ color: '#2196F3', fontSize: 10, fontWeight: '600' }}>ENERGY STAR</Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: 6 }} />
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -651,12 +725,138 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.confirmText}>
-                <Ionicons name="checkmark" size={16} color="#fff" /> Add {selectedCategory} to Home
+                <Ionicons name="checkmark" size={16} color="#fff" />{' '}
+                {batchInfo
+                  ? batchInfo.current < batchInfo.total
+                    ? `Add & Next (${batchInfo.current} of ${batchInfo.total})`
+                    : `Add ${selectedCategory} to Home`
+                  : `Add ${selectedCategory} to Home`}
               </Text>
             )}
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Product detail modal */}
+      <Modal
+        visible={selectedAlt !== null || demoModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (demoModalVisible) {
+            setDemoModalVisible(false);
+            setDemoImage(null);
+          } else {
+            setSelectedAlt(null);
+          }
+        }}
+      >
+        <View style={styles.demoModalOverlay}>
+          <View style={[styles.demoModalContent, { backgroundColor: colors.bg }]}>
+            {/* Demo result view */}
+            {demoModalVisible && demoImage ? (
+              <>
+                <Text style={[styles.demoModalTitle, { color: colors.text }]}>
+                  Demo Preview
+                </Text>
+                <Image
+                  source={{ uri: `data:image/png;base64,${demoImage}` }}
+                  style={styles.demoModalImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={[styles.demoModalClose, { backgroundColor: colors.accent }]}
+                  onPress={() => {
+                    setDemoModalVisible(false);
+                    setDemoImage(null);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Close</Text>
+                </TouchableOpacity>
+              </>
+            ) : selectedAlt ? (
+              <>
+                {/* Product image — large */}
+                {selectedAlt.alt.image_base64 ? (
+                  <Image
+                    source={{ uri: `data:image/png;base64,${selectedAlt.alt.image_base64}` }}
+                    style={styles.demoModalImage}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <View style={[styles.demoModalImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? '#1a2a1a' : '#e8f5e9', borderRadius: 12 }]}>
+                    <Appliance3DModel category={selectedAlt.alt.category || selectedCategory || ''} size={100} showLabel={false} />
+                  </View>
+                )}
+
+                {/* Product info */}
+                <Text style={[styles.demoModalTitle, { color: colors.text, marginTop: 12 }]}>
+                  {selectedAlt.alt.brand} {selectedAlt.alt.model}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 16, marginBottom: 12 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: colors.accent, fontSize: 20, fontWeight: '800' }}>
+                      {selectedAlt.alt.active_watts_typical}W
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Active</Text>
+                  </View>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: '#4CAF50', fontSize: 20, fontWeight: '800' }}>
+                      ${selectedAlt.alt.annual_savings_dollars}/yr
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Savings</Text>
+                  </View>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: '#FF9800', fontSize: 20, fontWeight: '800' }}>
+                      {selectedAlt.alt.annual_savings_kwh}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>kWh saved</Text>
+                  </View>
+                </View>
+                {selectedAlt.alt.energy_star_certified && (
+                  <View style={{ backgroundColor: '#2196F3', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8, marginBottom: 12 }}>
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>ENERGY STAR Certified</Text>
+                  </View>
+                )}
+
+                {/* Demo button */}
+                <TouchableOpacity
+                  style={[styles.demoButton, {
+                    backgroundColor: isDark ? '#1a3a1a' : '#e0f2e0',
+                    width: '100%', paddingVertical: 12, marginBottom: 8, borderRadius: 10,
+                  }]}
+                  onPress={() => {
+                    if (!imageUri) {
+                      setError('No scan image available for demo. Try scanning the device again.');
+                      setSelectedAlt(null);
+                      return;
+                    }
+                    handleDemo(selectedAlt.alt, selectedAlt.idx);
+                  }}
+                  disabled={demoLoadingIdx !== null}
+                >
+                  {demoLoadingIdx === selectedAlt.idx ? (
+                    <ActivityIndicator size="small" color="#4CAF50" />
+                  ) : (
+                    <Ionicons name="eye-outline" size={16} color="#4CAF50" />
+                  )}
+                  <Text style={{ color: '#4CAF50', fontSize: 14, fontWeight: '700', marginLeft: 6 }}>
+                    {demoLoadingIdx === selectedAlt.idx ? 'Generating demo...' : 'Demo in my space'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Close */}
+                <TouchableOpacity
+                  style={[styles.demoModalClose, { backgroundColor: isDark ? '#333' : '#e0e0e0', marginTop: 4 }]}
+                  onPress={() => setSelectedAlt(null)}
+                >
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>Close</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
@@ -756,6 +956,30 @@ const styles = StyleSheet.create({
     paddingVertical: 14, borderRadius: 12, alignItems: 'center',
   },
   confirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  altThumbnail: {
+    width: 56, height: 56, borderRadius: 8, overflow: 'hidden',
+  },
+  demoButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: 6, paddingVertical: 6, borderRadius: 6,
+  },
+  demoModalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center', alignItems: 'center', padding: 20,
+  },
+  demoModalContent: {
+    width: '100%', maxHeight: '85%', borderRadius: 16, padding: 20,
+    alignItems: 'center',
+  },
+  demoModalTitle: {
+    fontSize: 18, fontWeight: '700', marginBottom: 16,
+  },
+  demoModalImage: {
+    width: '100%', height: 300, borderRadius: 12, marginBottom: 16,
+  },
+  demoModalClose: {
+    paddingVertical: 12, paddingHorizontal: 40, borderRadius: 10,
+  },
   successContainer: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
   },
