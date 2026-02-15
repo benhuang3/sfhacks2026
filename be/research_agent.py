@@ -252,18 +252,21 @@ async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]
         logger.info("  Gemini: sending prompt (%d chars) to gemini-2.0-flash-lite", len(prompt))
         client = genai.Client(api_key=api_key)
 
-        resp = await asyncio.to_thread(
-            lambda: client.models.generate_content(
-                model="gemini-2.0-flash-lite",
-                contents=genai_types.Content(
-                    role="user",
-                    parts=[genai_types.Part(text=prompt)],
-                ),
-                config=genai_types.GenerateContentConfig(
-                    temperature=0.1,
-                    max_output_tokens=400,
-                ),
-            )
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: client.models.generate_content(
+                    model="gemini-2.0-flash-lite",
+                    contents=genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part(text=prompt)],
+                    ),
+                    config=genai_types.GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=400,
+                    ),
+                )
+            ),
+            timeout=30.0,
         )
 
         if not resp or not resp.text:
@@ -343,14 +346,17 @@ async def _generate_product_image(brand: str, model: str, category: str) -> Opti
             f"e-commerce product listing photo. No text overlays."
         )
 
-        resp = await asyncio.to_thread(
-            lambda: client.models.generate_content(
-                model="gemini-2.5-flash-image",
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                ),
-            )
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(
+                lambda: client.models.generate_content(
+                    model="gemini-2.5-flash-image",
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(
+                        response_modalities=["IMAGE", "TEXT"],
+                    ),
+                )
+            ),
+            timeout=25.0,
         )
 
         if resp and resp.candidates:

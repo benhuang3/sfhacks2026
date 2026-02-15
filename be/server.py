@@ -663,12 +663,19 @@ async def research_device_endpoint(req: ResearchDeviceRequest):
     """
     logger.info("POST /api/v1/research-device — brand=%s model=%s category=%s", req.brand, req.model, req.category)
     try:
-        result = await research_device(req.brand, req.model, req.category)
+        import asyncio as _aio
+        result = await _aio.wait_for(
+            research_device(req.brand, req.model, req.category),
+            timeout=55.0,
+        )
         has_profile = result.get("power_profile") is not None
         alt_count = len(result.get("alternatives", []))
         source = result.get("power_profile", {}).get("source", "none") if has_profile else "none"
         logger.info("POST /api/v1/research-device — done: hasProfile=%s source=%s alternatives=%d", has_profile, source, alt_count)
         return {"success": True, "data": result}
+    except _aio.TimeoutError:
+        logger.warning("POST /api/v1/research-device — timed out after 55s")
+        return {"success": True, "data": {"power_profile": None, "alternatives": []}}
     except Exception as exc:
         logger.exception("Research device failed")
         raise HTTPException(

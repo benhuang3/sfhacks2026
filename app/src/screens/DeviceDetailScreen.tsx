@@ -2,7 +2,7 @@
  * DeviceDetailScreen — Full-page device power summary + edit/delete.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -16,11 +16,13 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Device, RoomModel, getDevice, updateDevice, deleteDevice, researchDevice, ResearchResult, ResearchAlternative, toggleDevice, getDevicePower, LivePower, demoProduct } from '../services/apiClient';
 import { useTheme } from '../context/ThemeContext';
 import { showAlert, showConfirm } from '../utils/alert';
 import { Appliance3DModel } from '../components/Appliance3DModel';
+import { DemoCaptureModal } from '../components/DemoCaptureModal';
 import { log } from '../utils/logger';
 
 interface DeviceDetailScreenProps {
@@ -32,6 +34,7 @@ interface DeviceDetailScreenProps {
 
 export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDeviceUpdated }: DeviceDetailScreenProps) {
   const { colors, isDark } = useTheme();
+  const isFocused = useIsFocused();
 
   // Live device state — starts from prop, updated by refresh
   const [device, setDevice] = useState<Device>(initialDevice);
@@ -93,21 +96,27 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
   const [demoLoading, setDemoLoading] = useState(false);
   const [demoImage, setDemoImage] = useState<string | null>(null);
   const [demoModalVisible, setDemoModalVisible] = useState(false);
+  const [demoCameraVisible, setDemoCameraVisible] = useState(false);
+  const pendingDemoAltRef = React.useRef<ResearchAlternative | null>(null);
 
-  async function handleDemo(alt: ResearchAlternative) {
+  function handleDemoStart(alt: ResearchAlternative) {
+    pendingDemoAltRef.current = alt;
+    setSelectedAlt(null);          // close product modal first to avoid stacking
+    setDemoCameraVisible(true);
+  }
+
+  async function handleDemoCapture(photoUri: string, bbox: [number, number, number, number]) {
+    setDemoCameraVisible(false);
+    const alt = pendingDemoAltRef.current;
+    if (!alt) return;
+    pendingDemoAltRef.current = null;
+
     setDemoLoading(true);
     try {
       let scanB64: string;
       if (Platform.OS === 'web') {
-        // Let user pick an image via file input
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        const file = await new Promise<File | null>((resolve) => {
-          input.onchange = () => resolve(input.files?.[0] ?? null);
-          input.click();
-        });
-        if (!file) { setDemoLoading(false); return; }
+        const resp = await fetch(photoUri);
+        const blob = await resp.blob();
         scanB64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => {
@@ -115,31 +124,18 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
             resolve(result.split(',')[1] || result);
           };
           reader.onerror = () => reject(new Error('Failed to read image'));
-          reader.readAsDataURL(file);
+          reader.readAsDataURL(blob);
         });
       } else {
-        const ImagePicker = await import('expo-image-picker');
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          showAlert('Permission Required', 'Camera roll access is needed for the demo feature.');
-          setDemoLoading(false);
-          return;
-        }
-        const pickResult = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          quality: 0.8,
-          base64: true,
+        const FileSystem = await import('expo-file-system/legacy');
+        scanB64 = await FileSystem.readAsStringAsync(photoUri, {
+          encoding: FileSystem.EncodingType.Base64,
         });
-        if (pickResult.canceled || !pickResult.assets[0]?.base64) {
-          setDemoLoading(false);
-          return;
-        }
-        scanB64 = pickResult.assets[0].base64;
       }
 
       const result = await demoProduct({
         scan_image_base64: scanB64,
-        bbox: [0, 0, 1, 1],
+        bbox,
         alt_brand: alt.brand,
         alt_model: alt.model,
         alt_category: alt.category || device.category,
@@ -154,9 +150,9 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
     }
   }
 
-  // Live power polling for smart devices
+  // Live power polling for smart devices (only when screen is focused)
   useEffect(() => {
-    if (!device.is_smart) return;
+    if (!device.is_smart || !isFocused) return;
     log.home('Live power polling started', { deviceId: device.id, label: device.label, intervalMs: 3000 });
     let cancelled = false;
     let pollCount = 0;
@@ -182,12 +178,13 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
       clearInterval(interval);
       log.home('Live power polling stopped', { deviceId: device.id, totalPolls: pollCount });
     };
-  }, [device.id, device.is_smart]);
+  }, [device.id, device.is_smart, isFocused]);
 
   const roomName = rooms.find(r => r.roomId === device.roomId)?.name ?? device.roomId ?? 'Unknown room';
 
-  // Auto-fetch research data if brand/model are known
+  // Auto-fetch research data if brand/model are known (only when screen is focused)
   useEffect(() => {
+    if (!isFocused) return;
     const brand = device.brand && device.brand !== 'Unknown' ? device.brand : '';
     const model = device.model && device.model !== 'Unknown' ? device.model : '';
     if (!brand && !model) return;
@@ -206,10 +203,10 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
           });
         }
       })
-      .catch(err => { log.error('api', 'Research auto-fetch failed', err); })
+      .catch(err => { if (!cancelled) log.error('api', 'Research auto-fetch failed', err); })
       .finally(() => { if (!cancelled) setResearching(false); });
     return () => { cancelled = true; };
-  }, [device.brand, device.model, device.category]);
+  }, [device.brand, device.model, device.category, isFocused]);
 
   function handleResearch() {
     const brand = editBrand || device.brand || 'Unknown';
@@ -768,12 +765,12 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
             {/* Demo result view */}
             {demoModalVisible && demoImage ? (
               <>
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 16 }}>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
                   Demo Preview
                 </Text>
                 <Image
                   source={{ uri: `data:image/png;base64,${demoImage}` }}
-                  style={styles.altModalImage}
+                  style={{ width: '100%', flex: 1, borderRadius: 12, marginBottom: 12 }}
                   resizeMode="contain"
                 />
                 <TouchableOpacity
@@ -847,7 +844,7 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
                     backgroundColor: isDark ? '#1a3a1a' : '#e0f2e0',
                     width: '100%', paddingVertical: 12, marginBottom: 8, borderRadius: 10,
                   }}
-                  onPress={() => handleDemo(selectedAlt)}
+                  onPress={() => handleDemoStart(selectedAlt)}
                   disabled={demoLoading}
                 >
                   {demoLoading ? (
@@ -870,6 +867,33 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
               </>
             ) : null}
           </View>
+        </View>
+      </Modal>
+
+      {/* Demo capture camera modal */}
+      <DemoCaptureModal
+        visible={demoCameraVisible}
+        onClose={() => {
+          setDemoCameraVisible(false);
+          pendingDemoAltRef.current = null;
+        }}
+        onCapture={handleDemoCapture}
+        title="Capture your space"
+      />
+
+      {/* Demo loading overlay */}
+      <Modal visible={demoLoading} transparent animationType="fade">
+        <View style={{
+          flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+          justifyContent: 'center', alignItems: 'center',
+        }}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 16 }}>
+            Generating demo image...
+          </Text>
+          <Text style={{ color: '#aaa', fontSize: 13, marginTop: 8 }}>
+            This may take a moment
+          </Text>
         </View>
       </Modal>
     </SafeAreaView>
@@ -1035,7 +1059,7 @@ const styles = StyleSheet.create({
   },
   altModalContent: {
     width: '100%',
-    maxHeight: '85%',
+    maxHeight: '92%',
     borderRadius: 16,
     padding: 20,
     alignItems: 'center',

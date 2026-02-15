@@ -21,6 +21,7 @@ import {
 import { identifyBrand } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
+import { DemoCaptureModal } from '../components/DemoCaptureModal';
 import { log } from '../utils/logger';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -95,6 +96,8 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
   const [demoImage, setDemoImage] = useState<string | null>(null);
   const [demoModalVisible, setDemoModalVisible] = useState(false);
   const [selectedAlt, setSelectedAlt] = useState<{ alt: ResearchAlternative; idx: number } | null>(null);
+  const [demoCameraVisible, setDemoCameraVisible] = useState(false);
+  const pendingDemoRef = useRef<{ alt: ResearchAlternative; idx: number } | null>(null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -192,15 +195,28 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
     return allCategories.filter(c => c.category.toLowerCase().includes(q));
   }, [searchQuery, allCategories]);
 
-  const handleDemo = useCallback(async (alt: ResearchAlternative, idx: number) => {
-    if (!imageUri) return;
+  const handleDemoStart = useCallback((alt: ResearchAlternative, idx: number) => {
+    pendingDemoRef.current = { alt, idx };
+    setDemoCameraVisible(true);
+  }, []);
+
+  const handleDemoCapture = useCallback(async (
+    photoUri: string,
+    bbox: [number, number, number, number],
+  ) => {
+    setDemoCameraVisible(false);
+    const pending = pendingDemoRef.current;
+    if (!pending) return;
+
+    const { alt, idx } = pending;
+    pendingDemoRef.current = null;
     setDemoLoadingIdx(idx);
     setError(null);
+
     try {
-      // Convert imageUri to base64
       let scanB64: string;
       if (Platform.OS === 'web') {
-        const resp = await fetch(imageUri);
+        const resp = await fetch(photoUri);
         const blob = await resp.blob();
         scanB64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -213,15 +229,10 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
         });
       } else {
         const FileSystem = await import('expo-file-system/legacy');
-        scanB64 = await FileSystem.readAsStringAsync(imageUri, {
+        scanB64 = await FileSystem.readAsStringAsync(photoUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
       }
-
-      // Use bbox if available, otherwise let Gemini use the full image
-      const bbox = (scanData.bbox && scanData.bbox.length === 4
-        ? scanData.bbox
-        : [0, 0, 1, 1]) as [number, number, number, number];
 
       const result = await demoProduct({
         scan_image_base64: scanB64,
@@ -238,7 +249,7 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
     } finally {
       setDemoLoadingIdx(null);
     }
-  }, [imageUri, scanData.bbox, selectedCategory]);
+  }, [selectedCategory]);
 
   const handleConfirm = async () => {
     if (!selectedCategory || !selectedHomeId) return;
@@ -826,12 +837,7 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
                     width: '100%', paddingVertical: 12, marginBottom: 8, borderRadius: 10,
                   }]}
                   onPress={() => {
-                    if (!imageUri) {
-                      setError('No scan image available for demo. Try scanning the device again.');
-                      setSelectedAlt(null);
-                      return;
-                    }
-                    handleDemo(selectedAlt.alt, selectedAlt.idx);
+                    handleDemoStart(selectedAlt.alt, selectedAlt.idx);
                   }}
                   disabled={demoLoadingIdx !== null}
                 >
@@ -857,6 +863,17 @@ export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDev
           </View>
         </View>
       </Modal>
+
+      {/* Demo capture camera modal */}
+      <DemoCaptureModal
+        visible={demoCameraVisible}
+        onClose={() => {
+          setDemoCameraVisible(false);
+          pendingDemoRef.current = null;
+        }}
+        onCapture={handleDemoCapture}
+        title="Capture your space"
+      />
     </Animated.View>
   );
 }

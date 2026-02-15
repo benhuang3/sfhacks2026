@@ -197,7 +197,7 @@ export function AdvancedScanScreen({ onBack, onUpload, onNavigateQueue }: Advanc
 
   // Detection interval
   useEffect(() => {
-    if (isScanning && isFocused && pipeline.isReady && captureState !== 'freeCapture' && captureState !== 'categoryPick') {
+    if (isScanning && isFocused && pipeline.isReady && captureState === 'idle') {
       intervalRef.current = setInterval(runDetection, 800);
     }
     return () => {
@@ -246,7 +246,7 @@ export function AdvancedScanScreen({ onBack, onUpload, onNavigateQueue }: Advanc
   // Shutter press — manual capture angle or enter free capture
   // ---------------------------------------------------------------------------
   const handleShutterPress = useCallback(async () => {
-    if (!cameraRef.current || isCapturingRef.current) return;
+    if (!cameraRef.current || isCapturingRef.current || isDetectingRef.current) return;
 
     // Sub-flow A: in manual capture mode, capture an angle
     if (captureState === 'manualCapture' && selectedObjectRef.current) {

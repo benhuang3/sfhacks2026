@@ -812,14 +812,89 @@ function LandingScreen() {
               />
             </View>
 
-            {/* My Devices with 3D Models */}
-            {devices.length > 0 && (
+            {/* Smart Devices Row */}
+            {devices.filter(d => d.is_smart).length > 0 && (
               <View style={{ marginBottom: 20 }}>
-                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
-                  <Ionicons name="flash-outline" size={18} color={colors.accent} /> My Devices
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 6 }}>
+                  <Ionicons name="wifi" size={18} color="#2196F3" />
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>Smart Devices</Text>
+                  <View style={{
+                    backgroundColor: 'rgba(33,150,243,0.12)', borderRadius: 10,
+                    paddingHorizontal: 8, paddingVertical: 2, marginLeft: 4,
+                  }}>
+                    <Text style={{ color: '#2196F3', fontSize: 11, fontWeight: '700' }}>
+                      {devices.filter(d => d.is_smart).length}
+                    </Text>
+                  </View>
+                </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {devices.map(device => (
+                  {devices.filter(d => d.is_smart).map(device => (
+                    <TouchableOpacity
+                      key={device.id}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        (navigation as any).navigate('DeviceDetail', {
+                          device,
+                          rooms: homes[0]?.rooms ?? [],
+                        });
+                      }}
+                      style={{
+                        backgroundColor: colors.card,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: 'rgba(33,150,243,0.25)',
+                        padding: 14,
+                        marginRight: 12,
+                        alignItems: 'center',
+                        width: 120,
+                      }}
+                    >
+                      <View style={{
+                        position: 'absolute', top: 8, right: 8, zIndex: 1,
+                        flexDirection: 'row', alignItems: 'center', gap: 4,
+                        backgroundColor: 'rgba(33,150,243,0.12)', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2,
+                      }}>
+                        <Ionicons name="wifi" size={10} color="#2196F3" />
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: device.is_on !== false ? '#4CAF50' : '#888' }} />
+                      </View>
+                      <Appliance3DModel category={device.category} size={80} showLabel={false} />
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700', marginTop: 8, textAlign: 'center' }} numberOfLines={1}>
+                        {device.label || device.category}
+                      </Text>
+                      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '600', marginTop: 3 }}>
+                        {device.power?.active_watts_typical ?? '?'}W
+                      </Text>
+                      {device.power?.standby_watts_typical > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                          <Image source={require('./assets/ghost.png')} style={{ width: 10, height: 10, tintColor: '#FF9800' }} resizeMode="contain" />
+                          <Text style={{ color: '#FF9800', fontSize: 9, marginLeft: 3 }}>
+                            {device.power.standby_watts_typical}W standby
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Regular Devices Row */}
+            {devices.filter(d => !d.is_smart).length > 0 && (
+              <View style={{ marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 6 }}>
+                  <Ionicons name="flash-outline" size={18} color={colors.accent} />
+                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>My Devices</Text>
+                  <View style={{
+                    backgroundColor: colors.accent + '18', borderRadius: 10,
+                    paddingHorizontal: 8, paddingVertical: 2, marginLeft: 4,
+                  }}>
+                    <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '700' }}>
+                      {devices.filter(d => !d.is_smart).length}
+                    </Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {devices.filter(d => !d.is_smart).map(device => (
                     <TouchableOpacity
                       key={device.id}
                       activeOpacity={0.7}
@@ -840,21 +915,7 @@ function LandingScreen() {
                         width: 120,
                       }}
                     >
-                      {device.is_smart && (
-                        <View style={{
-                          position: 'absolute', top: 8, right: 8, zIndex: 1,
-                          flexDirection: 'row', alignItems: 'center', gap: 4,
-                          backgroundColor: 'rgba(33,150,243,0.12)', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2,
-                        }}>
-                          <Ionicons name="wifi" size={10} color="#2196F3" />
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: device.is_on !== false ? '#4CAF50' : '#888' }} />
-                        </View>
-                      )}
-                      <Appliance3DModel
-                        category={device.category}
-                        size={80}
-                        showLabel={false}
-                      />
+                      <Appliance3DModel category={device.category} size={80} showLabel={false} />
                       <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700', marginTop: 8, textAlign: 'center' }} numberOfLines={1}>
                         {device.label || device.category}
                       </Text>

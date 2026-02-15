@@ -50,10 +50,10 @@ function parseJsonSafe(text: string): any {
 // API calls
 // ---------------------------------------------------------------------------
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, timeoutMs = 20000): Promise<T> {
   let res: Response;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
@@ -570,7 +570,7 @@ export async function researchDevice(
   model: string,
   category: string,
 ): Promise<ResearchResult> {
-  return post<ResearchResult>('/research-device', { brand, model, category });
+  return post<ResearchResult>('/research-device', { brand, model, category }, 60000);
 }
 
 // ---------------------------------------------------------------------------
