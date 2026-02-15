@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timezone
 
 from agents import get_db
+from db_fallback import is_db_available, MemCollection
 from homes_devices import list_devices, get_assumptions
 from models import (
     Assumptions,
@@ -163,7 +164,12 @@ async def compute_home_summary(home_id: str) -> dict:
 # ROI Snapshot persistence
 # ---------------------------------------------------------------------------
 
+_MEM_SNAPSHOTS: dict[str, dict] = {}
+
+
 def _snapshots_col():
+    if not is_db_available():
+        return MemCollection(_MEM_SNAPSHOTS, "snapshots")
     return get_db()["roi_snapshots"]
 
 

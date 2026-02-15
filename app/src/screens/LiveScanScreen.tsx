@@ -1,8 +1,4 @@
 /**
- * LiveScanScreen — Real-time camera preview with cloud-based Gemini Vision detection.
- *
- * Captures photos from the camera and sends them to the backend /scan endpoint
- * which uses Gemini Vision AI for accurate appliance detection.
  * LiveScanScreen — Real-time camera preview with on-device object detection
  * and outline tracing via DeepLabV3 segmentation.
  *
@@ -26,8 +22,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { uploadScanImage } from '../services/apiService';
-import { getDisplayName } from '../utils/applianceClasses';
 import { useScannerPipeline } from '../hooks/useScannerPipeline';
 import { useObjectTracker } from '../hooks/useObjectTracker';
 import { useSegmentationOverlay } from '../hooks/useSegmentationOverlay';
@@ -35,22 +29,31 @@ import { TrackedObject } from '../utils/scannerTypes';
 import { getDisplayName } from '../utils/applianceClasses';
 import { buildScanDataFromDetections } from '../utils/detectionBridge';
 import { OutlineOverlay } from '../components/scanner/OutlineOverlay';
+import { cropToBoundingBox } from '../services/imageProcessingService';
 import { log } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
 
+const MULTI_ANGLE_TARGET = 4;
+const MULTI_ANGLE_INTERVAL_MS = 1500;
+
 interface LiveScanScreenProps {
   onBack?: () => void;
   onCapture?: (scanData: any, imageUri: string) => void;
+  onMultiAngleComplete?: (
+    scanData: any,
+    imageUris: string[],
+    primaryUri: string
+  ) => void;
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
+export function LiveScanScreen({ onBack, onCapture, onMultiAngleComplete }: LiveScanScreenProps) {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const isFocused = useIsFocused();
@@ -66,17 +69,21 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   segRequestRef.current = segOverlay.requestSegmentation;
 
   // State
+  const [trackedObjects, setTrackedObjects] = useState<TrackedObject[]>([]);
   const [isScanning, setIsScanning] = useState(true);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [lastResult, setLastResult] = useState<any>(null);
-  const [detectedItems, setDetectedItems] = useState<Array<{label: string; confidence: number}>>([]);
+  const [isStubMode, setIsStubMode] = useState(false);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [multiAngleMode, setMultiAngleMode] = useState(false);
+  const [capturedAngles, setCapturedAngles] = useState<string[]>([]);
+  const [flashCapture, setFlashCapture] = useState(false);
+  const selectedObjectRef = useRef<TrackedObject | null>(null);
   const [cameraLayout, setCameraLayout] = useState({ width: 1, height: 1 });
-  const [statusMsg, setStatusMsg] = useState('Ready to scan');
   const photoDimsRef = useRef({ width: 640, height: 480 });
   const cameraLayoutRef = useRef({ width: 1, height: 1 });
   const isDetectingRef = useRef(false);
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const emptyFrameCountRef = useRef(0);
 
   // Camera layout measurement
   const onCameraLayout = useCallback((e: LayoutChangeEvent) => {
@@ -86,46 +93,31 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Auto-scan loop — captures and sends to Gemini Vision backend every 3s
+  // Detection loop with backpressure
   // ---------------------------------------------------------------------------
-  const runCloudDetection = useCallback(async () => {
-    if (isCapturingRef.current || !cameraRef.current || isAnalyzing) return;
+  const runDetection = useCallback(async () => {
+    if (
+      isDetectingRef.current ||
+      isCapturingRef.current ||
+      !pipeline.isReady ||
+      !cameraRef.current
+    )
+      return;
 
-    setIsAnalyzing(true);
-    setStatusMsg('Analyzing...');
+    isDetectingRef.current = true;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.5,
+        quality: 0.3,
         base64: false,
         exif: false,
       });
-      if (!photo?.uri) {
-        setIsAnalyzing(false);
-        setStatusMsg('Ready to scan');
-        return;
+      if (!photo?.uri) return;
+
+      // Track photo dimensions for coordinate mapping
+      if (photo.width && photo.height) {
+        photoDimsRef.current = { width: photo.width, height: photo.height };
       }
 
-      const result = await uploadScanImage(photo.uri);
-      log.scan('Cloud detection result', result);
-
-      // Parse results from backend
-      const candidates = (result as any).candidates || [];
-      const detectedName = (result as any).detected_appliance?.name || '';
-      const confidence = (result as any).detected_appliance?.confidence || 0;
-
-      if (detectedName && detectedName !== 'Unknown') {
-        const items: Array<{label: string; confidence: number}> = [];
-        if (confidence > 0) {
-          items.push({ label: detectedName, confidence });
-        }
-        candidates.forEach((c: any) => {
-          if (c.category !== detectedName && c.confidence > 0.1) {
-            items.push({ label: c.category, confidence: c.confidence });
-          }
-        });
-        setDetectedItems(items.slice(0, 4));
-        setLastResult(result);
-        setStatusMsg(`${items.length} detected`);
       const detections = await pipeline.detect(photo.uri);
       const tracked = updateWithDetectionsRef.current(detections);
       setTrackedObjects(tracked);
@@ -148,18 +140,17 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         emptyFrameCountRef.current += 1;
         if (emptyFrameCountRef.current >= 8) setIsStubMode(true);
       } else {
-        setDetectedItems([]);
-        setStatusMsg('No appliance detected');
+        emptyFrameCountRef.current = 0;
+        setIsStubMode(false);
       }
     } catch (err) {
-      log.error('scan', 'Cloud detection error', err);
-      setStatusMsg('Scan error — retrying...');
+      log.error('scan', 'Detection loop error', err);
     } finally {
-      setIsAnalyzing(false);
+      isDetectingRef.current = false;
     }
-  }, [isAnalyzing]);
+  }, [pipeline.isReady, pipeline.detect]);
 
-  // Resume scanning when screen regains focus
+  // Resume scanning when screen regains focus (e.g. back from ScanConfirm)
   useEffect(() => {
     if (isFocused) {
       setIsScanning(true);
@@ -168,11 +159,11 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
     }
   }, [isFocused]);
 
-  // Start/stop auto-scan interval
+  // Start/stop detection interval (also gated on isFocused)
   useEffect(() => {
-    if (isScanning && isFocused) {
-      intervalRef.current = setInterval(runCloudDetection, 3500);
-      log.scan('Cloud detection loop started (3.5s interval)');
+    if (isScanning && isFocused && pipeline.isReady) {
+      intervalRef.current = setInterval(runDetection, 800);
+      log.scan('Detection loop started (800ms interval)');
     }
     return () => {
       if (intervalRef.current) {
@@ -180,58 +171,41 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         intervalRef.current = null;
       }
     };
-  }, [isScanning, isFocused, runCloudDetection]);
+  }, [isScanning, isFocused, pipeline.isReady, runDetection]);
 
   // ---------------------------------------------------------------------------
-  // Capture — full-res photo + send to backend + navigate to confirm
+  // Capture — full-res photo + navigate to confirm
   // ---------------------------------------------------------------------------
   const handleCapture = useCallback(async () => {
     if (!cameraRef.current || isCapturingRef.current) return;
 
+    // Block both capture re-entry and detection loop
     isCapturingRef.current = true;
     setIsScanning(false);
-    setIsAnalyzing(true);
-    setStatusMsg('Capturing...');
+    setSelectedObjectId(null);
     log.scan('Capture pressed — taking full-res photo');
+
+    // Wait for any in-flight detection to finish
+    const waitForDetection = async () => {
+      let attempts = 0;
+      while (isDetectingRef.current && attempts < 20) {
+        await new Promise((r) => setTimeout(r, 50));
+        attempts++;
+      }
+    };
+    await waitForDetection();
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
+        quality: 0.8,
         base64: false,
         exif: false,
       });
       if (!photo?.uri) {
         isCapturingRef.current = false;
         setIsScanning(true);
-        setIsAnalyzing(false);
-        setStatusMsg('Ready to scan');
         return;
       }
-
-      setStatusMsg('Analyzing with Gemini AI...');
-      const result = await uploadScanImage(photo.uri);
-      log.scan('Capture scan complete', result);
-
-      // Build scan data from backend response
-      const scanData = {
-        candidates: (result as any).candidates || [],
-        bbox: (result as any).bbox || null,
-        detected_appliance: (result as any).detected_appliance || {
-          brand: 'Unknown',
-          model: 'Unknown',
-          name: 'Unknown',
-          category: 'other',
-          confidence: 0,
-        },
-        power_profile: (result as any).power_profile || null,
-        ocr_texts: (result as any).ocr_texts || [],
-        filename: photo.uri.split('/').pop() ?? 'capture.jpg',
-        detections: ((result as any).candidates || []).map((c: any) => ({
-          label: c.category,
-          category: c.category,
-          score: c.confidence,
-        })),
-      };
 
       // Run one final detection on the full-res image
       const detections = await pipeline.detect(photo.uri);
@@ -249,16 +223,107 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         topLabel: scanData.detected_appliance.name,
       });
       isCapturingRef.current = false;
-      setIsAnalyzing(false);
       onCapture?.(scanData, photo.uri);
     } catch (err) {
       log.error('scan', 'Capture failed', err);
       isCapturingRef.current = false;
-      setIsScanning(true);
-      setIsAnalyzing(false);
-      setStatusMsg('Capture failed — try again');
+      setIsScanning(true); // Resume on failure
     }
-  }, [onCapture]);
+  }, [pipeline, tracker, trackedObjects, onCapture]);
+
+  // ---------------------------------------------------------------------------
+  // Object tap — enter multi-angle capture mode
+  // ---------------------------------------------------------------------------
+  const handleObjectPress = useCallback(
+    (obj: TrackedObject) => {
+      if (isCapturingRef.current || multiAngleMode) return;
+      log.scan(`Object tapped: ${obj.label} (${obj.id}) — entering multi-angle mode`);
+      selectedObjectRef.current = obj;
+      setSelectedObjectId(obj.id);
+      setIsScanning(false); // Pause detection so it doesn't compete for camera
+      setMultiAngleMode(true);
+      setCapturedAngles([]);
+    },
+    [multiAngleMode]
+  );
+
+  // Cancel multi-angle mode
+  const cancelMultiAngle = useCallback(() => {
+    setMultiAngleMode(false);
+    setSelectedObjectId(null);
+    setCapturedAngles([]);
+    selectedObjectRef.current = null;
+    setIsScanning(true); // Resume detection
+    log.scan('Multi-angle mode cancelled');
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Multi-angle auto-capture effect
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!multiAngleMode || !cameraRef.current) return;
+
+    const captureAngle = async () => {
+      if (isDetectingRef.current || isCapturingRef.current || !cameraRef.current) return;
+      const obj = selectedObjectRef.current;
+      if (!obj) return;
+
+      isCapturingRef.current = true;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.8,
+          base64: false,
+          exif: false,
+        });
+        if (!photo?.uri) return;
+
+        // Crop to bounding box region (with 10% padding)
+        const croppedUri = await cropToBoundingBox(
+          photo.uri,
+          obj.bbox,
+          photo.width,
+          photo.height,
+          0.15
+        );
+
+        // Flash feedback
+        setFlashCapture(true);
+        setTimeout(() => setFlashCapture(false), 200);
+
+        setCapturedAngles((prev) => {
+          const updated = [...prev, croppedUri];
+          log.scan(`Multi-angle capture ${updated.length}/${MULTI_ANGLE_TARGET}`);
+
+          // Check if we've reached the target
+          if (updated.length >= MULTI_ANGLE_TARGET) {
+            const scanData = buildScanDataFromDetections(
+              [obj, ...trackedObjects.filter((t) => t.id !== obj.id)],
+              updated[0],
+              { width: photo.width, height: photo.height },
+              obj.id
+            );
+
+            // Schedule navigation for next tick (after state update)
+            setTimeout(() => {
+              setMultiAngleMode(false);
+              setSelectedObjectId(null);
+              selectedObjectRef.current = null;
+              onMultiAngleComplete?.(scanData, updated, updated[0]);
+            }, 100);
+          }
+
+          return updated;
+        });
+      } catch (err) {
+        log.error('scan', 'Multi-angle capture failed', err);
+      } finally {
+        isCapturingRef.current = false;
+      }
+    };
+
+    const timer = setInterval(captureAngle, MULTI_ANGLE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [multiAngleMode, trackedObjects, onMultiAngleComplete]);
 
   // ---------------------------------------------------------------------------
   // Permission not yet determined
@@ -294,11 +359,51 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   }
 
   // ---------------------------------------------------------------------------
-  // Main camera + overlay view
+  // Model loading state
   // ---------------------------------------------------------------------------
+  if (!pipeline.isReady) {
+    return (
+      <SafeAreaView style={styles.centered}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+        <Text style={styles.loadingTitle}>Loading AI Model...</Text>
+        <View style={styles.progressBarBg}>
+          <View
+            style={[
+              styles.progressBarFill,
+              {
+                width: `${Math.round(pipeline.downloadProgress * 100)}%`,
+              },
+            ]}
+          />
+        </View>
+        <Text style={styles.progressText}>
+          {Math.round(pipeline.downloadProgress * 100)}%
+        </Text>
+        {pipeline.error && (
+          <Text style={styles.errorText}>
+            Error: {String(pipeline.error)}
+          </Text>
+        )}
+        {onBack && (
+          <TouchableOpacity style={styles.backLink} onPress={onBack}>
+            <Text style={styles.backLinkText}>Go Back</Text>
+          </TouchableOpacity>
+        )}
+      </SafeAreaView>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main camera + overlay view
+  // CameraView must have NO children — overlays go in a sibling View.
+  // ---------------------------------------------------------------------------
+  const applianceCount = trackedObjects.filter(
+    (o) => o.framesSinceLastSeen === 0,
+  ).length;
+
   return (
     <View style={styles.container}>
-      {/* Camera preview */}
+      {/* Camera preview — no children allowed */}
       <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
@@ -306,19 +411,16 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         onLayout={onCameraLayout}
       />
 
-      {/* All overlays */}
+      {/* All overlays in a sibling view on top of the camera */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {/* Analyzing overlay */}
-        {isAnalyzing && (
-          <View style={styles.analyzingOverlay}>
-            <ActivityIndicator size="small" color="#4CAF50" />
-            <Text style={styles.analyzingText}>Gemini Vision AI</Text>
-        {/* Object outlines (SVG) + fallback bounding boxes */}
+        {/* Bounding boxes only (outline tracing disabled for now) */}
         <OutlineOverlay
-          overlays={segOverlay.overlays}
+          overlays={[]}
           trackedObjects={trackedObjects}
           photoDims={photoDimsRef.current}
           cameraLayout={cameraLayout}
+          onObjectPress={handleObjectPress}
+          selectedObjectId={selectedObjectId}
         />
 
         {/* Stub mode warning */}
@@ -341,74 +443,142 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: isScanning ? (isAnalyzing ? '#FFC107' : '#4CAF50') : '#888' },
+                { backgroundColor: isScanning ? '#4CAF50' : '#888' },
               ]}
             />
-            <Text style={styles.statusText}>{statusMsg}</Text>
+            <Text style={styles.statusText}>
+              {isScanning
+                ? applianceCount > 0
+                  ? `${applianceCount} detected`
+                  : 'Scanning...'
+                : 'Paused'}
+            </Text>
           </View>
           {/* Segmentation model download progress */}
-          {!segOverlay.isReady && segOverlay.downloadProgress < 1 && (
+          {!segOverlay.isReady && !segOverlay.error && (
             <View style={[styles.statusPill, { marginLeft: 8 }]}>
               <Text style={styles.statusText}>
                 Outline: {Math.round(segOverlay.downloadProgress * 100)}%
               </Text>
             </View>
           )}
+          {/* Segmentation error indicator */}
+          {segOverlay.error && (
+            <View style={[styles.statusPill, { marginLeft: 8, backgroundColor: 'rgba(255,0,0,0.6)' }]}>
+              <Text style={styles.statusText}>Outline failed</Text>
+            </View>
+          )}
         </SafeAreaView>
 
-        {/* Detection chips */}
-        {detectedItems.length > 0 && (
-          <View style={styles.detectionList} pointerEvents="none">
-            {detectedItems.map((item, idx) => (
-              <View key={`det-${idx}`} style={styles.detectionChip}>
-                <Ionicons name="checkmark-circle" size={14} color="#4CAF50" style={{ marginRight: 4 }} />
-                <Text style={styles.detectionChipText}>
-                  {getDisplayName(item.label)}
+        {/* Multi-angle capture overlay */}
+        {multiAngleMode && (
+          <>
+            {/* Flash feedback on capture */}
+            {flashCapture && (
+              <View style={styles.captureFlash} pointerEvents="none" />
+            )}
+
+            {/* Instruction + progress */}
+            <View style={styles.multiAngleOverlay} pointerEvents="none">
+              <View style={styles.multiAngleCard}>
+                <Text style={styles.multiAngleTitle}>
+                  {getDisplayName(selectedObjectRef.current?.label ?? '')}
                 </Text>
-                <Text style={styles.detectionChipScore}>
-                  {Math.round(item.confidence * 100)}%
+                <Text style={styles.multiAngleInstruction}>
+                  Move around to show different angles
+                </Text>
+                {/* Progress dots */}
+                <View style={styles.progressDots}>
+                  {Array.from({ length: MULTI_ANGLE_TARGET }).map((_, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.progressDot,
+                        i < capturedAngles.length && styles.progressDotFilled,
+                      ]}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.multiAngleCount}>
+                  {capturedAngles.length} of {MULTI_ANGLE_TARGET} angles captured
                 </Text>
               </View>
-            ))}
-          </View>
+            </View>
+
+            {/* Cancel button */}
+            <View style={styles.bottomBar}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={cancelMultiAngle}
+              >
+                <Ionicons name="close" size={18} color="#fff" />
+                <Text style={styles.toggleButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={{ width: 72 }} />
+              <View style={{ width: 60 }} />
+            </View>
+          </>
         )}
 
-        {/* Powered by badge */}
-        <View style={styles.poweredBadge} pointerEvents="none">
-          <Ionicons name="sparkles" size={12} color="#A78BFA" />
-          <Text style={styles.poweredText}>Powered by Gemini Vision AI</Text>
-        </View>
+        {/* Normal mode: Detection chips + bottom controls */}
+        {!multiAngleMode && (
+          <>
+            {/* Detection chips */}
+            {trackedObjects.length > 0 && (
+              <View style={styles.detectionList} pointerEvents="box-none">
+                {trackedObjects
+                  .filter((o) => o.framesSinceLastSeen <= 3)
+                  .slice(0, 4)
+                  .map((obj) => (
+                    <TouchableOpacity
+                      key={obj.id}
+                      style={styles.detectionChip}
+                      onPress={() => handleObjectPress(obj)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="checkmark-circle" size={14} color="#4CAF50" style={{ marginRight: 4 }} />
+                      <Text style={styles.detectionChipText}>
+                        {getDisplayName(obj.label)}
+                      </Text>
+                      <Text style={styles.detectionChipScore}>
+                        {Math.round(obj.score * 100)}%
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+              </View>
+            )}
 
-        {/* Bottom controls */}
-        <View style={styles.bottomBar}>
-          {/* Toggle scanning */}
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => {
-              setIsScanning((s) => !s);
-              emptyFrameCountRef.current = 0;
-            }}
-          >
-            <Ionicons name={isScanning ? 'pause' : 'play'} size={18} color="#fff" />
-            <Text style={styles.toggleButtonText}>
-              {isScanning ? 'Pause' : 'Resume'}
-            </Text>
-          </TouchableOpacity>
+            {/* Bottom controls */}
+            <View style={styles.bottomBar}>
+              {/* Toggle scanning */}
+              <TouchableOpacity
+                style={styles.toggleButton}
+                onPress={() => {
+                  setIsScanning((s) => !s);
+                  emptyFrameCountRef.current = 0;
+                }}
+              >
+                <Ionicons name={isScanning ? 'pause' : 'play'} size={18} color="#fff" />
+                <Text style={styles.toggleButtonText}>
+                  {isScanning ? 'Pause' : 'Resume'}
+                </Text>
+              </TouchableOpacity>
 
-          {/* Capture button */}
-          <TouchableOpacity
-            style={[styles.captureButton, isAnalyzing && { opacity: 0.5 }]}
-            onPress={handleCapture}
-            disabled={isAnalyzing}
-          >
-            <View style={styles.captureButtonInner}>
-              <Ionicons name="scan" size={28} color="#333" />
+              {/* Capture button */}
+              <TouchableOpacity
+                style={styles.captureButton}
+                onPress={handleCapture}
+              >
+                <View style={styles.captureButtonInner}>
+                  <Ionicons name="scan" size={28} color="#333" />
+                </View>
+              </TouchableOpacity>
+
+              {/* Placeholder for symmetry */}
+              <View style={{ width: 60 }} />
             </View>
-          </TouchableOpacity>
-
-          {/* Placeholder for symmetry */}
-          <View style={{ width: 60 }} />
-        </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -458,24 +628,55 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Analyzing overlay
-  analyzingOverlay: {
+  // Model loading
+  loadingTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 20,
+    marginBottom: 16,
+  },
+  progressBarBg: {
+    width: '80%',
+    height: 8,
+    backgroundColor: '#2a2a3e',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+  },
+  progressText: {
+    color: '#888',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 14,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+
+  // Stub mode banner
+  stubBanner: {
     position: 'absolute',
-    top: '42%' as any,
-    alignSelf: 'center',
-    flexDirection: 'row',
+    top: '40%' as any,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    gap: 10,
     zIndex: 10,
   },
-  analyzingText: {
-    color: '#4CAF50',
+  stubBannerText: {
+    color: '#FFC107',
     fontSize: 14,
     fontWeight: '600',
+    textAlign: 'center',
   },
 
   // Top bar
@@ -516,25 +717,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
-  },
-
-  // Powered by badge
-  poweredBadge: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 150 : 120,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    gap: 4,
-  },
-  poweredText: {
-    color: '#A78BFA',
-    fontSize: 11,
-    fontWeight: '500',
   },
 
   // Bottom bar
@@ -612,5 +794,67 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontSize: 12,
     fontWeight: '700',
+  },
+
+  // Multi-angle capture
+  captureFlash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    zIndex: 20,
+  },
+  multiAngleOverlay: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 140 : 110,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  multiAngleCard: {
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginHorizontal: 32,
+  },
+  multiAngleTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  multiAngleInstruction: {
+    color: '#aaa',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  progressDots: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  progressDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    backgroundColor: 'transparent',
+  },
+  progressDotFilled: {
+    backgroundColor: '#4CAF50',
+  },
+  multiAngleCount: {
+    color: '#888',
+    fontSize: 12,
+  },
+  cancelButton: {
+    width: 60,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,0,0,0.5)',
+    alignItems: 'center',
+    gap: 2,
   },
 });

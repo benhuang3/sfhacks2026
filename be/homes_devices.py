@@ -4,6 +4,7 @@
 =============================================================================
 
 CRUD for homes and devices collections in MongoDB.
+Falls back to in-memory storage when MongoDB is unavailable.
 =============================================================================
 """
 
@@ -16,6 +17,7 @@ from typing import Optional
 from bson import ObjectId
 
 from agents import get_db, _resolve_fallback
+from db_fallback import is_db_available, MemCollection
 from models import (
     CreateHomeRequest,
     HomeDoc,
@@ -35,12 +37,20 @@ from models import (
 logger = logging.getLogger("homes_devices")
 
 
+# In-memory stores
+_MEM_HOMES: dict[str, dict] = {}
+_MEM_DEVICES: dict[str, dict] = {}
+_MEM_ASSUMPTIONS: dict[str, dict] = {}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _oid(s: str) -> ObjectId:
-    """Convert string to ObjectId, raising ValueError on invalid."""
+def _oid(s: str):
+    """Convert string to ObjectId, or return as-is in memory mode."""
+    if not is_db_available():
+        return s
     try:
         return ObjectId(s)
     except Exception:
@@ -66,10 +76,14 @@ def _serialize(doc: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def _homes_col():
+    if not is_db_available():
+        return MemCollection(_MEM_HOMES, "homes")
     return get_db()["homes"]
 
 
 def _assumptions_col():
+    if not is_db_available():
+        return MemCollection(_MEM_ASSUMPTIONS, "assumptions")
     return get_db()["assumptions"]
 
 
@@ -188,6 +202,8 @@ async def delete_home(home_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _devices_col():
+    if not is_db_available():
+        return MemCollection(_MEM_DEVICES, "devices")
     return get_db()["devices"]
 
 

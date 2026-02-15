@@ -1,9 +1,12 @@
 /**
- * useSegmentationOverlay — manages DeepLabV3 segmentation model and caches
- * outline SVG paths per tracked object for rendering.
+ * useSegmentationOverlay — manages DeepLabV3 segmentation model and produces
+ * per-object outlines using the contourExtractor pipeline.
  *
- * Runs segmentation throttled (every ~2-3s) and only for classes that DeepLabV3
- * can segment. Non-segmentable objects fall back to bounding boxes.
+ * Features:
+ * - Throttled segmentation (every ~2s)
+ * - Per-detection instance masks (intersect class mask with bbox via extractOutlines)
+ * - Temporal smoothing: reuses last contour between seg updates
+ * - Cover-aware coordinate mapping
  */
 
 import { useRef, useCallback, useState } from 'react';
@@ -11,8 +14,8 @@ import {
   useImageSegmentation,
   DEEPLAB_V3_RESNET50,
 } from '../shims/exec';
-import { TrackedObject } from '../utils/scannerTypes';
-import { maskToSvgPath, scaleSvgPath } from '../utils/contourExtractor';
+import { TrackedObject, BBox } from '../utils/scannerTypes';
+import { extractOutlines, OutlineResult } from '../utils/contourExtractor';
 import {
   isSegmentable,
   getDeeplabLabel,
@@ -20,11 +23,14 @@ import {
 } from '../utils/segmentationClasses';
 import { log } from '../utils/logger';
 
+// ── Public types ────────────────────────────────────────────────────────
+
 export interface SegmentationOverlay {
   trackId: string;
   svgPath: string;
   label: string;
   color: string;
+  outline?: OutlineResult;
 }
 
 export interface UseSegmentationOverlayResult {
@@ -42,6 +48,18 @@ export interface UseSegmentationOverlayResult {
   ) => void;
 }
 
+// ── Temporal smoothing ──────────────────────────────────────────────────
+
+interface CachedOutline {
+  overlay: SegmentationOverlay;
+  lastBBox: BBox;
+  timestamp: number;
+}
+
+const OUTLINE_MAX_AGE_MS = 6000;
+
+// ── Hook ────────────────────────────────────────────────────────────────
+
 export function useSegmentationOverlay(): UseSegmentationOverlayResult {
   const segmentation = useImageSegmentation({
     model: DEEPLAB_V3_RESNET50,
@@ -50,7 +68,7 @@ export function useSegmentationOverlay(): UseSegmentationOverlayResult {
   const [overlays, setOverlays] = useState<SegmentationOverlay[]>([]);
   const isProcessingRef = useRef(false);
   const lastRunRef = useRef(0);
-  const cacheRef = useRef<Map<string, SegmentationOverlay>>(new Map());
+  const cacheRef = useRef<Map<string, CachedOutline>>(new Map());
 
   const requestSegmentation = useCallback(
     (
@@ -61,75 +79,101 @@ export function useSegmentationOverlay(): UseSegmentationOverlayResult {
       viewWidth: number,
       viewHeight: number
     ) => {
-      // Throttle: at most once every 2 seconds
       const now = Date.now();
-      if (now - lastRunRef.current < 2000) return;
+
+      // Between seg updates, serve from cache
+      if (now - lastRunRef.current < 2000) {
+        serveCached(trackedObjects, now);
+        return;
+      }
       if (isProcessingRef.current || !segmentation.isReady) return;
 
-      // Only segment objects that DeepLabV3 supports
       const segmentable = trackedObjects.filter(
         (obj) => obj.framesSinceLastSeen === 0 && isSegmentable(obj.label)
       );
-      if (segmentable.length === 0) return;
+      if (segmentable.length === 0) {
+        serveCached(trackedObjects, now);
+        return;
+      }
 
       isProcessingRef.current = true;
       lastRunRef.current = now;
 
       const classesOfInterest = getSegmentableDeeplabLabels();
 
-      // Fire-and-forget — don't block the detection loop
       (async () => {
         try {
           const result = await segmentation.forward(
             imageUri,
             classesOfInterest,
-            true // resize mask to match image dimensions
+            true
           );
 
-          const scaleX = viewWidth / imgWidth;
-          const scaleY = viewHeight / imgHeight;
           const newOverlays: SegmentationOverlay[] = [];
 
+          // Group segmentable objects by class to batch mask access
+          const byClass = new Map<number, typeof segmentable>();
           for (const obj of segmentable) {
-            const deeplabIdx = getDeeplabLabel(obj.label);
-            if (deeplabIdx === null) continue;
+            const idx = getDeeplabLabel(obj.label);
+            if (idx === null) continue;
+            if (!byClass.has(idx)) byClass.set(idx, []);
+            byClass.get(idx)!.push(obj);
+          }
 
+          for (const [deeplabIdx, objects] of byClass) {
             const mask = result[deeplabIdx];
             if (!mask || mask.length === 0) continue;
 
-            const rawPath = maskToSvgPath(mask, imgWidth, imgHeight);
-            if (!rawPath) continue;
+            // Extract per-object outlines (bbox intersection + contour tracing)
+            const outlines = extractOutlines({
+              mask,
+              imgWidth,
+              imgHeight,
+              viewWidth,
+              viewHeight,
+              detections: objects.map((o) => ({
+                id: o.id,
+                label: o.label,
+                score: o.score,
+                bbox: o.bbox,
+              })),
+            });
 
-            const scaledPath = scaleSvgPath(rawPath, scaleX, scaleY);
+            for (const outline of outlines) {
+              const overlay: SegmentationOverlay = {
+                trackId: outline.id,
+                svgPath: outline.pathSvg,
+                label: outline.className,
+                color: '#4CAF50',
+                outline,
+              };
+              newOverlays.push(overlay);
 
-            const overlay: SegmentationOverlay = {
-              trackId: obj.id,
-              svgPath: scaledPath,
-              label: obj.label,
-              color: '#4CAF50',
-            };
-
-            newOverlays.push(overlay);
-            cacheRef.current.set(obj.id, overlay);
+              const obj = objects.find((o) => o.id === outline.id);
+              cacheRef.current.set(outline.id, {
+                overlay,
+                lastBBox: obj?.bbox ?? outline.box,
+                timestamp: now,
+              });
+            }
           }
 
-          // Merge new overlays with cached ones for objects still being tracked
+          // Merge with cache for tracked objects not in this batch
+          const freshIds = new Set(newOverlays.map((o) => o.trackId));
           const activeIds = new Set(trackedObjects.map((o) => o.id));
-          const merged: SegmentationOverlay[] = [];
+          const merged = [...newOverlays];
 
-          // Add fresh overlays from this run
-          for (const o of newOverlays) {
-            merged.push(o);
-          }
-
-          // Add cached overlays for tracked objects not in this run
           for (const [id, cached] of cacheRef.current) {
             if (!activeIds.has(id)) {
               cacheRef.current.delete(id);
               continue;
             }
-            if (!newOverlays.find((o) => o.trackId === id)) {
-              merged.push(cached);
+            if (now - cached.timestamp > OUTLINE_MAX_AGE_MS) {
+              cacheRef.current.delete(id);
+              continue;
+            }
+            if (!freshIds.has(id)) {
+              merged.push(cached.overlay);
             }
           }
 
@@ -144,6 +188,28 @@ export function useSegmentationOverlay(): UseSegmentationOverlayResult {
     },
     [segmentation.isReady, segmentation.forward]
   );
+
+  /**
+   * Serve cached overlays for tracked objects between segmentation runs.
+   */
+  function serveCached(trackedObjects: TrackedObject[], now: number) {
+    const activeIds = new Set(trackedObjects.map((o) => o.id));
+    const cached: SegmentationOverlay[] = [];
+
+    for (const [id, entry] of cacheRef.current) {
+      if (!activeIds.has(id)) {
+        cacheRef.current.delete(id);
+        continue;
+      }
+      if (now - entry.timestamp > OUTLINE_MAX_AGE_MS) {
+        cacheRef.current.delete(id);
+        continue;
+      }
+      cached.push(entry.overlay);
+    }
+
+    setOverlays(cached);
+  }
 
   return {
     isReady: segmentation.isReady,

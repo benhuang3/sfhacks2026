@@ -27,11 +27,16 @@ export function buildScanDataFromDetections(
   trackedObjects: TrackedObject[],
   photoUri: string,
   /** Image dimensions for normalizing bbox to [0,1] range */
-  imageDims?: { width: number; height: number }
+  imageDims?: { width: number; height: number },
+  /** If provided, this object is used as the primary detection (user tapped it) */
+  primaryObjectId?: string
 ): ScanDataFromDetections {
   // Sort by confidence descending
   const sorted = [...trackedObjects].sort((a, b) => b.score - a.score);
-  const top = sorted[0];
+  // If a primary object was explicitly selected (user tap), use it regardless of score
+  const top = primaryObjectId
+    ? trackedObjects.find((o) => o.id === primaryObjectId) ?? sorted[0]
+    : sorted[0];
 
   // Build up to 3 candidates from unique categories
   const seen = new Set<string>();

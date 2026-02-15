@@ -14,8 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { ScanResultData } from './UploadScanScreen';
 import { Appliance3DModel } from '../components/Appliance3DModel';
+import { useTheme } from '../context/ThemeContext';
 import { LineGraph } from '../components/LineGraph';
-import { useTheme } from '../../App';
 import { RATE_PER_KWH, CO2_PER_KWH, TREE_ABSORBS_PER_YEAR, DEFAULT_USAGE_HOURS } from '../utils/energyConstants';
 
 interface DashboardScreenProps {

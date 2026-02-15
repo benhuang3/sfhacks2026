@@ -13,14 +13,9 @@ import { log } from '../utils/logger';
 // Config
 // ---------------------------------------------------------------------------
 
-// Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
-
-// API base — paths already include /api/v1 prefix where needed
-const API_BASE_URL = TUNNEL_URL;
+import { API_BASE_URL } from '../utils/apiConfig';
 
 log.config('apiService API_BASE_URL', { url: API_BASE_URL });
-import { API_BASE_URL } from '../utils/apiConfig';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -125,6 +120,81 @@ export async function fetchPowerProfile(device: PowerProfileRequest) {
     }
     throw error;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-angle brand identification → POST /api/v1/identify-brand
+// ---------------------------------------------------------------------------
+
+export interface BrandIdentification {
+  brand: string;
+  model: string;
+}
+
+/**
+ * Send multiple angle images + category to Gemini for brand/model identification.
+ *
+ * @param imageUris  Array of local file URIs (cropped angle photos)
+ * @param category   Basic category from on-device detection (e.g. "Television")
+ * @returns          Brand and model identification
+ */
+export async function identifyBrand(
+  imageUris: string[],
+  category: string
+): Promise<BrandIdentification> {
+  log.api('POST /api/v1/identify-brand', { category, imageCount: imageUris.length });
+  try {
+    // Convert image URIs to base64
+    const base64Images: string[] = [];
+    for (const uri of imageUris) {
+      if (Platform.OS === 'web') {
+        const resp = await fetch(uri);
+        const blob = await resp.blob();
+        const b64 = await blobToBase64(blob);
+        base64Images.push(b64);
+      } else {
+        const FileSystem = await import('expo-file-system/legacy');
+        const b64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        base64Images.push(b64);
+      }
+    }
+
+    const response = await api.post('/api/v1/identify-brand', {
+      category,
+      image_uris: base64Images,
+    });
+
+    log.api('POST /api/v1/identify-brand -> success', response.data?.data);
+    const data = response.data?.data;
+    return {
+      brand: data?.brand ?? 'Unknown',
+      model: data?.model ?? 'Unknown',
+    };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const axiosErr = error as AxiosError<{ detail?: string }>;
+      log.error('api', `Brand identification failed (${axiosErr.response?.status ?? 'network'})`, axiosErr);
+    } else {
+      log.error('api', 'Brand identification failed', error);
+    }
+    return { brand: 'Unknown', model: 'Unknown' };
+  }
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      // Strip the data:...;base64, prefix
+      const b64 = result.includes(',') ? result.split(',')[1] : result;
+      resolve(b64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 // ---------------------------------------------------------------------------

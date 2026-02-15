@@ -25,6 +25,7 @@ from bson import ObjectId
 from pydantic import BaseModel, Field
 
 from agents import get_db, lookup_power_profile, DeviceLookupRequest
+from db_fallback import is_db_available, MemCollection
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -74,7 +75,12 @@ class ResolveRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+_MEM_SCANS: dict[str, dict] = {}
+
+
 def _scans_collection():
+    if not is_db_available():
+        return MemCollection(_MEM_SCANS, "scans")
     return get_db()["scans"]
 
 

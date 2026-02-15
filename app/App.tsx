@@ -45,6 +45,7 @@ import { LiveScanScreen } from './src/screens/LiveScanScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
+import { MultiAngleReviewScreen } from './src/screens/MultiAngleReviewScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 
 // 3D Scene Component
@@ -143,6 +144,26 @@ function ScanNavigator() {
             onCapture={(scanData: any, imageUri: string) => {
               navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
             }}
+            onMultiAngleComplete={(scanData: any, imageUris: string[], primaryUri: string) => {
+              navigation.navigate('MultiAngleReview' as never, { scanData, imageUris, primaryUri } as never);
+            }}
+          />
+        )}
+      </ScanStackNav.Screen>
+      <ScanStackNav.Screen name="MultiAngleReview">
+        {({ navigation, route }) => (
+          <MultiAngleReviewScreen
+            scanData={(route.params as any)?.scanData}
+            imageUris={(route.params as any)?.imageUris ?? []}
+            onContinue={(updatedScanData: any) => {
+              const params = route.params as any;
+              navigation.navigate('ScanConfirm' as never, {
+                scanData: updatedScanData,
+                imageUri: params?.primaryUri,
+                angleUris: params?.imageUris,
+              } as never);
+            }}
+            onRetake={() => navigation.goBack()}
           />
         )}
       </ScanStackNav.Screen>

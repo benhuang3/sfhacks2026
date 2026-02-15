@@ -7,6 +7,7 @@ Endpoints:
   GET  /api/v1/health                           → Health check
   POST /api/v1/power-profile                    → Power Agent
   POST /api/v1/seed-defaults                    → Seed category defaults
+  POST /api/v1/identify-brand                    → Multi-angle brand ID
   POST /api/v1/scans                            → Insert scan
   POST /api/v1/scans/similar                    → Vector similarity search
   POST /api/v1/scans/resolve                    → Cache-aware resolve
@@ -40,7 +41,9 @@ import shutil
 import uuid
 from pathlib import Path
 
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 from agents import (
@@ -385,7 +388,7 @@ async def scan_image(image: UploadFile = File(...)):
                     role="user",
                     parts=[
                         genai_types.Part.from_bytes(data=base64.standard_b64decode(img_b64), mime_type=mime),
-                        genai_types.Part.from_text(
+                        genai_types.Part.from_text(text=
                             "Identify the single main electrical appliance or device in this image. "
                             "Reply with exactly one line: CATEGORY only, e.g. Television, Microwave, Laptop, Refrigerator, Lamp, Toaster, Oven, Hair Dryer, Phone Charger, Monitor, Washing Machine, Air Conditioner, Space Heater, Router, Fan, Coffee Maker, or Unknown."
                         ),
@@ -481,6 +484,93 @@ async def scan_image(image: UploadFile = File(...)):
             "all_categories": vision_result.get("all_categories", []),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Multi-angle brand identification → POST /api/v1/identify-brand
+# ---------------------------------------------------------------------------
+
+class IdentifyBrandRequest(BaseModel):
+    category: str
+    image_uris: List[str]  # base64-encoded JPEG strings
+
+
+@app.post("/api/v1/identify-brand")
+async def identify_brand(req: IdentifyBrandRequest):
+    """
+    Send multiple angle images + basic category to Gemini to identify the
+    brand and model of an appliance.
+    """
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        logger.warning("identify-brand: GOOGLE_API_KEY not set, returning Unknown")
+        return {"success": True, "data": {"brand": "Unknown", "model": "Unknown"}}
+
+    logger.info("identify-brand: received %d images for category '%s'", len(req.image_uris), req.category)
+
+    try:
+        import base64
+        from google import genai
+        from google.genai import types as genai_types
+
+        client = genai.Client(api_key=api_key)
+
+        # Build image parts from base64 strings
+        parts: list = []
+        for i, img_b64 in enumerate(req.image_uris[:6]):
+            # Strip data URI prefix if present
+            raw_b64 = img_b64
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            img_bytes = base64.standard_b64decode(raw_b64)
+            logger.info("identify-brand: image %d = %d bytes", i, len(img_bytes))
+            parts.append(
+                genai_types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
+            )
+
+        prompt = (
+            f"These {len(req.image_uris)} images show the same home appliance "
+            f"from different angles. The appliance category is: {req.category}.\n\n"
+            "Based on the images, identify the BRAND and MODEL of this specific appliance. "
+            "Look for logos, labels, model numbers, and distinctive design features.\n\n"
+            "Reply with ONLY valid JSON, no markdown:\n"
+            '{"brand": "BrandName", "model": "ModelNumber"}\n\n'
+            "If you cannot determine the brand, use the most likely brand based on "
+            "the design. If you cannot determine the model, set model to \"Unknown\"."
+        )
+        parts.append(
+            genai_types.Part.from_text(text=prompt)
+        )
+
+        logger.info("identify-brand: calling Gemini...")
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=genai_types.Content(role="user", parts=parts),
+            config=genai_types.GenerateContentConfig(
+                temperature=0.1, max_output_tokens=128
+            ),
+        )
+
+        logger.info("identify-brand: Gemini raw response: %s", resp.text if resp else "None")
+
+        if resp and resp.text:
+            import json
+            text = resp.text.strip()
+            # Strip markdown fences if present
+            if text.startswith("```"):
+                text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            result = json.loads(text)
+            brand = result.get("brand", "Unknown")
+            model = result.get("model", "Unknown")
+            logger.info("Gemini brand identification: %s %s", brand, model)
+            return {"success": True, "data": {"brand": brand, "model": model}}
+        else:
+            logger.warning("identify-brand: Gemini returned empty response")
+
+    except Exception as exc:
+        logger.warning("Brand identification failed: %s", exc, exc_info=True)
+
+    return {"success": True, "data": {"brand": "Unknown", "model": "Unknown"}}
 
 
 @app.post("/api/v1/seed-defaults")

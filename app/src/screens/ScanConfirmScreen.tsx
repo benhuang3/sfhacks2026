@@ -11,7 +11,6 @@ import {
   TextInput, Image, ActivityIndicator, Dimensions, Animated,
   Platform,
 } from 'react-native';
-import { useTheme } from '../../App';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import {

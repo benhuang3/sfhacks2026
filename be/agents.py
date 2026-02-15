@@ -89,6 +89,11 @@ def get_db():
 
 def get_power_profiles_collection():
     """Shortcut → power_profiles collection."""
+    from db_fallback import is_db_available, MemCollection
+    if not is_db_available():
+        if not hasattr(get_power_profiles_collection, "_mem"):
+            get_power_profiles_collection._mem = {}
+        return MemCollection(get_power_profiles_collection._mem, "profiles")
     return get_db()["power_profiles"]
 
 

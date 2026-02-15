@@ -18,6 +18,7 @@ from typing import Optional
 from bson import ObjectId
 
 from agents import get_db
+from db_fallback import is_db_available, MemCollection
 from models import (
     ActionDoc,
     ActionProposal,
@@ -27,12 +28,18 @@ from models import (
 
 logger = logging.getLogger("actions")
 
+_MEM_ACTIONS: dict[str, dict] = {}
+
 
 def _actions_col():
+    if not is_db_available():
+        return MemCollection(_MEM_ACTIONS, "actions")
     return get_db()["actions"]
 
 
-def _oid(s: str) -> ObjectId:
+def _oid(s: str):
+    if not is_db_available():
+        return s
     try:
         return ObjectId(s)
     except Exception:

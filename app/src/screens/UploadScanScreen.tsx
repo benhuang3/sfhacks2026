@@ -21,7 +21,6 @@ import { uploadScanImage, checkHealth } from '../services/apiService';
 import { listHomes, addDevice, Home, RoomModel } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
-import { useTheme } from '../../App';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { log } from '../utils/logger';

@@ -24,10 +24,6 @@ import { Ionicons } from '@expo/vector-icons';
 // Theme hook from App
 import { useTheme } from '../context/ThemeContext';
 
-// API base URL — reuse same pattern as apiClient
-// Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
-const BASE_URL = `${TUNNEL_URL}/api/v1`;
 import { API_V1_URL } from '../utils/apiConfig';
 
 const BASE_URL = API_V1_URL;
