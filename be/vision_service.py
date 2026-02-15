@@ -19,16 +19,12 @@ import easyocr
 
 logger = logging.getLogger("vision_service")
 
-# ── COCO labels (subset relevant to home appliances) ──────────────────────
+# ── COCO labels (tech / electrical devices only) ──────────────────────────
 COCO_LABELS = {
-    1: "person", 44: "bottle", 46: "wine glass", 47: "cup",
-    62: "chair", 63: "couch", 64: "potted plant", 65: "bed",
-    67: "dining table", 70: "toilet", 72: "tv", 73: "laptop",
+    72: "tv", 73: "laptop",
     74: "mouse", 75: "remote", 76: "keyboard", 77: "cell phone",
-    78: "microwave", 79: "oven", 80: "toaster", 81: "sink",
-    82: "refrigerator", 84: "book", 85: "clock", 86: "vase",
-    87: "scissors", 88: "teddy bear", 89: "hair drier", 90: "toothbrush",
-    61: "toilet paper",  # Added missing label
+    78: "microwave", 79: "oven", 80: "toaster",
+    82: "refrigerator", 85: "clock", 89: "hair drier",
 }
 
 APPLIANCE_LABELS = {
@@ -43,9 +39,6 @@ LABEL_TO_CATEGORY = {
     "hair drier": "Hair Dryer", "cell phone": "Phone Charger",
     "clock": "Clock", "remote": "Remote / Standby Device",
     "keyboard": "Computer Peripheral", "mouse": "Computer Peripheral",
-    "couch": "Couch", "chair": "Chair", "bed": "Bed",
-    "dining table": "Dining Table", "sink": "Sink", "toilet": "Toilet",
-    "bottle": "Bottle", "cup": "Cup", "toilet paper": "Toilet Paper",
 }
 
 # ── Category → 3D model asset mapping ────────────────────────────────────

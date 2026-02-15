@@ -22,9 +22,10 @@ import {
   deleteHome,
   addDevice,
   listDevices,
-  deleteDevice,
+  toggleDevice,
   type Home,
   type Device,
+  type RoomModel,
 } from '../services/apiClient';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { useTheme } from '../context/ThemeContext';
@@ -34,6 +35,7 @@ interface HomeManagerScreenProps {
   onBack: () => void;
   onViewSummary: (homeId: string) => void;
   onViewActions: (homeId: string) => void;
+  onDevicePress?: (device: Device, rooms: RoomModel[]) => void;
   userId?: string;
 }
 
@@ -41,6 +43,7 @@ export function HomeManagerScreen({
   onBack,
   onViewSummary,
   onViewActions,
+  onDevicePress,
   userId = 'default_user',
 }: HomeManagerScreenProps) {
   const { colors, isDark } = useTheme();
@@ -58,6 +61,7 @@ export function HomeManagerScreen({
     model: '',
     roomId: 'living-room',
     is_critical: false,
+    is_smart: false,
   });
   const [addingDevice, setAddingDevice] = useState(false);
 
@@ -76,6 +80,13 @@ export function HomeManagerScreen({
         } catch { devMap[home.id] = []; }
       }
       setDevices(devMap);
+      // Log smart device stats
+      const allDevs = Object.values(devMap).flat();
+      const smartCount = allDevs.filter(d => d.is_smart).length;
+      const onCount = allDevs.filter(d => d.is_smart && d.is_on !== false).length;
+      if (smartCount > 0) {
+        log.home(`Smart devices: ${smartCount} total, ${onCount} on, ${smartCount - onCount} standby`);
+      }
     } catch (err) {
       log.error('home', 'Failed to load homes', err);
     } finally {
@@ -135,7 +146,7 @@ export function HomeManagerScreen({
       showAlert('Required', 'Label and category are required.');
       return;
     }
-    log.home('Add device pressed', { homeId, label: deviceForm.label, category: deviceForm.category });
+    log.home('Add device pressed', { homeId, label: deviceForm.label, category: deviceForm.category, is_smart: deviceForm.is_smart, is_critical: deviceForm.is_critical });
     try {
       setAddingDevice(true);
       await addDevice(homeId, {
@@ -145,9 +156,10 @@ export function HomeManagerScreen({
         brand: deviceForm.brand.trim() || 'Unknown',
         model: deviceForm.model.trim() || 'Unknown',
         is_critical: deviceForm.is_critical,
-      });
-      log.home('Device added', { homeId, label: deviceForm.label });
-      setDeviceForm({ label: '', category: '', brand: '', model: '', roomId: 'living-room', is_critical: false });
+        is_smart: deviceForm.is_smart,
+      } as any);
+      log.home('Device added', { homeId, label: deviceForm.label, is_smart: deviceForm.is_smart });
+      setDeviceForm({ label: '', category: '', brand: '', model: '', roomId: 'living-room', is_critical: false, is_smart: false });
       setShowAddDevice(null);
       await loadHomes();
     } catch (err: unknown) {
@@ -156,28 +168,6 @@ export function HomeManagerScreen({
     } finally {
       setAddingDevice(false);
     }
-  };
-
-  const handleDeleteDevice = async (deviceId: string) => {
-    log.home('Delete device pressed', { deviceId });
-    try {
-      await deleteDevice(deviceId);
-      log.home('Device deleted', { deviceId });
-      await loadHomes();
-    } catch (err: unknown) {
-      log.error('home', 'Delete device failed', err);
-      showAlert('Error', err instanceof Error ? err.message : 'Failed to delete device');
-    }
-  };
-
-  const getCategoryIcon = (cat: string): string => {
-    const icons: Record<string, string> = {
-      TV: 'tv-outline', Television: 'tv-outline', Refrigerator: 'snow-outline', Microwave: 'restaurant-outline',
-      Laptop: 'laptop-outline', Oven: 'flame-outline', Toaster: 'cafe-outline', 'Hair Dryer': 'cut-outline',
-      'Washing Machine': 'water-outline', Dryer: 'water-outline', 'Air Conditioner': 'snow-outline',
-      'Space Heater': 'flame-outline', Monitor: 'desktop-outline', 'Light Bulb': 'bulb-outline', Light: 'bulb-outline',
-    };
-    return icons[cat] || 'power-outline';
   };
 
   return (
@@ -248,7 +238,7 @@ export function HomeManagerScreen({
               <View style={styles.homeHeader}>
               <View style={{ flex: 1 }}>
                   <Text style={[styles.homeName, { color: colors.text }]}><Ionicons name="home-outline" size={16} color={colors.accent} /> {home.name}</Text>
-                  <Text style={[styles.homeRooms, { color: colors.textSecondary }]}>{home.rooms.join(' • ')}</Text>
+                  <Text style={[styles.homeRooms, { color: colors.textSecondary }]}>{home.rooms.map(r => r.name).join(' • ')}</Text>
                 </View>
                 <TouchableOpacity onPress={() => handleDeleteHome(home.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.deleteBtn}>
                   <Ionicons name="trash-outline" size={20} color="#F44336" />
@@ -260,23 +250,58 @@ export function HomeManagerScreen({
                 {homeDevices.length} device{homeDevices.length !== 1 ? 's' : ''}
               </Text>
 
-              {homeDevices.map((d) => (
-                <View key={d.id} style={[styles.deviceRow, { borderTopColor: colors.border }]}>
-                  <View style={{ marginRight: 8 }}>
-                    <Appliance3DModel category={d.category} size={32} showLabel={false} />
-                  </View>
-                  <View style={styles.deviceInfo}>
-                    <Text style={[styles.deviceLabel, { color: colors.text }]}>{d.label}</Text>
-                    <Text style={[styles.deviceMeta, { color: colors.textSecondary }]}>
-                      {d.category} • {d.power.active_watts_typical}W active • {d.power.standby_watts_typical}W standby
+              <View style={styles.deviceGrid}>
+                {homeDevices.map((d) => (
+                  <TouchableOpacity
+                    key={d.id}
+                    activeOpacity={0.7}
+                    onPress={() => onDevicePress?.(d, home.rooms)}
+                    style={[styles.deviceCard, { backgroundColor: isDark ? '#1a1a2e' : '#f5f5f5', borderColor: colors.border }]}
+                  >
+                    {d.is_critical && (
+                      <View style={styles.deviceCardCritical}>
+                        <Ionicons name="lock-closed" size={12} color="#ff9800" />
+                      </View>
+                    )}
+                    {d.is_smart && (
+                      <TouchableOpacity
+                        style={styles.deviceCardToggle}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          log.home('Card toggle pressed', { deviceId: d.id, label: d.label, currentState: d.is_on !== false ? 'on' : 'off' });
+                          toggleDevice(d.id)
+                            .then(() => {
+                              log.home('Card toggle success', { deviceId: d.id, label: d.label });
+                              loadHomes();
+                            })
+                            .catch((err) => {
+                              log.error('home', 'Card toggle failed', err);
+                            });
+                        }}
+                      >
+                        <Ionicons name="power" size={14} color={d.is_on !== false ? '#4CAF50' : '#888'} />
+                      </TouchableOpacity>
+                    )}
+                    {d.is_smart && (
+                      <View style={styles.deviceCardSmartBadge}>
+                        <Ionicons name="wifi" size={10} color="#2196F3" />
+                      </View>
+                    )}
+                    <Appliance3DModel category={d.category} size={64} showLabel={false} />
+                    <Text style={[styles.deviceCardLabel, { color: colors.text }]} numberOfLines={1}>{d.label}</Text>
+                    <Text style={[styles.deviceCardWatts, { color: colors.accent }]}>
+                      {d.power.active_watts_typical}W
                     </Text>
-                  </View>
-                  {d.is_critical && <Ionicons name="lock-closed" size={16} color="#ff9800" style={styles.criticalBadge} />}
-                  <TouchableOpacity onPress={() => handleDeleteDevice(d.id)}>
-                    <Ionicons name="close" size={18} color="#ff6b6b" />
+                    {d.is_smart && (
+                      <View style={[styles.deviceCardStatusDot, { backgroundColor: d.is_on !== false ? '#4CAF50' : '#888' }]} />
+                    )}
+                    <Text style={[styles.deviceCardStandby, { color: colors.textSecondary }]}>
+                      {d.is_smart ? (d.is_on !== false ? 'On' : 'Standby') : `${d.power.standby_watts_typical}W standby`}
+                    </Text>
                   </TouchableOpacity>
-                </View>
-              ))}
+                ))}
+              </View>
 
               {/* Add device toggle */}
               {showAddDevice === home.id ? (
@@ -293,6 +318,14 @@ export function HomeManagerScreen({
                   >
                     <Text style={[styles.criticalToggleText, { color: colors.textSecondary }]}>
                       {deviceForm.is_critical ? <Ionicons name="checkbox" size={18} color={colors.accent} /> : <Ionicons name="square-outline" size={18} color={colors.textSecondary} />} Critical device (don't auto-turn-off)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.criticalToggle}
+                    onPress={() => setDeviceForm(f => ({ ...f, is_smart: !f.is_smart }))}
+                  >
+                    <Text style={[styles.criticalToggleText, { color: colors.textSecondary }]}>
+                      {deviceForm.is_smart ? <Ionicons name="checkbox" size={18} color="#2196F3" /> : <Ionicons name="square-outline" size={18} color={colors.textSecondary} />} <Ionicons name="wifi" size={14} color={deviceForm.is_smart ? '#2196F3' : colors.textSecondary} /> Smart device (remote monitoring)
                     </Text>
                   </TouchableOpacity>
                   <View style={styles.formActions}>
@@ -388,16 +421,31 @@ const styles = StyleSheet.create({
   deleteBtn: { padding: 8 },
 
   deviceCount: { color: '#4CAF50', fontSize: 13, fontWeight: '600', marginBottom: 8 },
-  deviceRow: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
-    borderTopWidth: 1, borderTopColor: '#1f1f2e', gap: 10,
+  deviceGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
   },
-  deviceIcon: { fontSize: 22 },
-  deviceInfo: { flex: 1 },
-  deviceLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  deviceMeta: { color: '#888', fontSize: 11, marginTop: 2 },
-  criticalBadge: { fontSize: 16 },
-  removeDeviceBtn: { color: '#f44336', fontSize: 16, padding: 4 },
+  deviceCard: {
+    width: '30%' as any, minWidth: 100,
+    borderRadius: 12, borderWidth: 1,
+    padding: 12, alignItems: 'center', position: 'relative' as const,
+  },
+  deviceCardCritical: {
+    position: 'absolute' as const, top: 6, left: 6, zIndex: 1,
+  },
+  deviceCardToggle: {
+    position: 'absolute' as const, top: 6, right: 6, zIndex: 2,
+    backgroundColor: 'rgba(76,175,80,0.12)', borderRadius: 10, padding: 4,
+  },
+  deviceCardSmartBadge: {
+    position: 'absolute' as const, top: 6, left: 6, zIndex: 1,
+    backgroundColor: 'rgba(33,150,243,0.15)', borderRadius: 8, padding: 3,
+  },
+  deviceCardStatusDot: {
+    width: 6, height: 6, borderRadius: 3, marginTop: 4,
+  },
+  deviceCardLabel: { fontSize: 12, fontWeight: '600', marginTop: 6, textAlign: 'center' as const },
+  deviceCardWatts: { fontSize: 14, fontWeight: '700', marginTop: 2 },
+  deviceCardStandby: { fontSize: 10, marginTop: 1 },
 
   addDeviceForm: {
     marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#1f1f2e',

@@ -277,6 +277,12 @@ export interface Device {
   control: { type: string; device_id?: string; capabilities: string[] };
   active_hours_per_day: number;
   usage_profile: string;
+  is_smart: boolean;
+  is_on: boolean;
+  schedule_on: string | null;
+  schedule_off: string | null;
+  idle_timeout_minutes: number | null;
+  last_toggled_at: string | null;
   addedAt: string;
 }
 
@@ -431,12 +437,30 @@ export async function listDevices(homeId: string): Promise<Device[]> {
   return get<Device[]>(`/homes/${homeId}/devices`);
 }
 
+export async function getDevice(deviceId: string): Promise<Device> {
+  return get<Device>(`/devices/${deviceId}`);
+}
+
 export async function deleteDevice(deviceId: string): Promise<void> {
   await del(`/devices/${deviceId}`);
 }
 
 export async function updateDevice(deviceId: string, updates: Partial<Device>): Promise<Device> {
   return patch<Device>(`/devices/${deviceId}`, updates);
+}
+
+export async function toggleDevice(deviceId: string): Promise<Device> {
+  return post<Device>(`/devices/${deviceId}/toggle`, {});
+}
+
+export interface LivePower {
+  current_watts: number;
+  is_on: boolean;
+  simulated: boolean;
+}
+
+export async function getDevicePower(deviceId: string): Promise<LivePower> {
+  return get<LivePower>(`/devices/${deviceId}/power`);
 }
 
 // ---------------------------------------------------------------------------

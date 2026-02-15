@@ -86,6 +86,7 @@ from homes_devices import (
     get_scene,
     add_device,
     list_devices,
+    get_device,
     delete_device,
     update_device,
     set_assumptions,
@@ -134,23 +135,20 @@ from auth import (
     ensure_auth_indexes,
 )
 
-# Vision service imports (may fail if dependencies not available)
+# Vision service imports — only used for category/model-asset lists now.
+# SSD MobileNet detection has been replaced by Gemini Vision as primary detector.
 try:
-    from vision_service import (
-        VISION_AVAILABLE,
-        detect_appliance,
-        _get_detector,
-        _get_ocr,
-    )
+    from vision_service import ALL_CATEGORIES, get_model_asset
 except ImportError:
-    VISION_AVAILABLE = False
-    # Create dummy functions to avoid NameError
-    def detect_appliance(*args, **kwargs):
-        return {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
-    def _get_detector():
-        pass
-    def _get_ocr():
-        pass
+    ALL_CATEGORIES = [
+        "Television", "Laptop", "Monitor", "Microwave", "Oven", "Toaster",
+        "Refrigerator", "Hair Dryer", "Phone Charger", "Washing Machine",
+        "Dryer", "Light Bulb", "Lamp", "Air Conditioner", "Space Heater",
+        "Gaming Console", "Router", "Fan", "Water Heater", "Dishwasher",
+        "Computer Peripheral", "Clock",
+    ]
+    def get_model_asset(category: str) -> str:
+        return f"models/{category.lower().replace(' ', '_')}.glb"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -182,19 +180,6 @@ async def lifespan(app: FastAPI):
     await _check_db()  # sets _db_available = True/False
     if not db_ok:
         logger.info("📝  Auth running in IN-MEMORY fallback mode (no MongoDB)")
-
-    # Preload vision / OCR models to avoid long first-request latency
-    app.state.models_loaded = False
-    if VISION_AVAILABLE:
-        try:
-            logger.info("Preloading vision and OCR models (startup)...")
-            # call the detector/ocr getters to load weights and models
-            _get_detector()
-            _get_ocr()
-            app.state.models_loaded = True
-            logger.info("Models preloaded ✅")
-        except Exception as exc:
-            logger.warning("Model preload failed: %s", exc)
 
     # Ensure auth indexes
     try:
@@ -292,7 +277,7 @@ async def health_check():
         "data": {
             "status": "ok",
             "database": db_status,
-            "models_loaded": getattr(app.state, "models_loaded", False),
+            "vision": "gemini",
         },
     }
 
@@ -387,62 +372,104 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # -------------------------------------------------------------------
-    # Run vision ML if available, else Gemini Vision (real data / Berkeley Lab style)
+    # Primary detection: Gemini Vision (identifies ALL appliance types)
+    # SSD MobileNet removed — it only knew COCO classes and missed most
+    # home appliances (washers, ACs, fans, routers, etc.).
     # -------------------------------------------------------------------
-    vision_result = {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
+    best = None
+    candidates = []
+    ocr_texts = []
 
-    if VISION_AVAILABLE:
-        try:
-            vision_result = detect_appliance(str(file_path))
-        except Exception as exc:
-            logger.exception("Vision inference failed, trying Gemini Vision fallback")
-            vision_result = {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
-
-    best = vision_result.get("best_match")
-    candidates = vision_result.get("candidates", [])
-
-    # When no detection (or vision not available), use Gemini Vision to identify appliance
-    if (not best or not candidates) and os.environ.get("GOOGLE_API_KEY"):
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if api_key:
         try:
             from google import genai
             from google.genai import types as genai_types
-            import base64
+            import base64, json as _json
+
             with open(file_path, "rb") as f:
-                img_b64 = base64.standard_b64encode(f.read()).decode("utf-8")
+                img_bytes = f.read()
+            img_b64 = base64.standard_b64encode(img_bytes).decode("utf-8")
             mime = "image/jpeg" if str(file_path).lower().endswith((".jpg", ".jpeg")) else "image/png"
-            client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+
+            client = genai.Client(api_key=api_key)
             resp = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=genai_types.Content(
                     role="user",
                     parts=[
-                        genai_types.Part.from_bytes(data=base64.standard_b64decode(img_b64), mime_type=mime),
-                        genai_types.Part.from_text(text=
-                            "Identify the single main electrical appliance or device in this image. "
-                            "Reply with exactly one line: CATEGORY only, e.g. Television, Microwave, Laptop, Refrigerator, Lamp, Toaster, Oven, Hair Dryer, Phone Charger, Monitor, Washing Machine, Air Conditioner, Space Heater, Router, Fan, Coffee Maker, or Unknown."
+                        genai_types.Part.from_bytes(
+                            data=base64.standard_b64decode(img_b64),
+                            mime_type=mime,
                         ),
+                        genai_types.Part.from_text(text=(
+                            "Identify the main electrical appliance or device in this image.\n"
+                            "Reply with ONLY valid JSON (no markdown fences):\n"
+                            "{\n"
+                            '  "category": "Television",\n'
+                            '  "brand": "Samsung",\n'
+                            '  "model": "UN55TU7000",\n'
+                            '  "confidence": 0.85,\n'
+                            '  "top_3": [\n'
+                            '    {"category": "Television", "confidence": 0.85},\n'
+                            '    {"category": "Monitor", "confidence": 0.10},\n'
+                            '    {"category": "Laptop", "confidence": 0.05}\n'
+                            "  ]\n"
+                            "}\n\n"
+                            "Rules:\n"
+                            "- category must be one of: Television, Laptop, Monitor, Microwave, Oven, "
+                            "Toaster, Refrigerator, Hair Dryer, Phone Charger, Clock, Computer Peripheral, "
+                            "Washing Machine, Dryer, Air Conditioner, Space Heater, Light Bulb, Lamp, "
+                            "Dishwasher, Gaming Console, Router, Fan, Water Heater, Coffee Maker, or Unknown.\n"
+                            "- Look for logos, labels, model numbers, and design features to identify brand/model.\n"
+                            "- If brand or model can't be determined, set them to \"Unknown\".\n"
+                            "- confidence is 0.0-1.0 based on how certain you are.\n"
+                            "- top_3 should list up to 3 possible categories, sorted by confidence."
+                        )),
                     ],
                 ),
-                config=genai_types.GenerateContentConfig(temperature=0.1, max_output_tokens=64),
+                config=genai_types.GenerateContentConfig(temperature=0.1, max_output_tokens=256),
             )
-            if resp and resp.text:
-                category = resp.text.strip().split("\n")[0].strip()
-                if category and category.lower() != "unknown":
-                    best = {"brand": "Unknown", "model": "Unknown", "category": category, "label": category.lower(), "score": 0.7}
-                    candidates = [{"category": category, "confidence": 0.7, "modelAsset": f"models/{category.lower().replace(' ', '_')}.glb"}]
-                    vision_result["best_match"] = best
-                    vision_result["candidates"] = candidates
-                    try:
-                        from vision_service import ALL_CATEGORIES
-                        vision_result["all_categories"] = ALL_CATEGORIES
-                    except Exception:
-                        vision_result["all_categories"] = []
-                    logger.info("Gemini Vision identified: %s", category)
-        except Exception as exc:
-            logger.warning("Gemini Vision fallback failed: %s", exc)
 
-    best = vision_result.get("best_match")
-    candidates = vision_result.get("candidates", [])
+            if resp and resp.text:
+                text = resp.text.strip()
+                # Strip markdown fences if present
+                if text.startswith("```"):
+                    text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+                result = _json.loads(text)
+
+                category = result.get("category", "Unknown")
+                brand = result.get("brand", "Unknown")
+                model_name = result.get("model", "Unknown")
+                confidence = float(result.get("confidence", 0.7))
+                top_3 = result.get("top_3", [])
+
+                if category and category.lower() != "unknown":
+                    best = {
+                        "brand": brand,
+                        "model": model_name,
+                        "category": category,
+                        "label": category.lower(),
+                        "score": confidence,
+                    }
+                    # Build candidates from top_3
+                    candidates = [
+                        {
+                            "category": c.get("category", category),
+                            "confidence": float(c.get("confidence", confidence)),
+                            "modelAsset": get_model_asset(c.get("category", category)),
+                        }
+                        for c in (top_3 if top_3 else [{"category": category, "confidence": confidence}])
+                    ]
+                    logger.info(
+                        "Gemini Vision identified: %s (brand=%s, model=%s, conf=%.2f)",
+                        category, brand, model_name, confidence,
+                    )
+                else:
+                    logger.info("Gemini Vision returned Unknown for image %s", filename)
+
+        except Exception as exc:
+            logger.warning("Gemini Vision detection failed: %s", exc)
 
     # If we got a detection, fetch power profile from the Gemini agent
     power_profile = None
@@ -508,15 +535,6 @@ async def scan_image(image: UploadFile = File(...)):
             except Exception:
                 power_profile = None
 
-    # If no candidates from vision, provide sensible defaults
-    if not candidates:
-        from vision_service import ALL_CATEGORIES, get_model_asset
-        default_cats = ["Television", "Lamp", "Microwave"]
-        candidates = [
-            {"category": c, "confidence": round(1.0 / len(default_cats), 2), "modelAsset": get_model_asset(c)}
-            for c in default_cats
-        ]
-
     return {
         "success": True,
         "data": {
@@ -524,7 +542,7 @@ async def scan_image(image: UploadFile = File(...)):
             "size_bytes": len(content),
             "content_type": image.content_type,
             "candidates": candidates,
-            "bbox": vision_result.get("bbox"),
+            "bbox": None,  # Gemini Vision doesn't return bounding boxes
             "detected_appliance": {
                 "brand": best["brand"] if best else "Unknown",
                 "model": best["model"] if best else "Unknown",
@@ -532,10 +550,10 @@ async def scan_image(image: UploadFile = File(...)):
                 "category": best["category"] if best else "Unknown",
                 "confidence": best["score"] if best else 0.0,
             },
-            "detections": vision_result.get("detections", []),
-            "ocr_texts": vision_result.get("ocr_texts", []),
+            "detections": [],
+            "ocr_texts": ocr_texts,
             "power_profile": power_profile,
-            "all_categories": vision_result.get("all_categories", []),
+            "all_categories": ALL_CATEGORIES,
         },
     }
 
@@ -876,6 +894,15 @@ async def list_devices_endpoint(home_id: str):
         raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
 
 
+@app.get("/api/v1/devices/{device_id}")
+async def get_device_endpoint(device_id: str):
+    """Get a single device by ID."""
+    device = await get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Device not found"})
+    return {"success": True, "data": device}
+
+
 @app.delete("/api/v1/devices/{device_id}")
 async def delete_device_endpoint(device_id: str):
     """Delete a device."""
@@ -888,10 +915,65 @@ async def delete_device_endpoint(device_id: str):
 @app.patch("/api/v1/devices/{device_id}")
 async def update_device_endpoint(device_id: str, body: dict = Body(...)):
     """Update a device (partial update)."""
+    logger.info("PATCH /api/v1/devices/%s — fields: %s", device_id, list(body.keys()))
     updated = await update_device(device_id, body)
     if not updated:
+        logger.warning("Update failed: device %s not found", device_id)
         raise HTTPException(status_code=404, detail={"success": False, "error": "Device not found"})
+    logger.info("Device %s updated: %s", device_id, list(body.keys()))
     return {"success": True, "data": updated}
+
+
+@app.post("/api/v1/devices/{device_id}/toggle")
+async def toggle_device_endpoint(device_id: str):
+    """Toggle a smart device on/off (simulated)."""
+    logger.info("POST /api/v1/devices/%s/toggle", device_id)
+    device = await get_device(device_id)
+    if not device:
+        logger.warning("Toggle failed: device %s not found", device_id)
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Device not found"})
+    from datetime import datetime as _dt, timezone as _tz
+    old_state = device.get("is_on", True)
+    new_state = not old_state
+    logger.info("Toggling device '%s' (id=%s): %s → %s",
+                device.get("label", "?"), device_id,
+                "on" if old_state else "off", "on" if new_state else "off")
+    updated = await update_device(device_id, {
+        "is_on": new_state,
+        "last_toggled_at": _dt.now(_tz.utc).isoformat(),
+    })
+    logger.info("Toggle complete for device %s — now %s", device_id, "on" if new_state else "off")
+    return {"success": True, "data": updated}
+
+
+@app.get("/api/v1/devices/{device_id}/power")
+async def get_device_power_endpoint(device_id: str):
+    """Return simulated real-time power reading for a device."""
+    device = await get_device(device_id)
+    if not device:
+        logger.warning("Power reading failed: device %s not found", device_id)
+        raise HTTPException(status_code=404, detail={"success": False, "error": "Device not found"})
+    import random
+    power = device.get("power", {})
+    is_on = device.get("is_on", True)
+    if is_on:
+        base = power.get("active_watts_typical", 75.0)
+        noise = random.uniform(-0.05, 0.05) * base
+    else:
+        base = power.get("standby_watts_typical", 2.0)
+        noise = random.uniform(-0.10, 0.10) * base
+    current_watts = round(base + noise, 1)
+    logger.debug("Power reading for '%s' (id=%s): %.1fW (%s)",
+                 device.get("label", "?"), device_id, current_watts,
+                 "active" if is_on else "standby")
+    return {
+        "success": True,
+        "data": {
+            "current_watts": current_watts,
+            "is_on": is_on,
+            "simulated": True,
+        },
+    }
 
 
 # ===========================================================================
@@ -1144,19 +1226,8 @@ async def agent_command_endpoint(home_id: str, request: AgentCommandRequest):
 @app.get("/api/v1/categories")
 async def list_categories():
     """Return all available device categories with model assets."""
-    try:
-        from vision_service import ALL_CATEGORIES, get_model_asset
-        cats = [{"category": c, "modelAsset": get_model_asset(c)} for c in ALL_CATEGORIES]
-        return {"success": True, "data": cats}
-    except Exception:
-        # Fallback if vision_service is not available
-        fallback = [
-            "Television", "Laptop", "Monitor", "Microwave", "Oven", "Toaster",
-            "Refrigerator", "Hair Dryer", "Phone Charger", "Washing Machine",
-            "Dryer", "Light Bulb", "Lamp", "Air Conditioner", "Space Heater",
-            "Gaming Console", "Router", "Fan", "Water Heater", "Dishwasher",
-        ]
-        return {"success": True, "data": [{"category": c, "modelAsset": f"models/{c.lower().replace(' ', '_')}.glb"} for c in fallback]}
+    cats = [{"category": c, "modelAsset": get_model_asset(c)} for c in ALL_CATEGORIES]
+    return {"success": True, "data": cats}
 
 
 # ===========================================================================

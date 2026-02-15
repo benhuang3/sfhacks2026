@@ -114,6 +114,11 @@ class AddDeviceRequest(BaseModel):
     # Usage profile
     active_hours_per_day: float = Field(default=4.0, ge=0, le=24)
     usage_profile: Literal["light", "typical", "heavy"] = "typical"
+    # Smart monitoring
+    is_smart: bool = False
+    schedule_on: Optional[str] = None   # e.g. "07:00"
+    schedule_off: Optional[str] = None  # e.g. "23:00"
+    idle_timeout_minutes: Optional[int] = None
 
 
 class DeviceDoc(BaseModel):
@@ -130,6 +135,13 @@ class DeviceDoc(BaseModel):
     control: DeviceControl = Field(default_factory=DeviceControl)
     active_hours_per_day: float = 4.0
     usage_profile: str = "typical"
+    # Smart monitoring state
+    is_smart: bool = False
+    is_on: bool = True
+    schedule_on: Optional[str] = None
+    schedule_off: Optional[str] = None
+    idle_timeout_minutes: Optional[int] = None
+    last_toggled_at: Optional[str] = None
     addedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

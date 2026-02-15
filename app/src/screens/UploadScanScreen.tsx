@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadScanImage, checkHealth } from '../services/apiService';
+import { uploadScanImage } from '../services/apiService';
 import { listHomes, addDevice, Home, RoomModel } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
@@ -121,28 +121,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
     }
   }, [scanStep, fadeAnim, slideAnim]);
   const [result, setResult] = useState<ScanResultData | null>(null);
-  const [modelsLoaded, setModelsLoaded] = useState<boolean>(true);
   const [usageHours, setUsageHours] = useState<number>(4);
-
-  // Poll health endpoint
-  useEffect(() => {
-    let mounted = true;
-    async function poll() {
-      try {
-        const health = await checkHealth();
-        if (!mounted) return;
-        setModelsLoaded(Boolean(health?.models_loaded));
-        if (!health?.models_loaded) {
-          setTimeout(poll, 2000);
-        }
-      } catch {
-        if (mounted) setModelsLoaded(true);
-        setTimeout(poll, 5000);
-      }
-    }
-    poll();
-    return () => { mounted = false; };
-  }, []);
 
   // Cross-platform image picker
   const handlePickImage = useCallback(async () => {
@@ -349,14 +328,6 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOp
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
-        {/* Model loading notice */}
-        {!modelsLoaded && (
-          <View style={styles.notice}>
-            <ActivityIndicator size="small" color="#ffd54f" />
-            <Text style={styles.noticeText}>Loading AI models... First scan may be slower.</Text>
-          </View>
-        )}
-
         {/* Upload area */}
         {!imageUri ? (
           <View>

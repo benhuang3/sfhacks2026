@@ -68,3 +68,53 @@ export function bboxCenter(bbox: BBox): { x: number; y: number } {
 export function bboxArea(bbox: BBox): number {
   return (bbox.x2 - bbox.x1) * (bbox.y2 - bbox.y1);
 }
+
+/**
+ * Compute how much of box B's area is contained inside box A.
+ * Returns 0..1 — 1.0 means B is fully inside A.
+ */
+function containment(a: BBox, b: BBox): number {
+  const xA = Math.max(a.x1, b.x1);
+  const yA = Math.max(a.y1, b.y1);
+  const xB = Math.min(a.x2, b.x2);
+  const yB = Math.min(a.y2, b.y2);
+  const intersection = Math.max(0, xB - xA) * Math.max(0, yB - yA);
+  const areaB = (b.x2 - b.x1) * (b.y2 - b.y1);
+  return areaB > 0 ? intersection / areaB : 0;
+}
+
+/**
+ * Non-Maximum Suppression — removes overlapping detections of the same object.
+ * Suppresses a lower-confidence box if either:
+ *   - IoU with a kept box >= iouThreshold, OR
+ *   - it is mostly contained inside a kept box (>= containmentThreshold of its area)
+ * This catches cases like laptop+TV on the same object where one bbox is inside the other
+ * but IoU is low due to different sizes.
+ */
+export function nms<T extends { bbox: BBox; score: number }>(
+  items: T[],
+  iouThreshold: number = 0.45,
+  containmentThreshold: number = 0.7
+): T[] {
+  if (items.length <= 1) return items;
+
+  const sorted = [...items].sort((a, b) => b.score - a.score);
+  const kept: T[] = [];
+  const suppressed = new Set<number>();
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (suppressed.has(i)) continue;
+    kept.push(sorted[i]);
+
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (suppressed.has(j)) continue;
+      const iou = computeIoU(sorted[i].bbox, sorted[j].bbox);
+      const cont = containment(sorted[i].bbox, sorted[j].bbox);
+      if (iou >= iouThreshold || cont >= containmentThreshold) {
+        suppressed.add(j);
+      }
+    }
+  }
+
+  return kept;
+}

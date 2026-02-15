@@ -234,6 +234,12 @@ async def add_device(home_id: str, req: AddDeviceRequest) -> dict:
         "control": (req.control or DeviceControl()).model_dump(),
         "active_hours_per_day": req.active_hours_per_day,
         "usage_profile": req.usage_profile,
+        "is_smart": req.is_smart,
+        "is_on": True,
+        "schedule_on": req.schedule_on,
+        "schedule_off": req.schedule_off,
+        "idle_timeout_minutes": req.idle_timeout_minutes,
+        "last_toggled_at": None,
         "addedAt": datetime.now(timezone.utc),
     }
     result = await _devices_col().insert_one(doc)
@@ -270,7 +276,17 @@ async def add_device(home_id: str, req: AddDeviceRequest) -> dict:
     except Exception as e:
         logger.warning("Scene object append failed (non-fatal): %s", e)
 
-    logger.info("Added device '%s' to home %s", req.label, home_id)
+    smart_info = ""
+    if req.is_smart:
+        parts = [f"is_smart=True"]
+        if req.schedule_on:
+            parts.append(f"schedule_on={req.schedule_on}")
+        if req.schedule_off:
+            parts.append(f"schedule_off={req.schedule_off}")
+        if req.idle_timeout_minutes:
+            parts.append(f"idle_timeout={req.idle_timeout_minutes}m")
+        smart_info = f" [{', '.join(parts)}]"
+    logger.info("Added device '%s' (%s) to home %s%s", req.label, req.category, home_id, smart_info)
     return _serialize(doc)
 
 
@@ -320,18 +336,29 @@ async def list_devices(home_id: str) -> list[dict]:
 
 
 async def update_device(device_id: str, updates: dict) -> dict:
+    # Log smart-related field changes
+    smart_fields = {"is_smart", "is_on", "schedule_on", "schedule_off", "idle_timeout_minutes", "last_toggled_at"}
+    changed_smart = {k: v for k, v in updates.items() if k in smart_fields}
+    if changed_smart:
+        logger.info("Updating smart fields for device %s: %s", device_id, changed_smart)
+    else:
+        logger.debug("Updating device %s: fields=%s", device_id, list(updates.keys()))
     result = await _devices_col().find_one_and_update(
         {"_id": _oid(device_id)},
         {"$set": updates},
         return_document=True,
     )
+    if not result:
+        logger.warning("Update failed: device %s not found", device_id)
     return _serialize(result) if result else {}
 
 
 async def delete_device(device_id: str) -> bool:
+    logger.info("Deleting device %s", device_id)
     # Also remove matching scene object from the home
     device = await _devices_col().find_one({"_id": _oid(device_id)})
     if device:
+        logger.info("Device to delete: '%s' (%s) in home %s", device.get("label"), device.get("category"), device.get("homeId"))
         home_id = device.get("homeId")
         if home_id:
             try:
@@ -342,7 +369,12 @@ async def delete_device(device_id: str) -> bool:
             except Exception:
                 pass
     result = await _devices_col().delete_one({"_id": _oid(device_id)})
-    return result.deleted_count > 0
+    deleted = result.deleted_count > 0
+    if deleted:
+        logger.info("Device %s deleted successfully", device_id)
+    else:
+        logger.warning("Delete failed: device %s not found in DB", device_id)
+    return deleted
 
 
 # ---------------------------------------------------------------------------

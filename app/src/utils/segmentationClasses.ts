@@ -5,13 +5,9 @@
 
 import { DeeplabLabel } from '../shims/exec';
 
-/** COCO class name → DeepLabV3 label index */
+/** COCO class name → DeepLabV3 label index (tech devices only) */
 export const COCO_TO_DEEPLAB: Record<string, number> = {
   'tv':            DeeplabLabel.TVMONITOR,   // 20
-  'chair':         DeeplabLabel.CHAIR,       // 9
-  'couch':         DeeplabLabel.SOFA,        // 18
-  'dining table':  DeeplabLabel.DININGTABLE, // 11
-  'bottle':        DeeplabLabel.BOTTLE,      // 5
 };
 
 /** Check if a COCO class label can be segmented by DeepLabV3 */

@@ -133,6 +133,7 @@ function ScanNavigator() {
           <ScanConfirmScreen
             scanData={(route.params as any)?.scanData}
             imageUri={(route.params as any)?.imageUri}
+            angleUris={(route.params as any)?.angleUris}
             onBack={() => navigation.goBack()}
             onDeviceAdded={(_homeId: string, device: any, rooms: any[]) => {
               // Refresh dashboard data
@@ -142,7 +143,7 @@ function ScanNavigator() {
               if (parent && device) {
                 parent.navigate('Home' as never, {
                   screen: 'DeviceDetail',
-                  params: { device, rooms: rooms ?? [] },
+                  params: { device, rooms: rooms ?? [], fromScan: true },
                 } as never);
               } else {
                 navigation.navigate('ScanHome' as never);
@@ -208,6 +209,7 @@ function HomeNavigator() {
             onBack={() => navigation.goBack()}
             onViewSummary={(homeId: string) => navigation.navigate('HomeSummary' as never, { homeId } as never)}
             onViewActions={(homeId: string) => navigation.navigate('HomeActions' as never, { homeId } as never)}
+            onDevicePress={(device, rooms) => navigation.navigate('HomeDeviceDetail' as never, { device, rooms } as never)}
             userId={user?.id}
           />
         )}
@@ -236,6 +238,19 @@ function HomeNavigator() {
             onBack={() => navigation.goBack()}
           />
         )}
+      </HomeStackNav.Screen>
+      <HomeStackNav.Screen name="HomeDeviceDetail">
+        {({ navigation, route }) => {
+          const { device, rooms } = route.params as any;
+          return (
+            <DeviceDetailScreen
+              device={device}
+              rooms={rooms}
+              onBack={() => navigation.goBack()}
+              onDeviceUpdated={() => navigation.goBack()}
+            />
+          );
+        }}
       </HomeStackNav.Screen>
     </HomeStackNav.Navigator>
   );
@@ -283,12 +298,26 @@ function LandingNavigator() {
       <LandingStackNav.Screen name="LandingHome" component={LandingScreen} />
       <LandingStackNav.Screen name="DeviceDetail">
         {({ route, navigation }) => {
-          const { device, rooms } = route.params as any;
+          const { device, rooms, fromScan } = route.params as any;
           return (
             <DeviceDetailScreen
               device={device}
               rooms={rooms}
-              onBack={() => navigation.goBack()}
+              onBack={() => {
+                if (fromScan) {
+                  // Go back to the Scan tab's home screen
+                  const parent = navigation.getParent();
+                  if (parent) {
+                    parent.navigate('Scan' as never, {
+                      screen: 'ScanHome',
+                    } as never);
+                  } else {
+                    navigation.goBack();
+                  }
+                } else {
+                  navigation.goBack();
+                }
+              }}
               onDeviceUpdated={() => deviceUpdatedRef.current?.()}
             />
           );
@@ -742,6 +771,16 @@ function LandingScreen() {
                         width: 120,
                       }}
                     >
+                      {device.is_smart && (
+                        <View style={{
+                          position: 'absolute', top: 8, right: 8, zIndex: 1,
+                          flexDirection: 'row', alignItems: 'center', gap: 4,
+                          backgroundColor: 'rgba(33,150,243,0.12)', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 2,
+                        }}>
+                          <Ionicons name="wifi" size={10} color="#2196F3" />
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: device.is_on !== false ? '#4CAF50' : '#888' }} />
+                        </View>
+                      )}
                       <Appliance3DModel
                         category={device.category}
                         size={80}

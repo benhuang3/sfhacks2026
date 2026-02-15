@@ -6,6 +6,7 @@ import {
 import { useCallback, useMemo } from 'react';
 import { Detection, BBox } from '../utils/scannerTypes';
 import { isApplianceClass } from '../utils/applianceClasses';
+import { nms } from '../utils/bboxUtils';
 import { log } from '../utils/logger';
 
 interface ScannerPipelineResult {
@@ -59,7 +60,13 @@ export function useScannerPipeline(): ScannerPipelineResult {
           });
         }
 
-        return filtered;
+        // Suppress overlapping/contained boxes for the same object
+        const deduped = nms(filtered);
+        if (deduped.length < filtered.length) {
+          log.scan(`NMS suppressed ${filtered.length - deduped.length} overlapping detections`);
+        }
+
+        return deduped;
       } catch (e) {
         log.error('scan', 'Detection forward() failed', e);
         return [];

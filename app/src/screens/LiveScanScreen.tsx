@@ -3,8 +3,7 @@
  * and outline tracing via DeepLabV3 segmentation.
  *
  * SSDLite320 detects objects at ~1-2 FPS. DeepLabV3 generates contour outlines
- * for supported classes (TV, chair, couch, dining table, bottle). Other classes
- * fall back to bounding box rectangles.
+ * for supported classes (TV). Other classes fall back to bounding box rectangles.
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
@@ -30,6 +29,7 @@ import { getDisplayName } from '../utils/applianceClasses';
 import { buildScanDataFromDetections } from '../utils/detectionBridge';
 import { OutlineOverlay } from '../components/scanner/OutlineOverlay';
 import { cropToBoundingBox } from '../services/imageProcessingService';
+import { computeIoU } from '../utils/bboxUtils';
 import { log } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,9 @@ export function LiveScanScreen({ onBack, onCapture, onMultiAngleComplete }: Live
   const pipeline = useScannerPipeline();
   const tracker = useObjectTracker(0.3, 10);
   const segOverlay = useSegmentationOverlay();
-  // Stable ref to the tracker's update fn (the tracker object itself is new each render)
+  // Stable refs so effects always call the latest version of these functions
+  const pipelineDetectRef = useRef(pipeline.detect);
+  pipelineDetectRef.current = pipeline.detect;
   const updateWithDetectionsRef = useRef(tracker.updateWithDetections);
   updateWithDetectionsRef.current = tracker.updateWithDetections;
   const segRequestRef = useRef(segOverlay.requestSegmentation);
@@ -277,10 +279,57 @@ export function LiveScanScreen({ onBack, onCapture, onMultiAngleComplete }: Live
         });
         if (!photo?.uri) return;
 
-        // Crop to bounding box region (with 10% padding)
+        // Re-detect to get an updated bounding box for this frame.
+        // The user may have moved, shifting the object's position.
+        let cropBbox = obj.bbox;
+        try {
+          const detections = await pipelineDetectRef.current(photo.uri);
+          log.scan(`Multi-angle re-detect: ${detections.length} detections found`);
+          if (detections.length > 0) {
+            // Find the detection that best matches the selected object
+            // by label match + highest IOU with the last known bbox.
+            let bestMatch = null;
+            let bestIou = 0;
+            for (const det of detections) {
+              const iou = computeIoU(obj.bbox, det.bbox);
+              // Prefer same label, but accept any match with decent IOU
+              const labelBonus = det.label === obj.label ? 0.2 : 0;
+              const score = iou + labelBonus;
+              if (score > bestIou) {
+                bestIou = score;
+                bestMatch = det;
+              }
+            }
+            if (bestMatch && bestIou >= 0.1) {
+              cropBbox = bestMatch.bbox;
+              // Update the ref so subsequent captures track the new position
+              selectedObjectRef.current = {
+                ...obj,
+                bbox: bestMatch.bbox,
+                score: bestMatch.score,
+              };
+              // Update React state so OutlineOverlay re-renders with the new bbox
+              setTrackedObjects((prev) =>
+                prev.map((t) =>
+                  t.id === obj.id
+                    ? { ...t, bbox: bestMatch!.bbox, score: bestMatch!.score, framesSinceLastSeen: 0 }
+                    : t
+                )
+              );
+              log.scan('Multi-angle re-detect: updated bbox', { iou: bestIou.toFixed(2), label: bestMatch.label });
+            } else {
+              log.scan('Multi-angle re-detect: no match, using previous bbox');
+            }
+          }
+        } catch (e) {
+          // Re-detection failed — use the original bbox
+          log.warn('scan', 'Multi-angle re-detect failed, using previous bbox');
+        }
+
+        // Crop to bounding box region (with 15% padding)
         const croppedUri = await cropToBoundingBox(
           photo.uri,
-          obj.bbox,
+          cropBbox,
           photo.width,
           photo.height,
           0.15

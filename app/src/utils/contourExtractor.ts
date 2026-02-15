@@ -27,7 +27,7 @@ import { BBox } from './scannerTypes';
 export interface OutlineResult {
   /** Stable track ID from the object tracker */
   id: string;
-  /** COCO class name (e.g., "bottle") */
+  /** COCO class name (e.g., "tv") */
   className: string;
   /** Detection confidence */
   confidence: number;

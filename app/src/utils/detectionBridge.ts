@@ -31,12 +31,15 @@ export function buildScanDataFromDetections(
   /** If provided, this object is used as the primary detection (user tapped it) */
   primaryObjectId?: string
 ): ScanDataFromDetections {
-  // Sort by confidence descending
-  const sorted = [...trackedObjects].sort((a, b) => b.score - a.score);
-  // If a primary object was explicitly selected (user tap), use it regardless of score
-  const top = primaryObjectId
-    ? trackedObjects.find((o) => o.id === primaryObjectId) ?? sorted[0]
-    : sorted[0];
+  // Sort by confidence descending, but pin the primary (user-selected) object first
+  const sorted = [...trackedObjects].sort((a, b) => {
+    if (primaryObjectId) {
+      if (a.id === primaryObjectId) return -1;
+      if (b.id === primaryObjectId) return 1;
+    }
+    return b.score - a.score;
+  });
+  const top = sorted[0];
 
   // Build up to 3 candidates from unique categories
   const seen = new Set<string>();

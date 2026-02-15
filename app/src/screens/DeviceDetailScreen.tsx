@@ -10,14 +10,14 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Device, RoomModel, updateDevice, deleteDevice, researchDevice, ResearchResult } from '../services/apiClient';
+import { Device, RoomModel, getDevice, updateDevice, deleteDevice, researchDevice, ResearchResult, toggleDevice, getDevicePower, LivePower } from '../services/apiClient';
 import { useTheme } from '../context/ThemeContext';
+import { showAlert, showConfirm } from '../utils/alert';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { log } from '../utils/logger';
 
@@ -28,9 +28,47 @@ interface DeviceDetailScreenProps {
   onDeviceUpdated: () => void;
 }
 
-export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: DeviceDetailScreenProps) {
+export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDeviceUpdated }: DeviceDetailScreenProps) {
   const { colors, isDark } = useTheme();
+
+  // Live device state — starts from prop, updated by refresh
+  const [device, setDevice] = useState<Device>(initialDevice);
+  const [refreshing, setRefreshing] = useState(false);
   const power = device.power;
+
+  // Log screen open
+  useEffect(() => {
+    log.nav('DeviceDetail opened', {
+      deviceId: initialDevice.id, label: initialDevice.label, category: initialDevice.category,
+      is_smart: initialDevice.is_smart, is_on: initialDevice.is_on, roomId: initialDevice.roomId,
+    });
+  }, []);
+
+  async function handleRefresh() {
+    log.action('Refresh device pressed', { deviceId: device.id, label: device.label });
+    try {
+      setRefreshing(true);
+      const latest = await getDevice(device.id);
+      setDevice(latest);
+      // Sync edit fields with refreshed data
+      setEditLabel(latest.label || '');
+      setEditBrand(latest.brand || '');
+      setEditModel(latest.model || '');
+      setEditRoomId(latest.roomId || '');
+      setEditHours(String(latest.active_hours_per_day ?? 4));
+      setEditSmart(latest.is_smart ?? false);
+      setEditScheduleOn(latest.schedule_on ?? '');
+      setEditScheduleOff(latest.schedule_off ?? '');
+      setEditIdleTimeout(latest.idle_timeout_minutes != null ? String(latest.idle_timeout_minutes) : '');
+      setIsOn(latest.is_on !== false);
+      log.action('Device refreshed', { deviceId: device.id, label: latest.label });
+    } catch (err) {
+      log.error('action', `Refresh failed for ${device.label}`, err);
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to refresh device');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const [editLabel, setEditLabel] = useState(device.label || '');
   const [editBrand, setEditBrand] = useState(device.brand || '');
@@ -40,6 +78,45 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
   const [saving, setSaving] = useState(false);
   const [research, setResearch] = useState<ResearchResult | null>(null);
   const [researching, setResearching] = useState(false);
+
+  // Smart monitoring state
+  const [isOn, setIsOn] = useState(device.is_on !== false);
+  const [livePower, setLivePower] = useState<LivePower | null>(null);
+  const [editSmart, setEditSmart] = useState(device.is_smart ?? false);
+  const [editScheduleOn, setEditScheduleOn] = useState(device.schedule_on ?? '');
+  const [editScheduleOff, setEditScheduleOff] = useState(device.schedule_off ?? '');
+  const [editIdleTimeout, setEditIdleTimeout] = useState(device.idle_timeout_minutes != null ? String(device.idle_timeout_minutes) : '');
+  const [toggling, setToggling] = useState(false);
+
+  // Live power polling for smart devices
+  useEffect(() => {
+    if (!device.is_smart) return;
+    log.home('Live power polling started', { deviceId: device.id, label: device.label, intervalMs: 3000 });
+    let cancelled = false;
+    let pollCount = 0;
+    const poll = () => {
+      getDevicePower(device.id)
+        .then(data => {
+          if (!cancelled) {
+            setLivePower(data);
+            setIsOn(data.is_on);
+            pollCount++;
+            // Log every 10th poll to avoid spam
+            if (pollCount % 10 === 1) {
+              log.home('Live power reading', { deviceId: device.id, watts: data.current_watts, is_on: data.is_on, pollCount });
+            }
+          }
+        })
+        .catch((err) => { log.error('home', `Live power poll failed for ${device.label}`, err); });
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      log.home('Live power polling stopped', { deviceId: device.id, totalPolls: pollCount });
+    };
+  }, [device.id, device.is_smart]);
 
   const roomName = rooms.find(r => r.roomId === device.roomId)?.name ?? device.roomId ?? 'Unknown room';
 
@@ -87,7 +164,23 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
       .finally(() => setResearching(false));
   }
 
+  async function handleToggle() {
+    log.action('Toggle device pressed', { deviceId: device.id, label: device.label, currentState: isOn ? 'on' : 'off' });
+    try {
+      setToggling(true);
+      const updated = await toggleDevice(device.id);
+      setIsOn(updated.is_on);
+      log.action('Toggle device success', { deviceId: device.id, label: device.label, newState: updated.is_on ? 'on' : 'off' });
+    } catch (err) {
+      log.error('action', `Toggle failed for ${device.label}`, err);
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to toggle device');
+    } finally {
+      setToggling(false);
+    }
+  }
+
   async function handleSave() {
+    log.action('Save device pressed', { deviceId: device.id, label: device.label });
     try {
       setSaving(true);
       const updates: Record<string, unknown> = {};
@@ -99,41 +192,53 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
       if (!isNaN(hours) && hours !== device.active_hours_per_day) {
         updates.active_hours_per_day = hours;
       }
-      if (Object.keys(updates).length > 0) {
+      // Smart monitoring fields
+      if (editSmart !== (device.is_smart ?? false)) updates.is_smart = editSmart;
+      const schedOn = editScheduleOn.trim() || null;
+      if (schedOn !== (device.schedule_on ?? null)) updates.schedule_on = schedOn;
+      const schedOff = editScheduleOff.trim() || null;
+      if (schedOff !== (device.schedule_off ?? null)) updates.schedule_off = schedOff;
+      const idle = editIdleTimeout.trim() ? parseInt(editIdleTimeout, 10) : null;
+      if (idle !== (device.idle_timeout_minutes ?? null)) updates.idle_timeout_minutes = idle;
+
+      const fieldCount = Object.keys(updates).length;
+      if (fieldCount > 0) {
+        log.action('Saving device updates', { deviceId: device.id, fields: Object.keys(updates), fieldCount });
         await updateDevice(device.id, updates as Partial<Device>);
+        log.action('Device saved', { deviceId: device.id, label: editLabel });
+      } else {
+        log.action('No changes to save', { deviceId: device.id });
       }
       onDeviceUpdated();
       onBack();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update device');
+      log.error('action', `Save device failed for ${device.label}`, err);
+      showAlert('Error', err instanceof Error ? err.message : 'Failed to update device');
     } finally {
       setSaving(false);
     }
   }
 
   function handleDelete() {
-    Alert.alert(
+    log.action('Delete device pressed', { deviceId: device.id, label: device.label, category: device.category });
+    showConfirm(
       'Delete Device',
       `Remove "${device.label || device.category}" from your home?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setSaving(true);
-              await deleteDevice(device.id);
-              onDeviceUpdated();
-              onBack();
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete device');
-            } finally {
-              setSaving(false);
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          setSaving(true);
+          log.action('Delete device confirmed', { deviceId: device.id });
+          await deleteDevice(device.id);
+          log.action('Device deleted', { deviceId: device.id, label: device.label });
+          onDeviceUpdated();
+          onBack();
+        } catch (err) {
+          log.error('action', `Delete device failed for ${device.label}`, err);
+          showAlert('Error', err instanceof Error ? err.message : 'Failed to delete device');
+        } finally {
+          setSaving(false);
+        }
+      },
     );
   }
 
@@ -145,7 +250,17 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Device Details</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={handleRefresh}
+          disabled={refreshing}
+          style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#e0e0e0' }]}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons name="refresh" size={20} color={colors.accent} />
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -177,6 +292,128 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
               <View style={[styles.statBox, { backgroundColor: isDark ? 'rgba(255,152,0,0.12)' : '#FFF3E0' }]}>
                 <Text style={[styles.statValue, { color: '#FF9800' }]}>{power.standby_watts_typical}W</Text>
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Standby</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Smart Device Controls */}
+        {device.is_smart && (
+          <View style={[styles.card, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+              <Ionicons name="wifi" size={16} color="#2196F3" />
+              <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0, marginLeft: 8 }]}>
+                Smart Controls
+              </Text>
+              <View style={{ flex: 1 }} />
+            </View>
+
+            {/* On/Off Toggle */}
+            <TouchableOpacity
+              onPress={handleToggle}
+              disabled={toggling}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                backgroundColor: isOn
+                  ? (isDark ? 'rgba(76,175,80,0.15)' : '#E8F5E9')
+                  : (isDark ? 'rgba(136,136,136,0.15)' : '#f5f5f5'),
+                borderRadius: 14, padding: 16, marginBottom: 12,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{
+                  width: 44, height: 44, borderRadius: 22,
+                  backgroundColor: isOn ? '#4CAF50' : '#888',
+                  justifyContent: 'center', alignItems: 'center',
+                }}>
+                  <Ionicons name="power" size={24} color="#fff" />
+                </View>
+                <View>
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
+                    {isOn ? 'On' : 'Off'}
+                  </Text>
+                  {device.last_toggled_at && (
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
+                      Last toggled: {new Date(device.last_toggled_at).toLocaleTimeString()}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              {toggling ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Text style={{ color: isOn ? '#4CAF50' : '#888', fontSize: 13, fontWeight: '600' }}>
+                  Tap to {isOn ? 'turn off' : 'turn on'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Live Power Reading */}
+            {livePower && (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#fafafa',
+                borderRadius: 12, padding: 14, marginBottom: 12, gap: 8,
+              }}>
+                <Ionicons name="flash" size={18} color={isOn ? '#FFB300' : '#666'} />
+                <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>
+                  {livePower.current_watts}W
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11 }}>live</Text>
+              </View>
+            )}
+
+            {/* Schedule */}
+            <View style={{ marginBottom: 8 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>Schedule</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 4 }}>Auto On</Text>
+                  <TextInput
+                    style={[styles.input, {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0',
+                      color: colors.text, marginBottom: 0,
+                    }]}
+                    value={editScheduleOn}
+                    onChangeText={setEditScheduleOn}
+                    placeholder="07:00"
+                    placeholderTextColor={isDark ? '#555' : '#aaa'}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 4 }}>Auto Off</Text>
+                  <TextInput
+                    style={[styles.input, {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0',
+                      color: colors.text, marginBottom: 0,
+                    }]}
+                    value={editScheduleOff}
+                    onChangeText={setEditScheduleOff}
+                    placeholder="23:00"
+                    placeholderTextColor={isDark ? '#555' : '#aaa'}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Idle Timeout */}
+            <View style={{ marginTop: 8 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 6 }}>
+                Idle Auto-Off
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TextInput
+                  style={[styles.input, {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0',
+                    color: colors.text, flex: 1, marginBottom: 0,
+                  }]}
+                  value={editIdleTimeout}
+                  onChangeText={setEditIdleTimeout}
+                  placeholder="Off"
+                  placeholderTextColor={isDark ? '#555' : '#aaa'}
+                  keyboardType="numeric"
+                />
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>minutes</Text>
               </View>
             </View>
           </View>
@@ -383,6 +620,21 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
             placeholderTextColor={isDark ? '#555' : '#aaa'}
             keyboardType="numeric"
           />
+
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}
+            onPress={() => setEditSmart(s => !s)}
+          >
+            <Ionicons
+              name={editSmart ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={editSmart ? '#2196F3' : colors.textSecondary}
+            />
+            <Ionicons name="wifi" size={14} color={editSmart ? '#2196F3' : colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+              Smart device (remote monitoring)
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Action buttons */}

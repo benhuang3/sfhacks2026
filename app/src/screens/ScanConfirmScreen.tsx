@@ -17,6 +17,7 @@ import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
   researchDevice, ResearchResult, ResearchAlternative,
 } from '../services/apiClient';
+import { identifyBrand } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { log } from '../utils/logger';
@@ -60,11 +61,12 @@ interface ScanData {
 interface Props {
   scanData: ScanData;
   imageUri?: string | null;
+  angleUris?: string[];
   onBack: () => void;
   onDeviceAdded: (homeId: string, device: any, rooms: any[]) => void;
 }
 
-export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }: Props) {
+export function ScanConfirmScreen({ scanData, imageUri, angleUris, onBack, onDeviceAdded }: Props) {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
 
@@ -83,6 +85,9 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
   const [error, setError] = useState<string | null>(null);
   const [researchData, setResearchData] = useState<ResearchResult | null>(null);
   const [researching, setResearching] = useState(false);
+  const [researchVersion, setResearchVersion] = useState(0);
+  const [recalculating, setRecalculating] = useState(false);
+  const originalCategory = useRef(scanData.candidates[0]?.category ?? null);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -146,13 +151,14 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
     }
   }, [homes]);
 
-  // Research device power specs when brand/model are known
+  // Research device power specs when brand/model/category are known
   useEffect(() => {
     const brand = deviceBrand && deviceBrand !== 'Unknown' ? deviceBrand : '';
     const model = deviceModel && deviceModel !== 'Unknown' ? deviceModel : '';
     const cat = selectedCategory || '';
-    if (!brand && !model) return;
     if (!cat) return;
+    // Need at least a brand/model or a manual recalculate trigger
+    if (!brand && !model && researchVersion === 0) return;
 
     let cancelled = false;
     setResearching(true);
@@ -171,7 +177,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
       .catch(err => { log.error('scan', 'Research failed for scanned device', err); })
       .finally(() => { if (!cancelled) setResearching(false); });
     return () => { cancelled = true; };
-  }, [deviceBrand, deviceModel, selectedCategory]);
+  }, [deviceBrand, deviceModel, selectedCategory, researchVersion]);
 
   const filteredCategories = useMemo(() => {
     if (!searchQuery.trim()) return allCategories;
@@ -267,7 +273,8 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
               style={styles.previewImage}
               resizeMode="cover"
             />
-            {scanData.bbox && (
+            {/* Only show bbox on full-frame images (not cropped multi-angle images) */}
+            {scanData.bbox && !angleUris?.length && (
               <View style={[styles.bboxOverlay, {
                 left: `${scanData.bbox[0] * 100}%`,
                 top: `${scanData.bbox[1] * 100}%`,
@@ -431,6 +438,56 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
               placeholder="e.g., QN55Q80B"
               placeholderTextColor={colors.textSecondary}
             />
+
+            {/* Recalculate button — shown when category changed from original */}
+            {selectedCategory !== originalCategory.current && (
+              <TouchableOpacity
+                style={[styles.recalcButton, {
+                  backgroundColor: recalculating ? colors.border : colors.accent,
+                }]}
+                onPress={async () => {
+                  if (!selectedCategory) return;
+                  setRecalculating(true);
+                  setResearchData(null);
+                  try {
+                    if (angleUris && angleUris.length > 0) {
+                      log.scan('Recalculating brand for new category', { category: selectedCategory, images: angleUris.length });
+                      const result = await identifyBrand(angleUris, selectedCategory);
+                      const newBrand = result.brand && result.brand !== 'Unknown' ? result.brand : '';
+                      const newModel = result.model && result.model !== 'Unknown' ? result.model : '';
+                      setDeviceBrand(newBrand);
+                      setDeviceModel(newModel);
+                      log.scan('Recalculate result', { brand: newBrand, model: newModel });
+                    } else {
+                      // No angle images — just clear brand/model and re-research by category
+                      setDeviceBrand('');
+                      setDeviceModel('');
+                    }
+                    setResearchVersion((v) => v + 1);
+                  } catch (e) {
+                    log.error('scan', 'Recalculate failed', e);
+                    setDeviceBrand('');
+                    setDeviceModel('');
+                    setResearchVersion((v) => v + 1);
+                  } finally {
+                    setRecalculating(false);
+                  }
+                }}
+                disabled={recalculating}
+              >
+                {recalculating ? (
+                  <>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.recalcButtonText}>Identifying...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="refresh-outline" size={16} color="#fff" />
+                    <Text style={styles.recalcButtonText}>Re-identify as {selectedCategory}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </>
         )}
 
@@ -664,6 +721,13 @@ const styles = StyleSheet.create({
   labelInput: {
     paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8,
     borderWidth: 1, fontSize: 14,
+  },
+  recalcButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 12, paddingVertical: 10, borderRadius: 8,
+  },
+  recalcButtonText: {
+    color: '#fff', fontSize: 14, fontWeight: '600',
   },
   homePicker: { marginBottom: 8 },
   homeChip: {
