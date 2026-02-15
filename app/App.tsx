@@ -24,6 +24,7 @@ import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@r
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 // Auth
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -396,6 +397,7 @@ function LandingScreen() {
         </Text>
       </View>
 
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
         {loading ? (
           <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
         ) : (

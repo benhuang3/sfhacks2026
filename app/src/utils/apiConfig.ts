@@ -36,16 +36,16 @@ function getDevHost(): string {
 
   // Fallback — use LAN IP for physical device testing
   // Update this if your network IP changes
-  return '10.142.8.249';
+  return '130.212.147.238';
 }
 
 /** The dev server's IP/hostname, auto-detected from Expo's manifest. */
 export const DEV_HOST = getDevHost();
 
-/** Backend API base URL (FastAPI on port 8000). */
+/** Backend API base URL (FastAPI on port 8001). */
 export const API_BASE_URL = __DEV__
-  ? `http://${DEV_HOST}:8000`
-  : 'https://your-production-url.com';
+  ? `http://${DEV_HOST}:8001`
+  : 'https://chips-copied-badly-applied.trycloudflare.com';
 
 /** Backend API v1 base URL. */
 export const API_V1_URL = `${API_BASE_URL}/api/v1`;

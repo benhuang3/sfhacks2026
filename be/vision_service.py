@@ -28,6 +28,7 @@ COCO_LABELS = {
     78: "microwave", 79: "oven", 80: "toaster", 81: "sink",
     82: "refrigerator", 84: "book", 85: "clock", 86: "vase",
     87: "scissors", 88: "teddy bear", 89: "hair drier", 90: "toothbrush",
+    61: "toilet paper",  # Added missing label
 }
 
 APPLIANCE_LABELS = {
@@ -44,7 +45,7 @@ LABEL_TO_CATEGORY = {
     "keyboard": "Computer Peripheral", "mouse": "Computer Peripheral",
     "couch": "Couch", "chair": "Chair", "bed": "Bed",
     "dining table": "Dining Table", "sink": "Sink", "toilet": "Toilet",
-    "bottle": "Bottle", "cup": "Cup",
+    "bottle": "Bottle", "cup": "Cup", "toilet paper": "Toilet Paper",
 }
 
 # ── Category → 3D model asset mapping ────────────────────────────────────
@@ -86,6 +87,17 @@ ALL_CATEGORIES = sorted(set(CATEGORY_MODEL_ASSETS.keys()) | {
 # ── Model singletons ──────────────────────────────────────────────────────
 _detector = None
 _ocr_reader = None
+
+# Check if vision dependencies are available
+try:
+    import torch
+    import torchvision
+    import easyocr
+    from PIL import Image
+    VISION_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Vision dependencies not available: {e}")
+    VISION_AVAILABLE = False
 
 
 def _get_detector():

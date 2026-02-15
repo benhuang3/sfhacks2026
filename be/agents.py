@@ -388,15 +388,44 @@ async def lookup_power_profile(req: DeviceLookupRequest) -> PowerProfileResponse
     """
     Main entry point for the Power Agent.
 
-    1. Check cache  →  2. Call Gemini  →  3. Validate  →  4. Fallback  →  5. Cache & return
+    1. Check if it's a non-appliance → return 0W
+    2. Check cache  →  3. Call Gemini  →  4. Validate  →  5. Fallback  →  6. Cache & return
     """
+    # List of actual appliances we care about
+    actual_appliances = {"Television", "Laptop", "Microwave", "Oven", "Toaster", "Refrigerator", "Hair Dryer", "Phone Charger", "Clock", "Remote / Standby Device", "Computer Peripheral", "Washing Machine", "Dryer", "Air Conditioner", "Space Heater", "Light Bulb", "Lamp", "Dishwasher", "Gaming Console", "Router", "Fan", "Water Heater"}
+    
+    # If it's not an actual appliance, return 0W immediately
+    if req.name not in actual_appliances:
+        logger.info(f"Non-appliance detected: '{req.name}' - returning 0W")
+        zero_w_profile = PowerProfile(
+            category="Non-Appliance",
+            standby_watts_range=[0, 0],
+            standby_watts_typical=0,
+            active_watts_range=[0, 5],
+            active_watts_typical=0,
+            confidence=0.1,
+            source="Estimate",
+            notes=["This doesn't appear to be an electrical appliance"]
+        )
+        return PowerProfileResponse(
+            brand=req.brand,
+            model=req.model,
+            name=req.name,
+            region=req.region,
+            profile=zero_w_profile,
+            cached=False,
+        )
+
     collection = get_power_profiles_collection()
 
     # ── Step 1: MongoDB cache lookup ──────────────────────────────────────
-    cached_doc = await collection.find_one(
-        {"brand": req.brand.strip(), "model": req.model.strip()},
-        {"_id": 0},  # exclude Mongo ObjectId from result
-    )
+    # Only check cache if we have meaningful brand/model info
+    cached_doc = None
+    if req.brand != "Unknown" or req.model != "Unknown":
+        cached_doc = await collection.find_one(
+            {"brand": req.brand.strip(), "model": req.model.strip()},
+            {"_id": 0},  # exclude Mongo ObjectId from result
+        )
 
     if cached_doc and "profile" in cached_doc:
         logger.info("Cache HIT for %s %s", req.brand, req.model)
@@ -414,7 +443,7 @@ async def lookup_power_profile(req: DeviceLookupRequest) -> PowerProfileResponse
             logger.warning("Cached document invalid — will re-query Gemini")
 
     # ── Step 2: Call Gemini via LangChain ──────────────────────────────────
-    logger.info("Cache MISS for %s %s — calling Gemini…", req.brand, req.model)
+    logger.info("Cache MISS for %s %s ('%s') — calling Gemini…", req.brand, req.model, req.name)
     profile: Optional[PowerProfile] = None
 
     try:
@@ -426,7 +455,8 @@ async def lookup_power_profile(req: DeviceLookupRequest) -> PowerProfileResponse
             "region": req.region,
             "format_instructions": _output_parser.get_format_instructions(),
         })
-        logger.info("Gemini returned valid profile (confidence=%.2f)", profile.confidence)
+        logger.info("Gemini returned valid profile (confidence=%.2f): %sW active, %sW standby", 
+                   profile.confidence, profile.active_watts_typical, profile.standby_watts_typical)
 
     except Exception as exc:
         logger.error("Gemini call failed: %s", exc)

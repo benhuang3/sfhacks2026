@@ -3,7 +3,7 @@
  */
 
 // Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
+const TUNNEL_URL = 'https://chips-copied-badly-applied.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
@@ -43,12 +43,15 @@ async function authPost<T>(path: string, body: unknown, token?: string): Promise
 
   let res: Response;
   try {
+    console.log('[authApi] Fetching:', `${BASE_URL}${path}`);
     res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
     });
+    console.log('[authApi] Response status:', res.status);
   } catch (networkErr) {
+    console.log('[authApi] Network error:', networkErr);
     throw new Error('Cannot reach server. Make sure the backend is running and the tunnel is active.');
   }
 

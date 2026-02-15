@@ -22,10 +22,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // Theme hook from App
 import { useTheme } from '../../App';
 
-// API base URL — reuse same pattern as apiClient
-// Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
-const BASE_URL = `${TUNNEL_URL}/api/v1`;
+// API base URL - use same config as other services
+import { API_V1_URL } from '../utils/apiConfig';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,12 +42,20 @@ async function sendChatMessage(
   message: string,
   history: { role: string; content: string }[]
 ): Promise<string> {
-  const resp = await fetch(`${BASE_URL}/chat`, {
+  const url = `${API_V1_URL}/chat`;
+  console.log('[ChatScreen] Sending to URL:', url);
+  console.log('[ChatScreen] Message:', message);
+  
+  const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
   });
+  console.log('[ChatScreen] Response status:', resp.status);
+  
   const text = await resp.text();
+  console.log('[ChatScreen] Response text:', text);
+  
   if (!resp.ok) {
     throw new Error(`Chat failed: ${resp.status} — ${text}`);
   }

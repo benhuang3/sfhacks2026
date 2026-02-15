@@ -49,7 +49,92 @@ from agents import (
     lookup_power_profile,
     seed_category_defaults,
     get_motor_client,
+    _resolve_fallback,
 )
+
+from scans import (
+    InsertScanRequest,
+    SimilarSearchRequest,
+    ResolveRequest,
+    insert_scan,
+    find_similar_scans,
+    resolve_scan,
+)
+
+from models import (
+    CreateHomeRequest,
+    AddRoomRequest,
+    AddDeviceRequest,
+    SetAssumptionsRequest,
+    ProposeActionsRequest,
+    ExecuteActionsRequest,
+)
+
+from homes_devices import (
+    create_home,
+    list_homes,
+    get_home,
+    delete_home,
+    add_room,
+    remove_room,
+    get_scene,
+    add_device,
+    list_devices,
+    delete_device,
+    set_assumptions,
+    get_assumptions,
+)
+
+from aggregation import (
+    compute_home_summary,
+    save_snapshot,
+    list_snapshots,
+)
+
+from optimizer import (
+    propose_actions_with_llm,
+)
+
+from actions_service import (
+    store_proposals,
+    execute_actions,
+    list_actions,
+    revert_action,
+    compute_action_savings,
+)
+
+from auth import (
+    SignupRequest,
+    LoginRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    get_current_user,
+    signup,
+    login,
+    forgot_password,
+    reset_password,
+    get_user_profile,
+    _check_db,
+    ensure_auth_indexes,
+)
+
+# Vision service imports (may fail if dependencies not available)
+try:
+    from vision_service import (
+        VISION_AVAILABLE,
+        detect_appliance,
+        _get_detector,
+        _get_ocr,
+    )
+except ImportError:
+    VISION_AVAILABLE = False
+    # Create dummy functions to avoid NameError
+    def detect_appliance(*args, **kwargs):
+        return {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
+    def _get_detector():
+        pass
+    def _get_ocr():
+        pass
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -78,7 +163,7 @@ async def lifespan(app: FastAPI):
         logger.warning("⚠️  MongoDB not reachable at startup: %s", exc)
 
     # Set auth module's DB availability flag
-    await check_auth_db()  # sets _db_available = True/False
+    await _check_db()  # sets _db_available = True/False
     if not db_ok:
         logger.info("📝  Auth running in IN-MEMORY fallback mode (no MongoDB)")
 
@@ -319,20 +404,47 @@ async def scan_image(image: UploadFile = File(...)):
         fallback_input = None
         if best:
             fallback_input = best.get("category") or best.get("label") or best.get("model")
-        fallback_input = fallback_input or "Unknown"
-        try:
-            fb = _resolve_fallback(fallback_input)
+        
+        logger.info(f"DEBUG: fallback_input = '{fallback_input}', best = {best}")
+        
+        # If no meaningful detection or it's not an actual appliance, use a very low power default
+        # List of actual appliances we care about
+        actual_appliances = {"Television", "Laptop", "Microwave", "Oven", "Toaster", "Refrigerator", "Hair Dryer", "Phone Charger", "Clock", "Remote / Standby Device", "Computer Peripheral", "Washing Machine", "Dryer", "Air Conditioner", "Space Heater", "Light Bulb", "Lamp", "Dishwasher", "Gaming Console", "Router", "Fan", "Water Heater"}
+        
+        if not fallback_input or fallback_input not in actual_appliances:
+            # Non-appliance detected - use minimal power
             power_profile = {
-                "brand": best.get("brand", "Unknown") if best else "Unknown",
-                "model": best.get("model", "Unknown") if best else "Unknown",
-                "name": fallback_input,
+                "brand": "Unknown",
+                "model": "Unknown", 
+                "name": "Non-Appliance",
                 "region": "US",
-                "profile": fb.model_dump(),
+                "profile": {
+                    "category": "Non-Appliance",
+                    "standby_watts_range": [0, 0],
+                    "standby_watts_typical": 0,
+                    "active_watts_range": [0, 5],
+                    "active_watts_typical": 0,
+                    "confidence": 0.1,
+                    "source": "Estimate",
+                    "notes": ["This doesn't appear to be an electrical appliance"]
+                },
                 "cached": False,
             }
-            logger.info("Using local fallback power profile for '%s'", fallback_input)
-        except Exception:
-            power_profile = None
+            logger.info("Using non-appliance power profile (0W) for non-appliance detection")
+        else:
+            try:
+                fb = _resolve_fallback(fallback_input)
+                power_profile = {
+                    "brand": best.get("brand", "Unknown") if best else "Unknown",
+                    "model": best.get("model", "Unknown") if best else "Unknown",
+                    "name": fallback_input,
+                    "region": "US",
+                    "profile": fb.model_dump(),
+                    "cached": False,
+                }
+                logger.info("Using local fallback power profile for '%s'", fallback_input)
+            except Exception:
+                power_profile = None
 
     # If no candidates from vision, provide sensible defaults
     if not candidates:
@@ -876,6 +988,8 @@ async def chat_endpoint(req: ChatRequest):
     Falls back to curated responses when quota is exhausted.
     """
     import asyncio
+    logger.info("Chat endpoint received message: %s", req.message[:50])
+    
     try:
         from agents import GOOGLE_API_KEY as _GKEY
         if not _GKEY:
@@ -906,16 +1020,18 @@ async def chat_endpoint(req: ChatRequest):
         contents.append(genai_types.Content(role="user", parts=[genai_types.Part(text=req.message)]))
 
         client = genai.Client(api_key=_GKEY)
+        logger.info("Attempting Gemini call...")
 
         # Try models in order — use httpx timeout, no tenacity retries
         models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
         last_err = None
         for model_name in models:
             try:
+                logger.info("Trying model: %s", model_name)
                 config = genai_types.GenerateContentConfig(
                     system_instruction=system_msg,
                     temperature=0.7,
-                    http_options=genai_types.HttpOptions(timeout=10_000),  # 10s
+                    http_options=genai_types.HttpOptions(timeout=3_000),  # 3s - faster fallback
                 )
                 # Run in thread with strict asyncio timeout
                 result = await asyncio.wait_for(
@@ -925,7 +1041,7 @@ async def chat_endpoint(req: ChatRequest):
                             model=m, contents=contents, config=config,
                         ),
                     ),
-                    timeout=12,
+                    timeout=5,  # 5s total timeout - faster fallback
                 )
                 reply = result.text or "No response received."
                 return {"success": True, "data": {"reply": reply}}
@@ -946,8 +1062,10 @@ async def chat_endpoint(req: ChatRequest):
         raise last_err or Exception("All models failed")
     except Exception as exc:
         logger.warning("Chat endpoint using fallback: %s", str(exc)[:120])
+        logger.info("Getting fallback response...")
         fallback = _get_energy_fallback(req.message)
         if fallback:
+            logger.info("Returning fallback response")
             return {"success": True, "data": {"reply": fallback}}
         raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)})
 
