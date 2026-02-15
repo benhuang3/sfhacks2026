@@ -40,6 +40,7 @@ import { HomeManagerScreen } from './src/screens/HomeManagerScreen';
 import { HomeSummaryScreen } from './src/screens/HomeSummaryScreen';
 import { ActionsScreen } from './src/screens/ActionsScreen';
 import { CameraScanScreen } from './src/screens/CameraScanScreen';
+import { LiveScanScreen } from './src/screens/LiveScanScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
@@ -130,6 +131,7 @@ function ScanNavigator() {
               const parent = navigation.getParent();
               if (parent) parent.navigate('Dashboard' as never);
             }}
+            onOpenCamera={() => navigation.navigate('LiveScan' as never)}
           />
         )}
       </ScanStackNav.Screen>
@@ -142,6 +144,16 @@ function ScanNavigator() {
             onDeviceAdded={() => {
               // Go back to scan home after adding device
               navigation.navigate('ScanHome' as never);
+            }}
+          />
+        )}
+      </ScanStackNav.Screen>
+      <ScanStackNav.Screen name="LiveScan">
+        {({ navigation }) => (
+          <LiveScanScreen
+            onBack={() => navigation.goBack()}
+            onCapture={(scanData: any, imageUri: string) => {
+              navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
             }}
           />
         )}
@@ -384,46 +396,144 @@ function LandingScreen() {
         </Text>
       </View>
 
-      {loading ? (
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
-      ) : (
-        <View style={{
-          flexDirection: 'row', flexWrap: 'wrap',
-          justifyContent: 'space-between', marginTop: 8,
-        }}>
-          {cards.map((c, i) => (
-            <View
-              key={i}
-              style={{
-                width: '48%',
-                backgroundColor: colors.card,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 16,
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ fontSize: 24, marginBottom: 4 }}>{c.icon}</Text>
-              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{c.label}</Text>
-              <Text style={{ color: isDark ? '#555' : '#999', fontSize: 10, marginTop: 1 }}>{c.sub}</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+        ) : (
+          <>
+            {/* Quick Stats Bar */}
+            <View style={{
+              flexDirection: 'row',
+              backgroundColor: colors.card,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 16,
+              marginBottom: 16,
+              justifyContent: 'space-around',
+            }}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: colors.accent, fontSize: 22, fontWeight: '800' }}>
+                  {stats?.deviceCount ?? 0}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>Devices</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#FF9800', fontSize: 22, fontWeight: '800' }}>
+                  {stats ? `$${fmt(stats.monthlyCost, 2)}` : '–'}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>Monthly</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#F44336', fontSize: 22, fontWeight: '800' }}>
+                  {stats ? `${fmt(stats.annualCo2, 0)}kg` : '–'}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>CO₂/yr</Text>
+              </View>
             </View>
-          ))}
-        </View>
-      )}
 
-      {/* 3D Home Preview */}
-      {scene && scene.objects && scene.objects.length > 0 && (
-        <View style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
-            🏠 Your Home
-          </Text>
-          <View style={{ borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-            <Scene3D scene={scene} height={180} />
-          </View>
-        </View>
-      )}
+            {/* Energy Stats Cards - 2x3 Grid */}
+            <View style={{
+              flexDirection: 'row', flexWrap: 'wrap',
+              justifyContent: 'space-between', marginBottom: 20,
+            }}>
+              {[
+                { icon: 'hardware-chip-outline' as const, label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked', color: colors.accent },
+                { icon: 'flash-outline' as const, label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours', color: '#FFB300' },
+                { icon: 'wallet-outline' as const, label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated', color: '#FF9800' },
+                { icon: 'leaf-outline' as const, label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint', color: '#66BB6A' },
+                { icon: 'eye-off-outline' as const, label: 'Standby Waste', value: stats ? `$${fmt(stats.standbyWaste, 2)}/yr` : '–', sub: 'ghost energy cost', color: '#AB47BC' },
+                { icon: 'bar-chart-outline' as const, label: 'Annual Cost', value: stats ? `$${fmt(stats.annualCost, 2)}` : '–', sub: 'total estimate', color: '#42A5F5' },
+              ].map((c, i) => (
+                <View
+                  key={i}
+                  style={{
+                    width: '48%',
+                    backgroundColor: colors.card,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    padding: 16,
+                    marginBottom: 12,
+                  }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: c.color + '18', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
+                    <Ionicons name={c.icon} size={22} color={c.color} />
+                  </View>
+                  <Text style={{ color: c.color, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>{c.label}</Text>
+                  <Text style={{ color: isDark ? '#444' : '#aaa', fontSize: 10, marginTop: 2 }}>{c.sub}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* 3D Home Section */}
+            <View style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>
+                  🏠 Your Home
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  {devices.length} device{devices.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+
+              <House3DViewer
+                devices={devices.map(d => ({
+                  category: d.category,
+                  label: d.label,
+                  roomId: d.roomId,
+                }))}
+                rooms={rooms.map(r => ({ roomId: r.roomId, name: r.name }))}
+                height={devices.length > 0 ? 420 : 340}
+                isDark={isDark}
+              />
+            </View>
+
+            {/* My Devices with 3D Models */}
+            {devices.length > 0 && (
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
+                  ⚡ My Devices
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {devices.map(device => (
+                    <View
+                      key={device.id}
+                      style={{
+                        backgroundColor: colors.card,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        padding: 14,
+                        marginRight: 12,
+                        alignItems: 'center',
+                        width: 120,
+                      }}
+                    >
+                      <Appliance3DModel
+                        category={device.category}
+                        size={80}
+                        showLabel={false}
+                      />
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700', marginTop: 8, textAlign: 'center' }} numberOfLines={1}>
+                        {device.label || device.category}
+                      </Text>
+                      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '600', marginTop: 3 }}>
+                        {device.power?.active_watts_typical ?? '?'}W
+                      </Text>
+                      {device.power?.standby_watts_typical > 0 && (
+                        <Text style={{ color: '#FF9800', fontSize: 9, marginTop: 2 }}>
+                          👻 {device.power.standby_watts_typical}W standby
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {/* Quick Tips */}
             <View style={{

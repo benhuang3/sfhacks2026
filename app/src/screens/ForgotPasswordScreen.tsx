@@ -8,6 +8,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { apiForgotPassword, apiResetPassword } from '../services/authApi';
+import { log } from '../utils/logger';
 
 interface Props {
   onGoLogin: () => void;
@@ -27,13 +28,16 @@ export function ForgotPasswordScreen({ onGoLogin }: Props) {
     if (!email) { setError('Please enter your email'); return; }
     setError('');
     setLoading(true);
+    log.auth('Send OTP pressed', { email });
     try {
       const result = await apiForgotPassword(email);
+      log.auth('OTP sent successfully', { email });
       setMessage(result.message);
       if (result._debug_otp) setDebugOtp(result._debug_otp);
       setStep('code');
-    } catch (e: any) {
-      setError(e.message || 'Failed to send reset code');
+    } catch (e: unknown) {
+      log.error('auth', 'Send OTP failed', e);
+      setError(e instanceof Error ? e.message : 'Failed to send reset code');
     }
     setLoading(false);
   };
@@ -43,12 +47,15 @@ export function ForgotPasswordScreen({ onGoLogin }: Props) {
     if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
     setError('');
     setLoading(true);
+    log.auth('Reset password pressed', { email });
     try {
       const result = await apiResetPassword(email, code, newPassword);
+      log.auth('Password reset successful', { email });
       setMessage(result.message);
       setStep('done');
-    } catch (e: any) {
-      setError(e.message || 'Reset failed');
+    } catch (e: unknown) {
+      log.error('auth', 'Password reset failed', e);
+      setError(e instanceof Error ? e.message : 'Reset failed');
     }
     setLoading(false);
   };

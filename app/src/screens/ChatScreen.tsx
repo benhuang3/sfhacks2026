@@ -23,8 +23,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../App';
 
 // API base URL — reuse same pattern as apiClient
-// Cloudflare tunnel URL — works from any device
-const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
+// Cloudflare tunnel URL — works from any network
+const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
 // ---------------------------------------------------------------------------

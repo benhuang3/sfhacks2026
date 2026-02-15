@@ -261,13 +261,21 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # Save uploaded file
-    ext = image.filename.split(".")[-1] if image.filename else "jpg"
+    ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+    ext = (image.filename.split(".")[-1].lower() if image.filename else "jpg")
+    if ext not in ALLOWED_EXTENSIONS:
+        ext = "jpg"
     filename = f"{uuid.uuid4().hex}.{ext}"
     file_path = UPLOAD_DIR / filename
 
     try:
+        content = await image.read()
+        if len(content) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail={"success": False, "error": "Uploaded image is empty."},
+            )
         with open(file_path, "wb") as f:
-            content = await image.read()
             f.write(content)
         logger.info("Saved uploaded image: %s (%d bytes)", file_path, len(content))
     except Exception as exc:
@@ -864,15 +872,17 @@ class ChatResponse(_PydanticBase):
 async def chat_endpoint(req: ChatRequest):
     """
     Energy advisor chatbot powered by Gemini 2.0 Flash.
-    Accepts a user message + optional history, returns AI reply.
+    Uses google.genai SDK directly (no langchain) for fast error handling.
+    Falls back to curated responses when quota is exhausted.
     """
     import asyncio
     try:
         from agents import GOOGLE_API_KEY as _GKEY
         if not _GKEY:
             raise ValueError("GOOGLE_API_KEY not configured")
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+        from google import genai
+        from google.genai import types as genai_types
 
         system_msg = (
             "You are SmartGrid AI, a friendly and knowledgeable home energy advisor. "
@@ -888,41 +898,54 @@ async def chat_endpoint(req: ChatRequest):
             "Use emoji occasionally to keep it friendly. Max 3-4 paragraphs."
         )
 
-        messages = [SystemMessage(content=system_msg)]
-        for msg in req.history[-10:]:  # keep last 10 for context
-            if msg.get("role") == "user":
-                messages.append(HumanMessage(content=msg["content"]))
-            elif msg.get("role") == "assistant":
-                messages.append(AIMessage(content=msg["content"]))
-        messages.append(HumanMessage(content=req.message))
+        # Build conversation with history
+        contents = []
+        for msg in req.history[-10:]:
+            role = "user" if msg.get("role") == "user" else "model"
+            contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=msg["content"])]))
+        contents.append(genai_types.Content(role="user", parts=[genai_types.Part(text=req.message)]))
 
-        # Try multiple models in order (handles rate limits on free tier)
+        client = genai.Client(api_key=_GKEY)
+
+        # Try models in order — use httpx timeout, no tenacity retries
         models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
         last_err = None
         for model_name in models:
             try:
-                llm = ChatGoogleGenerativeAI(
-                    model=model_name,
-                    google_api_key=_GKEY,
+                config = genai_types.GenerateContentConfig(
+                    system_instruction=system_msg,
                     temperature=0.7,
-                    timeout=15,
+                    http_options=genai_types.HttpOptions(timeout=10_000),  # 10s
                 )
-                result = await asyncio.wait_for(llm.ainvoke(messages), timeout=20)
-                reply = result.content if hasattr(result, "content") else str(result)
+                # Run in thread with strict asyncio timeout
+                result = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda m=model_name: client.models.generate_content(
+                            model=m, contents=contents, config=config,
+                        ),
+                    ),
+                    timeout=12,
+                )
+                reply = result.text or "No response received."
                 return {"success": True, "data": {"reply": reply}}
             except asyncio.TimeoutError:
                 last_err = Exception(f"Model {model_name} timed out")
                 logger.warning("Model %s timed out — trying next", model_name)
                 continue
             except Exception as model_err:
+                err_str = str(model_err)
                 last_err = model_err
-                logger.warning("Model %s failed: %s — trying next", model_name, model_err)
+                # 429 / quota exhausted → skip remaining models, go to fallback
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                    logger.warning("Quota exhausted — using fallback")
+                    break
+                logger.warning("Model %s failed: %s — trying next", model_name, err_str[:120])
                 continue
 
         raise last_err or Exception("All models failed")
     except Exception as exc:
-        logger.exception("Chat endpoint failed")
-        # Return a helpful fallback instead of 500
+        logger.warning("Chat endpoint using fallback: %s", str(exc)[:120])
         fallback = _get_energy_fallback(req.message)
         if fallback:
             return {"success": True, "data": {"reply": fallback}}
@@ -932,7 +955,7 @@ async def chat_endpoint(req: ChatRequest):
 def _get_energy_fallback(question: str) -> str:
     """Provide offline energy advice when Gemini is unavailable."""
     q = question.lower()
-    if any(w in q for w in ["reduce", "save", "lower", "bill", "cut"]):
+    if any(w in q for w in ["reduce", "save", "lower", "bill", "cut", "cheap"]):
         return ("💡 Here are top ways to reduce your energy bill:\n\n"
                 "1. **Unplug standby devices** — they can cost $100+/year\n"
                 "2. **Use LED bulbs** — 75% less energy than incandescent\n"
@@ -948,7 +971,7 @@ def _get_energy_fallback(question: str) -> str:
                 "• Phone charger: 0.1-0.5W → ~$0.26-1.30/year\n"
                 "• Microwave (clock): 3-5W → ~$8-13/year\n\n"
                 "💡 **Tip:** Use smart power strips or unplug when not in use. Standby can account for 5-10% of your total bill!")
-    elif any(w in q for w in ["most energy", "highest", "biggest", "appliance"]):
+    elif any(w in q for w in ["most energy", "highest", "biggest", "appliance", "consume", "power hungry"]):
         return ("⚡ **Top energy-consuming home appliances** (typical US home):\n\n"
                 "1. 🌡️ **HVAC** — 2,000-5,000W → ~$600-1500/year\n"
                 "2. 🚿 **Water Heater** — 4,500W → ~$400-600/year\n"
@@ -956,14 +979,107 @@ def _get_energy_fallback(question: str) -> str:
                 "4. 🧊 **Refrigerator** — 100-400W (runs 24/7) → ~$50-150/year\n"
                 "5. 🍽️ **Dishwasher** — 1,200-2,400W → ~$35-65/year\n\n"
                 "💡 Focus on HVAC efficiency and water heating for the biggest savings!")
+    elif any(w in q for w in ["solar", "panel", "renewable", "green"]):
+        return ("☀️ **Solar Energy Facts:**\n\n"
+                "• A typical 6kW residential solar system produces ~7,200-9,000 kWh/year\n"
+                "• Average payback period: 6-10 years (depending on location & incentives)\n"
+                "• Can reduce electricity bill by 50-100%\n"
+                "• Federal tax credit (ITC): 30% of installation cost\n"
+                "• Most panels last 25-30 years with minimal maintenance\n\n"
+                "💡 **Tip:** Start by calculating your daily kWh usage from the Dashboard to size a solar system!")
+    elif any(w in q for w in ["tv", "television", "screen", "monitor", "display"]):
+        return ("📺 **TV & Monitor Energy Guide:**\n\n"
+                "• LED TV (55\"): ~60-80W active, 0.5-3W standby\n"
+                "• OLED TV (65\"): ~80-120W active\n"
+                "• Computer Monitor (27\"): ~25-50W\n"
+                "• Gaming Monitor (144Hz): ~40-70W\n\n"
+                "💡 **Tips to save:**\n"
+                "1. Enable auto-brightness / eco mode\n"
+                "2. Turn off (don't just sleep) when not watching\n"
+                "3. Reduce backlight brightness by 25% — saves ~15% energy\n"
+                "4. Use a smart plug to cut standby power completely\n\n"
+                "⚡ A TV left on standby 20hrs/day costs ~$5-13/year!")
+    elif any(w in q for w in ["fridge", "refrigerator", "freezer"]):
+        return ("🧊 **Refrigerator Energy Guide:**\n\n"
+                "• Modern fridge: 100-400W, uses ~400-800 kWh/year\n"
+                "• Old fridge (15+ years): can use 2x more energy\n"
+                "• Mini fridge: 50-100W, ~200-400 kWh/year\n\n"
+                "💡 **Tips to save:**\n"
+                "1. Set temp to 37°F (fridge) / 0°F (freezer)\n"
+                "2. Keep it full (thermal mass helps efficiency)\n"
+                "3. Clean coils every 6 months\n"
+                "4. Check door seals — place a dollar bill, if it slides out, replace seals\n"
+                "5. Keep away from heat sources (oven, direct sunlight)\n\n"
+                "⚡ An ENERGY STAR fridge saves ~$35-70/year vs. a 10-year-old model!")
+    elif any(w in q for w in ["ac", "air condition", "hvac", "heat", "cool", "thermostat"]):
+        return ("🌡️ **HVAC Energy Guide:**\n\n"
+                "• Central AC: 2,000-5,000W → biggest home energy user\n"
+                "• Window AC: 500-1,400W\n"
+                "• Space heater: 750-1,500W\n"
+                "• Smart thermostat savings: 10-15% on HVAC bill\n\n"
+                "💡 **Tips to save:**\n"
+                "1. Set to 78°F cooling / 68°F heating\n"
+                "2. Each degree saves ~3% on energy\n"
+                "3. Change filters every 1-3 months\n"
+                "4. Use ceiling fans (counterclockwise in summer)\n"
+                "5. Seal windows & doors — drafts waste 25-30% of HVAC energy\n\n"
+                "⚡ A smart thermostat can save ~$140-200/year!")
+    elif any(w in q for w in ["wash", "laundry", "dryer", "clothes"]):
+        return ("👕 **Laundry Energy Guide:**\n\n"
+                "• Washing machine: 400-1,300W per cycle\n"
+                "• Dryer: 2,000-5,000W per cycle (~$0.45-1.00/load)\n"
+                "• Dryer is one of the most expensive appliances to run!\n\n"
+                "💡 **Tips to save:**\n"
+                "1. **Wash in cold water** — 90% of energy goes to heating water\n"
+                "2. Run full loads only\n"
+                "3. Air dry when possible (saves ~$100/year)\n"
+                "4. Clean dryer lint trap every load (improves efficiency 30%)\n"
+                "5. Use dryer balls to reduce drying time\n\n"
+                "⚡ Switching to cold water saves ~$60-100/year!")
+    elif any(w in q for w in ["led", "bulb", "light", "lamp", "lighting"]):
+        return ("💡 **Lighting Energy Guide:**\n\n"
+                "• LED: 8-12W (lasts 25,000 hrs) → ~$1/year each\n"
+                "• CFL: 13-15W (lasts 8,000 hrs) → ~$1.50/year\n"
+                "• Incandescent: 60W (lasts 1,000 hrs) → ~$7/year\n\n"
+                "**Switching 20 bulbs from incandescent to LED:**\n"
+                "• Saves ~1,000 kWh/year ≈ **$300/year** at $0.30/kWh!\n\n"
+                "💡 **Tips:**\n"
+                "1. Use dimmers — dimming 25% saves 20% energy\n"
+                "2. Install motion sensors in low-traffic areas\n"
+                "3. Use warm white (2700K) for bedrooms, daylight (5000K) for workspaces\n"
+                "4. Smart bulbs can schedule on/off automatically")
+    elif any(w in q for w in ["hello", "hi ", "hey", "howdy", "what can you", "who are", "help"]):
+        return ("👋 **Hello! I'm SmartGrid AI, your home energy advisor!**\n\n"
+                "I can help you with:\n"
+                "• 📊 Understanding your energy consumption\n"
+                "• 💰 Tips to reduce your electricity bill\n"
+                "• 🔌 Appliance-specific energy advice\n"
+                "• ☀️ Renewable energy suggestions\n"
+                "• 📷 Analyzing scanned appliance energy profiles\n\n"
+                "**Try asking:**\n"
+                "• \"How can I reduce my energy bill?\"\n"
+                "• \"How much energy does my TV use?\"\n"
+                "• \"What are the biggest energy consumers?\"\n"
+                "• \"Tips for AC efficiency\"\n\n"
+                "⚡ Let's make your home smarter and greener!")
+    elif any(w in q for w in ["kwh", "watt", "kilowatt", "unit", "how much", "cost", "calculate"]):
+        return ("🔢 **Energy Calculation Quick Guide:**\n\n"
+                "**Formula:** kWh = (Watts × Hours used) ÷ 1,000\n"
+                "**Cost:** kWh × rate (avg $0.30/kWh)\n\n"
+                "**Examples:**\n"
+                "• 100W light bulb × 10 hrs = 1 kWh = **$0.30**\n"
+                "• 1500W space heater × 8 hrs = 12 kWh = **$3.60/day**\n"
+                "• 150W fridge × 24 hrs × 0.3 duty cycle = 1.08 kWh = **$0.32/day**\n\n"
+                "💡 Check your Dashboard to see real usage data for your scanned devices!")
     else:
         return ("⚡ **SmartGrid AI Energy Tips:**\n\n"
-                "I'm currently in offline mode, but here are some quick facts:\n\n"
+                "Here are some quick energy facts:\n\n"
                 "• Average US home uses ~10,500 kWh/year (~$3,150 at $0.30/kWh)\n"
                 "• Standby power wastes 5-10% of your total bill\n"
                 "• LED bulbs use 75% less energy than incandescent\n"
-                "• ENERGY STAR appliances can save 10-50% vs standard models\n\n"
-                "📷 **Scan your appliances** with the Scan tab to get personalized energy insights!")
+                "• ENERGY STAR appliances can save 10-50% vs standard models\n"
+                "• A smart thermostat saves ~$140-200/year\n\n"
+                "📷 **Try asking about specific topics** like TVs, fridges, AC, solar panels, or how to reduce your bill!")
 
 
 # ---------------------------------------------------------------------------
@@ -974,6 +1090,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "server:app",
         host="0.0.0.0",
-        port=int(os.getenv("PORT", "8001")),
+        port=int(os.getenv("PORT", "8000")),
         reload=True,
     )

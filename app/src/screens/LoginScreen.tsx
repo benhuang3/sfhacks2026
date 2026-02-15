@@ -8,6 +8,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { log } from '../utils/logger';
 
 interface Props {
   onGoSignup: () => void;
@@ -15,7 +16,7 @@ interface Props {
 }
 
 export function LoginScreen({ onGoSignup, onGoForgot }: Props) {
-  const { login } = useAuth();
+  const { login, skipAuth } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,10 +26,12 @@ export function LoginScreen({ onGoSignup, onGoForgot }: Props) {
     if (!email || !password) { setError('Please fill in all fields'); return; }
     setError('');
     setLoading(true);
+    log.auth('Login button pressed', { email });
     try {
       await login(email, password);
-    } catch (e: any) {
-      setError(e.message || 'Login failed');
+    } catch (e: unknown) {
+      log.error('auth', 'Login failed', e);
+      setError(e instanceof Error ? e.message : 'Login failed');
     }
     setLoading(false);
   };
@@ -81,6 +84,10 @@ export function LoginScreen({ onGoSignup, onGoForgot }: Props) {
             <Text style={styles.linkText}>Sign Up</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={styles.skipBtn} onPress={skipAuth}>
+          <Text style={styles.skipText}>Skip — continue as guest</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -109,4 +116,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'center' },
   footerText: { color: '#888', fontSize: 14 },
   linkText: { color: '#4CAF50', fontSize: 14, fontWeight: '600' },
+  skipBtn: { alignItems: 'center', marginTop: 24 },
+  skipText: { color: '#666', fontSize: 14 },
 });

@@ -127,7 +127,12 @@ class _MemCollection:
             match = True
             for k, v in filt.items():
                 if isinstance(v, dict):
-                    continue  # skip $gt / $lt operators
+                    # Handle $gt operator (used for OTP expiry check)
+                    if "$gt" in v:
+                        if doc.get(k) is None or doc.get(k) <= v["$gt"]:
+                            match = False
+                            break
+                    continue
                 if doc.get(k) != v:
                     match = False
                     break
@@ -260,7 +265,7 @@ async def signup(req: SignupRequest) -> dict:
         doc = {
             "email": req.email,
             "password_hash": pw_hash,
-            "name": req.name or req.email.split("@")[0],
+            "name": req.name or (req.email.split("@")[0] if "@" in req.email else req.email),
             "createdAt": datetime.now(timezone.utc),
         }
         result = await col.insert_one(doc)
@@ -427,12 +432,13 @@ async def get_user_profile(user_id: str) -> dict:
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    created_at = user.get("createdAt")
     return {
         "id": str(user["_id"]),
         "email": user["email"],
         "name": user.get("name", ""),
         "homeId": user.get("homeId"),
-        "createdAt": user.get("createdAt", "").isoformat() if hasattr(user.get("createdAt", ""), "isoformat") else "",
+        "createdAt": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at or ""),
     }
 
 

@@ -183,7 +183,16 @@ def detect_appliance(image_path: str, confidence_threshold: float = 0.25) -> dic
       - ocr_texts: extracted text
       - best_match: legacy single-best for backward compat
     """
-    img = Image.open(image_path).convert("RGB")
+    try:
+        img = Image.open(image_path).convert("RGB")
+    except Exception as exc:
+        logger.error("Failed to open image %s: %s", image_path, exc)
+        return {
+            "candidates": [], "bbox": None, "detections": [],
+            "ocr_texts": [], "best_match": None,
+            "brand": "Unknown", "model_name": "Unknown",
+            "all_categories": ALL_CATEGORIES,
+        }
     img_w, img_h = img.size
 
     # Object Detection
@@ -221,8 +230,13 @@ def detect_appliance(image_path: str, confidence_threshold: float = 0.25) -> dic
 
     # OCR
     ocr = _get_ocr()
-    ocr_results = ocr.readtext(image_path)
-    ocr_texts = [text for (_, text, conf) in ocr_results if conf > 0.3]
+    try:
+        ocr_results = ocr.readtext(image_path)
+        ocr_texts = [text for (_, text, conf) in ocr_results if conf > 0.3]
+    except Exception as exc:
+        logger.warning("OCR failed for %s: %s", image_path, exc)
+        ocr_results = []
+        ocr_texts = []
     brand, model_name = _parse_brand_model(ocr_texts)
 
     # Build top-3 candidates (deduplicate by category)
@@ -260,6 +274,10 @@ def detect_appliance(image_path: str, confidence_threshold: float = 0.25) -> dic
     if total_conf > 0:
         for c in candidates:
             c["confidence"] = round(c["confidence"] / total_conf, 3)
+    elif candidates:
+        equal_share = round(1.0 / len(candidates), 3)
+        for c in candidates:
+            c["confidence"] = equal_share
 
     # Best detection bbox (normalized)
     best_bbox = None

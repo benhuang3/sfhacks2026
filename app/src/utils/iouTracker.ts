@@ -1,6 +1,11 @@
-import { v4 as uuidv4 } from 'uuid';
 import { Detection, TrackedObject } from './scannerTypes';
 import { computeIoU } from './bboxUtils';
+
+/** Simple unique ID generator — avoids uuid's crypto.getRandomValues() requirement */
+let _idCounter = 0;
+function generateId(): string {
+  return `trk_${Date.now().toString(36)}_${(++_idCounter).toString(36)}`;
+}
 
 const DEFAULT_IOU_THRESHOLD = 0.3;
 const DEFAULT_MAX_MISSED_FRAMES = 30;
@@ -76,7 +81,7 @@ export function updateTracks(
 
     const det = newDetections[d];
     updatedTracks.push({
-      id: uuidv4(),
+      id: generateId(),
       bbox: det.bbox,
       label: det.label,
       score: det.score,

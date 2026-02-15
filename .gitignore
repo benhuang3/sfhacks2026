@@ -1,2 +1,46 @@
-node_modules
+## Dependencies
+node_modules/
+
+## Environment / secrets
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
+## Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+## OS files
+.DS_Store
+Thumbs.db
+
+## Build output
+dist/
+build/
+*.tsbuildinfo
+
+## Runtime uploads
+be/uploads/
+
+## Temp / backups
+tmp/
+
+## Expo / React Native
+.expo/
+*.jks
+*.keystore
+
+## IDE
+.idea/
+.vscode/
+*.swp
+*.swo

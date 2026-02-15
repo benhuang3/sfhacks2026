@@ -43,6 +43,8 @@ logger = logging.getLogger("optimizer")
 SMART_PLUG_COST = 15.0
 # Typical eco-mode reduction factor
 ECO_MODE_REDUCTION = 0.15
+# Payback sentinel when savings ≈ 0 (months)
+MAX_PAYBACK_MONTHS = 9999
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +65,7 @@ def _compute_smart_plug_saving(device: dict, assumptions: Assumptions) -> Option
     dollars_saved = kwh_saved * assumptions.rate_per_kwh
     co2_saved = kwh_saved * assumptions.kg_co2_per_kwh
     cost = SMART_PLUG_COST
-    payback = (cost / dollars_saved * 12) if dollars_saved > 0 else 999
+    payback = (cost / dollars_saved * 12) if dollars_saved > 0 else MAX_PAYBACK_MONTHS
 
     return ActionProposal(
         deviceId=device.get("id", ""),
@@ -223,7 +225,7 @@ def _compute_replace_saving(device: dict, assumptions: Assumptions) -> Optional[
         "Light Bulb": 8, "Toaster": 40, "Hair Dryer": 40, "Phone Charger": 20,
     }
     cost = replacement_costs.get(device.get("category", ""), 200)
-    payback = (cost / dollars_saved * 12) if dollars_saved > 0 else 999
+    payback = (cost / dollars_saved * 12) if dollars_saved > 0 else MAX_PAYBACK_MONTHS
 
     if payback > 120:  # > 10 years payback = not worth suggesting
         return None
@@ -318,9 +320,9 @@ def propose_actions(
         if proposal:
             candidates.append(proposal)
 
-    # Rank by savings per dollar of cost (free actions = very high ratio)
+    # Rank by savings per dollar of cost (free actions get max ratio via $0.01 floor)
     candidates.sort(
-        key=lambda c: c.estimated_annual_dollars_saved / max(0.1, c.estimated_cost_usd),
+        key=lambda c: c.estimated_annual_dollars_saved / max(0.01, c.estimated_cost_usd),
         reverse=True,
     )
 
@@ -405,11 +407,18 @@ REQUIREMENTS:
         response = await llm.ainvoke(messages)
         content = response.content.strip()
 
-        # Parse JSON from response
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
+        # Strip markdown code fences if present
+        if "```" in content:
+            parts = content.split("```")
+            # Take the first fenced block (parts[1])
+            if len(parts) >= 3:
+                content = parts[1]
+            elif len(parts) == 2:
+                content = parts[1]
+            # Remove optional language tag (e.g. "json\n")
+            content = content.strip()
+            if content.lower().startswith("json"):
+                content = content[4:].strip()
         parsed = json.loads(content)
 
         proposals_raw = parsed.get("proposals", parsed) if isinstance(parsed, dict) else parsed

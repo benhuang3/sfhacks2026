@@ -5,8 +5,8 @@
  * physical device, or localhost for emulators.
  */
 
-// Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
+// Cloudflare tunnel URL — works from any network
+const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
