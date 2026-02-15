@@ -198,7 +198,7 @@ export function IsometricHouse({
             onPress={() => onSelectRoom?.('')}
           >
             <Text style={[styles.roomChipText, { color: tc.chipText }, !selectedRoom && styles.roomChipTextActive]}>
-              🏠 All
+              All
             </Text>
           </TouchableOpacity>
           {rooms.map(r => (

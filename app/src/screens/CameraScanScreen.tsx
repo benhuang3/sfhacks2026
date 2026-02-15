@@ -27,6 +27,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadScanImage } from '../services/apiService';
 import { log } from '../utils/logger';
+import { Ionicons } from '@expo/vector-icons';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -216,7 +217,7 @@ export function CameraScanScreen({ onBack, onResult, onScanComplete }: CameraSca
         {/* Error message */}
         {error && (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <Text style={styles.errorText}><Ionicons name="warning-outline" size={14} color="#ff6b6b" /> {error}</Text>
           </View>
         )}
 
@@ -283,7 +284,7 @@ export function CameraScanScreen({ onBack, onResult, onScanComplete }: CameraSca
           <SafeAreaView style={styles.topBar}>
             {onBack && (
               <TouchableOpacity onPress={onBack} style={styles.topBackButton}>
-                <Text style={styles.topBackText}>✕</Text>
+                <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             )}
             <Text style={styles.cameraHint}>Point at an appliance</Text>

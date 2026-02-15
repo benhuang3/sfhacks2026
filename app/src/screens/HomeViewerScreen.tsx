@@ -12,8 +12,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity,
   Dimensions, ActivityIndicator, Platform, Animated,
-  TextInput, KeyboardAvoidingView,
+  TextInput, KeyboardAvoidingView, Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import {
@@ -24,6 +25,7 @@ import {
 import { Scene3D } from '../components/Scene3D';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { House3DViewer } from '../components/House3DViewer';
+import { LineGraph } from '../components/LineGraph';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -40,14 +42,14 @@ const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
 
 const DEVICE_ICONS: Record<string, string> = {
-  'Television': '📺', 'TV': '📺', 'Laptop': '💻', 'Monitor': '🖥️',
-  'Microwave': '🍿', 'Oven': '🍳', 'Toaster': '🍞',
-  'Refrigerator': '🧊', 'Fridge': '🧊', 'Hair Dryer': '💨',
-  'Phone Charger': '🔌', 'Clock': '⏰', 'Computer Peripheral': '🖱️',
-  'Washing Machine': '🫧', 'Dryer': '👕', 'Air Conditioner': '❄️',
-  'Space Heater': '🔥', 'Light Bulb': '💡', 'Lamp': '💡',
-  'Dishwasher': '🍽️', 'Gaming Console': '🎮', 'Router': '📡',
-  'Fan': '🌀', 'Water Heater': '🚿',
+  'Television': 'tv-outline', 'TV': 'tv-outline', 'Laptop': 'laptop-outline', 'Monitor': 'desktop-outline',
+  'Microwave': 'restaurant-outline', 'Oven': 'flame-outline', 'Toaster': 'cafe-outline',
+  'Refrigerator': 'snow-outline', 'Fridge': 'snow-outline', 'Hair Dryer': 'cut-outline',
+  'Phone Charger': 'battery-charging-outline', 'Clock': 'time-outline', 'Computer Peripheral': 'hardware-chip-outline',
+  'Washing Machine': 'water-outline', 'Dryer': 'water-outline', 'Air Conditioner': 'snow-outline',
+  'Space Heater': 'flame-outline', 'Light Bulb': 'bulb-outline', 'Lamp': 'bulb-outline',
+  'Dishwasher': 'restaurant-outline', 'Gaming Console': 'game-controller-outline', 'Router': 'wifi-outline',
+  'Fan': 'sync-outline', 'Water Heater': 'water-outline',
 };
 
 const DEVICE_COLORS: Record<string, string> = {
@@ -70,7 +72,7 @@ const ROOM_LAYOUTS: Record<string, { name: string; color: string }> = {
 };
 
 function getDeviceIcon(category: string): string {
-  return DEVICE_ICONS[category] ?? '🔌';
+  return DEVICE_ICONS[category] ?? 'power';
 }
 
 function getDeviceColor(category: string): string {
@@ -166,11 +168,12 @@ function Room3DView({
             >
               <Appliance3DModel category={device.category} size={42} showLabel={false} />
               <Text style={styles.device3dLabel} numberOfLines={1}>{device.label}</Text>
-              {device.power.standby_watts_typical > 1 && (
+              {(device.power?.standby_watts_typical ?? 0) > 1 && (
                 <View style={styles.device3dGhost}>
-                  <Text style={styles.device3dGhostText}>
-                    👻 {device.power.standby_watts_typical}W
-                  </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Image source={require('../../assets/ghost.png')} style={{ width: 10, height: 10, tintColor: '#FF9800' }} resizeMode="contain" />
+                  <Text style={styles.device3dGhostText}> {device.power?.standby_watts_typical}W</Text>
+                </View>
                 </View>
               )}
             </TouchableOpacity>
@@ -179,7 +182,7 @@ function Room3DView({
 
         {devices.length === 0 && (
           <View style={styles.emptyRoom}>
-            <Text style={{ fontSize: 40 }}>🏠</Text>
+            <Image source={require('../../assets/home.png')} style={{ width: 40, height: 40 }} />
             <Text style={{ color: 'rgba(255,255,255,0.5)', marginTop: 8 }}>
               No devices in this room
             </Text>
@@ -193,6 +196,9 @@ function Room3DView({
 // ---------------------------------------------------------------------------
 // Device Detail Panel
 // ---------------------------------------------------------------------------
+const RATE_PER_KWH = 0.30;
+const CO2_PER_KWH = 0.25;
+
 function DeviceDetailPanel({
   device, isDark, colors, onClose, onAction,
 }: {
@@ -202,11 +208,17 @@ function DeviceDetailPanel({
   onClose: () => void;
   onAction: (action: string) => void;
 }) {
-  const annualKwh = (device.power.active_watts_typical * device.active_hours_per_day +
-    device.power.standby_watts_typical * (24 - device.active_hours_per_day)) * 365 / 1000;
-  const annualCost = annualKwh * 0.30;
-  const annualCo2 = annualKwh * 0.25;
-  const ghostCost = (device.power.standby_watts_typical * (24 - device.active_hours_per_day) * 365 / 1000) * 0.30;
+  const power = device.power;
+  const activeW = power?.active_watts_typical ?? 0;
+  const standbyW = power?.standby_watts_typical ?? 0;
+  const hoursPerDay = device.active_hours_per_day ?? 4;
+  const annualKwh = power
+    ? (activeW * hoursPerDay + standbyW * (24 - hoursPerDay)) * 365 / 1000
+    : 0;
+  const annualCost = annualKwh * RATE_PER_KWH;
+  const annualCo2 = annualKwh * CO2_PER_KWH;
+  const ghostCost = power ? (standbyW * (24 - hoursPerDay) * 365 / 1000) * RATE_PER_KWH : 0;
+  const isEstimate = power?.source === 'category_estimate' || power?.source === 'Estimate';
 
   return (
     <Animated.View style={[styles.detailPanel, {
@@ -220,11 +232,16 @@ function DeviceDetailPanel({
             <Text style={[styles.detailName, { color: colors.text }]}>{device.label}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
               {device.brand !== 'Unknown' ? `${device.brand} · ` : ''}{device.category}
-              {device.is_critical ? ' · 🔒 Critical' : ''}
+              {device.is_critical ? <Text> · <Ionicons name="lock-closed" size={12} color="#ff9800" /> Critical</Text> : ''}
             </Text>
+            {isEstimate && (
+              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2, fontStyle: 'italic' }}>
+                Assumptions: {hoursPerDay}h/day, ${RATE_PER_KWH}/kWh · estimate
+              </Text>
+            )}
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={{ color: colors.textSecondary, fontSize: 20 }}>✕</Text>
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -232,15 +249,15 @@ function DeviceDetailPanel({
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : '#e8f5e9' }]}>
           <Text style={[styles.statValue, { color: '#4CAF50' }]}>
-            {device.power.active_watts_typical}W
+            {activeW}W
           </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(255,152,0,0.1)' : '#fff3e0' }]}>
           <Text style={[styles.statValue, { color: '#FF9800' }]}>
-            {device.power.standby_watts_typical}W
+            {standbyW}W
           </Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Standby 👻</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Standby <Image source={require('../../assets/ghost.png')} style={{ width: 10, height: 10, tintColor: '#FF9800' }} resizeMode="contain" /></Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(33,150,243,0.1)' : '#e3f2fd' }]}>
           <Text style={[styles.statValue, { color: '#2196F3' }]}>
@@ -258,8 +275,17 @@ function DeviceDetailPanel({
 
       <View style={styles.infoRow}>
         <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-          📊 {annualKwh.toFixed(0)} kWh/yr · 🌿 {annualCo2.toFixed(1)} kg CO₂/yr · ⏱ {device.active_hours_per_day}h/day
+          <Ionicons name="bar-chart-outline" size={12} color={colors.textSecondary} /> {annualKwh.toFixed(0)} kWh/yr · <Ionicons name="time-outline" size={12} color={colors.textSecondary} /> {hoursPerDay}h/day
         </Text>
+      </View>
+
+      {/* Environmental impact */}
+      <View style={[styles.infoRow, { backgroundColor: isDark ? 'rgba(76,175,80,0.08)' : 'rgba(46,125,50,0.08)', borderRadius: 10, padding: 10, marginBottom: 8 }]}>
+        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 4 }}>Environmental impact</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+          <Ionicons name="leaf-outline" size={14} color="#4CAF50" /> {annualCo2.toFixed(1)} kg CO₂/year · {(annualCo2 * 0.00110231).toFixed(2)} tons
+        </Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>Based on {annualKwh.toFixed(0)} kWh/yr at {CO2_PER_KWH} kg CO₂/kWh</Text>
       </View>
 
       <View style={styles.actionButtons}>
@@ -268,20 +294,20 @@ function DeviceDetailPanel({
             style={[styles.actionBtn, { backgroundColor: '#F44336' }]}
             onPress={() => onAction('turn_off')}
           >
-            <Text style={styles.actionBtnText}>⏻ Turn Off</Text>
+            <Text style={styles.actionBtnText}><Ionicons name="power-outline" size={14} color="#fff" /> Turn Off</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: '#FF9800' }]}
           onPress={() => onAction('schedule')}
         >
-          <Text style={styles.actionBtnText}>⏰ Schedule</Text>
+            <Text style={styles.actionBtnText}><Ionicons name="time-outline" size={14} color="#fff" /> Schedule</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: '#4CAF50' }]}
           onPress={() => onAction('eco_mode')}
         >
-          <Text style={styles.actionBtnText}>🌿 Eco Mode</Text>
+            <Text style={styles.actionBtnText}><Ionicons name="leaf-outline" size={14} color="#fff" /> Eco Mode</Text>
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -334,7 +360,7 @@ function AgentCommandBar({
             color: colors.text,
             borderColor: colors.border,
           }]}
-          placeholder='💬 "turn off unused" or "optimize energy"'
+          placeholder='"turn off unused" or "optimize energy"'
           placeholderTextColor={colors.textSecondary}
           value={command}
           onChangeText={setCommand}
@@ -352,7 +378,7 @@ function AgentCommandBar({
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>⚡</Text>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}><Ionicons name="flash-outline" size={16} color="#fff" /></Text>
           )}
         </TouchableOpacity>
       </View>
@@ -389,10 +415,10 @@ function AgentResultToast({
     }]}>
       <View style={styles.toastHeader}>
         <Text style={[styles.toastTitle, { color: colors.text }]}>
-          {result.auto_executed ? '✅ Actions Executed' : '💡 Proposals Ready'}
+          {result.auto_executed ? '' : ''}<Ionicons name={result.auto_executed ? 'checkmark-circle-outline' : 'bulb-outline'} size={16} color={colors.text} /> {result.auto_executed ? 'Actions Executed' : 'Proposals Ready'}
         </Text>
         <TouchableOpacity onPress={onDismiss}>
-          <Text style={{ color: colors.textSecondary }}>✕</Text>
+          <Ionicons name="close" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
       <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 8 }}>
@@ -401,11 +427,11 @@ function AgentResultToast({
       {result.proposals.slice(0, 3).map((p: ActionProposal, i: number) => (
         <View key={i} style={[styles.toastAction, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}>
           <Text style={{ color: colors.text, fontSize: 13 }}>
-            {p.action_type === 'turn_off' ? '⏻' : p.action_type === 'schedule' ? '⏰' : '🌿'}{' '}
+            {p.action_type === 'turn_off' ? '' : p.action_type === 'schedule' ? '' : ''}<Ionicons name={p.action_type === 'turn_off' ? 'power-outline' : p.action_type === 'schedule' ? 'time-outline' : 'leaf-outline'} size={13} color={colors.text} />{' '}
             {p.label}: {p.rationale?.slice(0, 60)}
           </Text>
           <Text style={{ color: colors.accent, fontSize: 12, marginTop: 2 }}>
-            💰 ${p.estimated_annual_dollars_saved?.toFixed(2)}/yr
+            <Ionicons name="wallet-outline" size={12} color={colors.accent} /> ${p.estimated_annual_dollars_saved?.toFixed(2)}/yr
           </Text>
         </View>
       ))}
@@ -483,6 +509,17 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
     return fromDevices.map(rid => ({ roomId: rid, name: rid.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }));
   }, [home, devices]);
 
+  // Inline 7-day trend for header (from summary)
+  const inlineLineData = useMemo(() => {
+    const daily = summary?.totals?.daily_cost ?? 0;
+    if (daily <= 0) return null;
+    const dayFactors = [0.85, 0.92, 1.0, 0.97, 1.05, 1.15, 1.08];
+    return {
+      labels: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
+      data: dayFactors.map(f => Math.max(0.01, daily * f)),
+    };
+  }, [summary?.totals?.daily_cost]);
+
   const handleDeviceAction = useCallback(async (action: string) => {
     if (!selectedDevice) return;
     try {
@@ -520,7 +557,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>
-            🏠 {home?.name || 'My Home'}
+            <Ionicons name="home-outline" size={16} color={colors.accent} /> {home?.name || 'My Home'}
           </Text>
           {summary && (
             <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
@@ -529,7 +566,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
           )}
         </View>
         <TouchableOpacity onPress={loadData} style={styles.headerAction}>
-          <Text style={{ fontSize: 18 }}>🔄</Text>
+          <Ionicons name="refresh-outline" size={18} color={colors.accent} />
         </TouchableOpacity>
       </View>
 
@@ -572,16 +609,32 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
             backgroundColor: viewMode === '3d' ? colors.accent : (isDark ? '#222' : '#eee') }}
           onPress={() => setViewMode('3d')}
         >
-          <Text style={{ color: viewMode === '3d' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>🏠 3D House</Text>
+          <Text style={{ color: viewMode === '3d' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}><Ionicons name="home-outline" size={12} /> 3D House</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
             backgroundColor: viewMode === 'room' ? colors.accent : (isDark ? '#222' : '#eee') }}
           onPress={() => setViewMode('room')}
         >
-          <Text style={{ color: viewMode === 'room' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>📐 Room View</Text>
+          <Text style={{ color: viewMode === 'room' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}><Ionicons name="cube-outline" size={12} /> Room View</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Inline 7-day trend graph */}
+      {inlineLineData && inlineLineData.data.length >= 2 && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <LineGraph
+            data={inlineLineData.data}
+            labels={inlineLineData.labels}
+            title="7-day cost trend"
+            yAxisPrefix="$"
+            height={100}
+            lineColor={colors.accent}
+            cardBg={isDark ? '#1a1a2e' : '#f0f0f5'}
+            textColor={colors.text}
+          />
+        </View>
+      )}
 
       {/* 3D Views */}
       <View style={{ flex: 1 }}>
@@ -591,6 +644,13 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
             devices={devices.map(d => ({ label: d.label, category: d.category, roomId: d.roomId }))}
             isDark={isDark}
             height={SCREEN_H - 280}
+            onDevicePress={(dev) => {
+              const matched =
+                devices.find(d => d.label === dev.label && d.roomId === dev.roomId) ||
+                devices.find(d => d.label === dev.label) ||
+                devices.find(d => d.category === dev.category && d.roomId === dev.roomId);
+              if (matched) setSelectedDevice(matched);
+            }}
           />
         ) : scene && scene.objects && scene.objects.length > 0 ? (
           <Scene3D

@@ -355,7 +355,7 @@ async def scan_image(image: UploadFile = File(...)):
         )
 
     # -------------------------------------------------------------------
-    # Run vision ML if available, otherwise use Gemini fallback
+    # Run vision ML if available, else Gemini Vision (real data / Berkeley Lab style)
     # -------------------------------------------------------------------
     vision_result = {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
 
@@ -363,7 +363,51 @@ async def scan_image(image: UploadFile = File(...)):
         try:
             vision_result = detect_appliance(str(file_path))
         except Exception as exc:
-            logger.exception("Vision inference failed, using fallback")
+            logger.exception("Vision inference failed, trying Gemini Vision fallback")
+            vision_result = {"detections": [], "ocr_texts": [], "best_match": None, "candidates": [], "bbox": None}
+
+    best = vision_result.get("best_match")
+    candidates = vision_result.get("candidates", [])
+
+    # When no detection (or vision not available), use Gemini Vision to identify appliance
+    if (not best or not candidates) and os.environ.get("GOOGLE_API_KEY"):
+        try:
+            from google import genai
+            from google.genai import types as genai_types
+            import base64
+            with open(file_path, "rb") as f:
+                img_b64 = base64.standard_b64encode(f.read()).decode("utf-8")
+            mime = "image/jpeg" if str(file_path).lower().endswith((".jpg", ".jpeg")) else "image/png"
+            client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
+            resp = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=genai_types.Content(
+                    role="user",
+                    parts=[
+                        genai_types.Part.from_bytes(data=base64.standard_b64decode(img_b64), mime_type=mime),
+                        genai_types.Part.from_text(
+                            "Identify the single main electrical appliance or device in this image. "
+                            "Reply with exactly one line: CATEGORY only, e.g. Television, Microwave, Laptop, Refrigerator, Lamp, Toaster, Oven, Hair Dryer, Phone Charger, Monitor, Washing Machine, Air Conditioner, Space Heater, Router, Fan, Coffee Maker, or Unknown."
+                        ),
+                    ],
+                ),
+                config=genai_types.GenerateContentConfig(temperature=0.1, max_output_tokens=64),
+            )
+            if resp and resp.text:
+                category = resp.text.strip().split("\n")[0].strip()
+                if category and category.lower() != "unknown":
+                    best = {"brand": "Unknown", "model": "Unknown", "category": category, "label": category.lower(), "score": 0.7}
+                    candidates = [{"category": category, "confidence": 0.7, "modelAsset": f"models/{category.lower().replace(' ', '_')}.glb"}]
+                    vision_result["best_match"] = best
+                    vision_result["candidates"] = candidates
+                    try:
+                        from vision_service import ALL_CATEGORIES
+                        vision_result["all_categories"] = ALL_CATEGORIES
+                    except Exception:
+                        vision_result["all_categories"] = []
+                    logger.info("Gemini Vision identified: %s", category)
+        except Exception as exc:
+            logger.warning("Gemini Vision fallback failed: %s", exc)
 
     best = vision_result.get("best_match")
     candidates = vision_result.get("candidates", [])
@@ -383,14 +427,17 @@ async def scan_image(image: UploadFile = File(...)):
         except Exception as exc:
             logger.warning("Power profile lookup failed: %s", exc)
 
-    # If no profile was found, fall back to category defaults so frontend can calculate
+    # If no profile was found, fall back to category defaults (Berkeley Lab / research style)
     if power_profile is None:
         fallback_input = None
         if best:
             fallback_input = best.get("category") or best.get("label") or best.get("model")
+        # Use first candidate category if best_match missing so we don't default to 75W
+        if not fallback_input and candidates:
+            fallback_input = candidates[0].get("category") or "Unknown"
         fallback_input = fallback_input or "Unknown"
         try:
-            fb = _resolve_fallback(fallback_input)
+            fb = _resolve_fallback(str(fallback_input))
             power_profile = {
                 "brand": best.get("brand", "Unknown") if best else "Unknown",
                 "model": best.get("model", "Unknown") if best else "Unknown",
@@ -399,8 +446,9 @@ async def scan_image(image: UploadFile = File(...)):
                 "profile": fb.model_dump(),
                 "cached": False,
             }
-            logger.info("Using local fallback power profile for '%s'", fallback_input)
-        except Exception:
+            logger.info("Using category fallback power profile for '%s' (source=%s)", fallback_input, fb.source)
+        except Exception as e:
+            logger.warning("Fallback resolve failed for '%s': %s", fallback_input, e)
             power_profile = None
 
     # If no candidates from vision, provide sensible defaults

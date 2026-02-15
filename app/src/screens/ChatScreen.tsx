@@ -16,12 +16,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 // Theme hook from App
 import { useTheme } from '../context/ThemeContext';
 
+// API base URL — reuse same pattern as apiClient
+// Cloudflare tunnel URL — works from any network
+const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
+const BASE_URL = `${TUNNEL_URL}/api/v1`;
 import { API_V1_URL } from '../utils/apiConfig';
 
 const BASE_URL = API_V1_URL;
@@ -114,7 +120,7 @@ export function ChatScreen() {
       const errorReply: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: '⚠️ ' + errorText,
+        content: '[Error] ' + errorText,
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, errorReply]);
@@ -137,7 +143,7 @@ export function ChatScreen() {
         },
       ]}>
         {!isUser && (
-          <Text style={[s.roleLabel, { color: colors.accent }]}>⚡ SmartGrid AI</Text>
+          <Text style={[s.roleLabel, { color: colors.accent }]}><Ionicons name="flash-outline" size={12} color={colors.accent} /> SmartGrid AI</Text>
         )}
         <Text style={[
           s.messageText,
@@ -161,10 +167,14 @@ export function ChatScreen() {
     <SafeAreaView style={[s.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
       <View style={[s.header, { borderBottomColor: colors.border }]}>
-        <Text style={[s.headerTitle, { color: colors.text }]}>⚡ SmartGrid AI</Text>
-        <Text style={[s.headerSub, { color: colors.textSecondary }]}>
-          Powered by Gemini • Energy Advisor
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Image source={require('../../assets/image.png')} style={{ width: 22, height: 22, marginRight: 8, tintColor: colors.accent }} />
+          <Text style={[s.headerTitle, { color: colors.text }]}>SmartGrid AI</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+          <Text style={[s.geminiIcon, { color: colors.textSecondary }]}>♊︎</Text>
+          <Text style={[s.headerSub, { color: colors.textSecondary, marginLeft: 6 }]}>Powered by Gemini • Energy Advisor</Text>
+        </View>
       </View>
 
       {/* Messages */}
@@ -176,7 +186,7 @@ export function ChatScreen() {
         contentContainerStyle={s.messageList}
         ListEmptyComponent={
           <View style={s.emptyState}>
-            <Text style={{ fontSize: 48, marginBottom: 16 }}>🤖</Text>
+            <Image source={require('../../assets/gemini.png')} style={s.geminiLarge} />
             <Text style={[s.emptyTitle, { color: colors.text }]}>
               Your Energy Assistant
             </Text>
@@ -203,7 +213,7 @@ export function ChatScreen() {
         ListFooterComponent={
           isLoading ? (
             <View style={[s.messageBubble, s.assistantBubble, { backgroundColor: isDark ? '#1a1a2e' : '#e8e8e8' }]}>
-              <Text style={[s.roleLabel, { color: colors.accent }]}>⚡ SmartGrid AI</Text>
+              <Text style={[s.roleLabel, { color: colors.accent }]}><Ionicons name="flash-outline" size={12} color={colors.accent} /> SmartGrid AI</Text>
               <View style={s.typingRow}>
                 <ActivityIndicator size="small" color={colors.accent} />
                 <Text style={[s.typingText, { color: colors.textSecondary }]}>Thinking…</Text>
@@ -272,6 +282,10 @@ const s = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  geminiIcon: {
+    fontSize: 14,
+    lineHeight: 16,
+  },
   messageList: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -315,6 +329,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
     paddingTop: 60,
+  },
+  geminiLarge: {
+    width: 56,
+    height: 56,
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 20,

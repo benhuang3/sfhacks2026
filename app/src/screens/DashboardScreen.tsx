@@ -9,7 +9,9 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { ScanResultData } from './UploadScanScreen';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { useTheme } from '../context/ThemeContext';
@@ -102,36 +104,36 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
   
   // Generate personalized AI tips based on scanned devices
   const aiTips = useMemo(() => {
-    const tips = [];
+    const tips: { icon: string; text: string }[] = [];
     const devices = scannedDevices.filter(d => d.power_profile?.profile);
     
     // Check for high standby devices
     const highStandby = devices.filter(d => (d.power_profile?.profile?.standby_watts_typical ?? 0) > 3);
     if (highStandby.length > 0) {
-      tips.push(`🔌 ${highStandby.length} device${highStandby.length > 1 ? 's have' : ' has'} high standby draw. Use smart power strips to cut phantom loads.`);
+      tips.push({ icon: 'power-outline', text: `${highStandby.length} device${highStandby.length > 1 ? 's have' : ' has'} high standby draw. Use smart power strips to cut phantom loads.` });
     }
     
     // Check for entertainment devices
     const tvs = devices.filter(d => ['Television', 'Monitor'].includes(d.detected_appliance.category));
     if (tvs.length > 0) {
-      tips.push('📺 Enable auto-sleep on TVs/monitors to save up to $20/year per device.');
+      tips.push({ icon: 'tv-outline', text: 'Enable auto-sleep on TVs/monitors to save up to $20/year per device.' });
     }
     
     // Check for refrigerators
     const fridges = devices.filter(d => d.detected_appliance.category === 'Refrigerator');
     if (fridges.length > 0) {
-      tips.push('🧈 Keep fridge coils clean and set temp to 37°F for optimal efficiency.');
+      tips.push({ icon: 'snow-outline', text: 'Keep fridge coils clean and set temp to 37°F for optimal efficiency.' });
     }
     
     // Check total power
     const totalActive = devices.reduce((sum, d) => sum + (d.power_profile?.profile?.active_watts_typical ?? 0), 0);
     if (totalActive > 500) {
-      tips.push('⚡ Your total active power is high. Consider ENERGY STAR replacements for older appliances.');
+      tips.push({ icon: 'flash-outline', text: 'Your total active power is high. Consider ENERGY STAR replacements for older appliances.' });
     }
     
     // General tips if no specific ones
     if (tips.length === 0) {
-      tips.push('🌟 Great start! Keep scanning devices to get personalized energy-saving tips.');
+      tips.push({ icon: 'star-outline', text: 'Great start! Keep scanning devices to get personalized energy-saving tips.' });
     }
     
     return tips;
@@ -167,11 +169,11 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
     
     // Achievements calculation
     const achievements = [];
-    if (devices.length >= 1) achievements.push({ id: 'first_scan', name: 'First Scan', icon: '🌟', desc: 'Scanned your first device' });
-    if (devices.length >= 5) achievements.push({ id: 'power_hunter', name: 'Power Hunter', icon: '🔍', desc: 'Scanned 5 devices' });
-    if (devices.length >= 10) achievements.push({ id: 'energy_master', name: 'Energy Master', icon: '👑', desc: 'Scanned 10 devices' });
-    if (totalStandby < 10 && devices.length > 0) achievements.push({ id: 'vampire_slayer', name: 'Vampire Slayer', icon: '🧛', desc: 'Low standby power!' });
-    if (yearlyKwh > 0 && yearlyKwh < 500) achievements.push({ id: 'eco_warrior', name: 'Eco Warrior', icon: '🌿', desc: 'Under 500 kWh/year' });
+    if (devices.length >= 1) achievements.push({ id: 'first_scan', name: 'First Scan', icon: 'star-outline', desc: 'Scanned your first device' });
+    if (devices.length >= 5) achievements.push({ id: 'power_hunter', name: 'Power Hunter', icon: 'search-outline', desc: 'Scanned 5 devices' });
+    if (devices.length >= 10) achievements.push({ id: 'energy_master', name: 'Energy Master', icon: 'trophy-outline', desc: 'Scanned 10 devices' });
+    if (totalStandby < 10 && devices.length > 0) achievements.push({ id: 'vampire_slayer', name: 'Vampire Slayer', icon: 'shield-outline', desc: 'Low standby power!' });
+    if (yearlyKwh > 0 && yearlyKwh < 500) achievements.push({ id: 'eco_warrior', name: 'Eco Warrior', icon: 'leaf-outline', desc: 'Under 500 kWh/year' });
     
     return {
       deviceCount: devices.length,
@@ -189,6 +191,18 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
       achievements,
     };
   }, [scannedDevices]);
+
+  // Simulated monthly trend data based on actual device usage
+  const trendData = useMemo(() => {
+    if (stats.deviceCount === 0) return { labels: [], costData: [], usageData: [] };
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const baseKwh = stats.monthlyKwh;
+    // Simulate seasonal variation around the base
+    const seasonFactors = [1.15, 1.08, 1.0, 0.92, 0.88, 0.95];
+    const usageData = seasonFactors.map(f => Math.max(0, baseKwh * f + (Math.random() - 0.5) * baseKwh * 0.05));
+    const costData = usageData.map(kwh => kwh * 0.30);
+    return { labels: months, costData, usageData };
+  }, [stats.monthlyKwh, stats.deviceCount]);
 
   // Prepare chart data
   const barChartData = useMemo(() => {
@@ -240,7 +254,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
         {stats.deviceCount === 0 ? (
           /* Empty State */
           <View style={[styles.emptyState, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={styles.emptyIcon}>📊</Text>
+            <Ionicons name="bar-chart-outline" size={48} color="#555" style={{ marginBottom: 12 }} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No Devices Yet</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Scan your appliances to track energy usage
@@ -274,8 +288,9 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                 <Text style={[styles.mainStatLabel, { color: colors.textSecondary }]}>Energy Usage</Text>
               </View>
               <View style={[styles.mainStatCard, styles.costCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
-                <Text style={[styles.mainStatValue, { color: colors.text }]}>${displayCost.toFixed(2)}</Text>
-                <Text style={[styles.mainStatUnit, { color: colors.textSecondary }]}></Text>
+                <Text style={[styles.mainStatValue, { color: colors.text }]} adjustsFontSizeToFit numberOfLines={1}>
+                  {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(displayCost)}
+                </Text>
                 <Text style={[styles.mainStatLabel, { color: colors.textSecondary }]}>Estimated Cost</Text>
               </View>
             </View>
@@ -299,7 +314,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Standby Cost Warning */}
             {stats.standbyYearlyCost > 10 && (
               <View style={styles.warningBox}>
-                <Text style={styles.warningIcon}>⚠️</Text>
+                <Ionicons name="warning-outline" size={28} color="#FF9800" />
                 <View style={styles.warningContent}>
                   <Text style={styles.warningTitle}>Phantom Load Alert</Text>
                   <Text style={[styles.warningText, { color: colors.textSecondary }]}>
@@ -313,12 +328,12 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Achievements Section */}
             {stats.achievements.length > 0 && (
               <View style={styles.achievementsSection}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>🏆 Achievements</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}><Ionicons name="trophy-outline" size={16} color={colors.accent} /> Achievements</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.achievementsScroll}>
                   <View style={styles.achievementsRow}>
                     {stats.achievements.map((ach) => (
                       <View key={ach.id} style={[styles.achievementCard, { backgroundColor: colors.card }]}>
-                        <Text style={styles.achievementIcon}>{ach.icon}</Text>
+                        <Ionicons name={ach.icon as any} size={28} color={colors.accent} />
                         <Text style={styles.achievementName}>{ach.name}</Text>
                         <Text style={[styles.achievementDesc, { color: colors.textSecondary }]}>{ach.desc}</Text>
                       </View>
@@ -331,17 +346,17 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Environmental Impact */}
             {stats.yearlyCO2 > 0 && (
               <View style={styles.envSection}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>🌍 Environmental Impact</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}><Ionicons name="globe-outline" size={16} color={colors.accent} /> Environmental Impact</Text>
                 <View style={[styles.envCard, { backgroundColor: colors.card }]}>
                   <View style={styles.envRow}>
                     <View style={styles.envStat}>
-                      <Text style={styles.envIcon}>💨</Text>
+                      <Text style={styles.envIcon}><Ionicons name="cloud-outline" size={24} color={colors.accent} /></Text>
                       <Text style={[styles.envValue, { color: colors.accent }]}>{stats.yearlyCO2.toFixed(0)}</Text>
                       <Text style={[styles.envLabel, { color: colors.textSecondary }]}>kg CO₂/year</Text>
                     </View>
                     <View style={[styles.envDivider, { backgroundColor: colors.border }]} />
                     <View style={styles.envStat}>
-                      <Text style={styles.envIcon}>🌳</Text>
+                      <Text style={styles.envIcon}><Ionicons name="leaf-outline" size={24} color={colors.accent} /></Text>
                       <Text style={[styles.envValue, { color: colors.accent }]}>{stats.treesNeeded.toFixed(1)}</Text>
                       <Text style={[styles.envLabel, { color: colors.textSecondary }]}>trees to offset</Text>
                     </View>
@@ -351,6 +366,40 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
                       ≈ {(stats.yearlyCO2 / 19.6).toFixed(0)} gallons of gasoline burned
                     </Text>
                   </View>
+                </View>
+              </View>
+            )}
+
+            {/* Usage & Cost Trends */}
+            {trendData.usageData.length >= 2 && (
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  <Ionicons name="trending-up-outline" size={16} color={colors.accent} /> Usage Trend
+                </Text>
+                <LineGraph
+                  data={trendData.usageData}
+                  labels={trendData.labels}
+                  yAxisSuffix=" kWh"
+                  lineColor={colors.accent}
+                  bgFrom={isDark ? '#12121a' : '#f5f5f5'}
+                  bgTo={isDark ? '#12121a' : '#f5f5f5'}
+                  cardBg={isDark ? colors.card : '#ffffff'}
+                  textColor={isDark ? '#ffffff' : '#333333'}
+                  height={200}
+                />
+                <View style={{ marginTop: -8 }}>
+                  <LineGraph
+                    data={trendData.costData}
+                    labels={trendData.labels}
+                    title="Monthly Cost"
+                    yAxisPrefix="$"
+                    lineColor="#FF9800"
+                    bgFrom={isDark ? '#12121a' : '#f5f5f5'}
+                    bgTo={isDark ? '#12121a' : '#f5f5f5'}
+                    cardBg={isDark ? colors.card : '#ffffff'}
+                    textColor={isDark ? '#ffffff' : '#333333'}
+                    height={200}
+                  />
                 </View>
               </View>
             )}
@@ -414,10 +463,12 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
 
             {/* Tips - AI Personalized */}
             <View style={[styles.tipsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.tipsTitle, { color: colors.text }]}>🤖 AI Energy Tips</Text>
+              <Text style={[styles.tipsTitle, { color: colors.text }]}><Image source={require('../../assets/gemini.png')} style={{ width: 16, height: 16 }} /> AI Energy Tips</Text>
               <View style={styles.tipsList}>
                 {aiTips.map((tip, idx) => (
-                  <Text key={idx} style={[styles.tipItem, { color: colors.textSecondary }]}>{tip}</Text>
+                  <Text key={idx} style={[styles.tipItem, { color: colors.textSecondary }]}>
+                    <Ionicons name={tip.icon as any} size={14} color={colors.accent} /> {tip.text}
+                  </Text>
                 ))}
               </View>
             </View>
@@ -425,7 +476,7 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
             {/* Clear History Button */}
             {onClearHistory && scannedDevices.length > 0 && (
               <TouchableOpacity style={styles.clearHistoryBtn} onPress={onClearHistory}>
-                <Text style={styles.clearHistoryText}>🗑️ Clear Scan History</Text>
+                <Text style={styles.clearHistoryText}><Ionicons name="trash-outline" size={14} color="#F44336" /> Clear Scan History</Text>
               </TouchableOpacity>
             )}
           </>
@@ -437,21 +488,21 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
 
 function getCategoryIcon(category: string): string {
   const icons: Record<string, string> = {
-    'Television': '📺',
-    'Refrigerator': '🧊',
-    'Microwave': '📻',
-    'Laptop': '💻',
-    'Oven': '🔥',
-    'Toaster': '🍞',
-    'Hair Dryer': '💨',
-    'Washing Machine': '🧺',
-    'Dryer': '🌀',
-    'Air Conditioner': '❄️',
-    'Space Heater': '🔥',
-    'Monitor': '🖥️',
-    'Light Bulb': '💡',
+    'Television': 'tv-outline',
+    'Refrigerator': 'snow-outline',
+    'Microwave': 'restaurant-outline',
+    'Laptop': 'laptop-outline',
+    'Oven': 'flame-outline',
+    'Toaster': 'cafe-outline',
+    'Hair Dryer': 'cut-outline',
+    'Washing Machine': 'water-outline',
+    'Dryer': 'water-outline',
+    'Air Conditioner': 'snow-outline',
+    'Space Heater': 'flame-outline',
+    'Monitor': 'desktop-outline',
+    'Light Bulb': 'bulb-outline',
   };
-  return icons[category] || '🔌';
+  return icons[category] || 'power-outline';
 }
 
 function getCategoryColor(category: string): string {

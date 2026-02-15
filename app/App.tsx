@@ -16,8 +16,8 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity, SafeAreaView,
-  Platform, useColorScheme, ActivityIndicator, ScrollView,
+  StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Image,
+  Platform, useColorScheme, ActivityIndicator, ScrollView, Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
@@ -258,7 +258,12 @@ function MainTabs() {
       <Tab.Screen
         name="Home"
         component={LandingScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, tabBarLabel: 'Home' }}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Image source={require('./assets/home.png')} style={{ width: size, height: size, tintColor: color }} />
+          ),
+          tabBarLabel: 'Home',
+        }}
       />
       <Tab.Screen
         name="Scan"
@@ -278,7 +283,12 @@ function MainTabs() {
       <Tab.Screen
         name="Chat"
         component={ChatScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-ellipses" size={size} color={color} />, tabBarLabel: 'AI Chat' }}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <Image source={require('./assets/gemini.png')} style={{ width: size, height: size, tintColor: color }} />
+          ),
+          tabBarLabel: 'AI Chat',
+        }}
       />
     </Tab.Navigator>
   );
@@ -303,6 +313,7 @@ function LandingScreen() {
   const [devices, setDevices] = React.useState<Device[]>([]);
   const [homes, setHomes] = React.useState<Home[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [tappedDevice, setTappedDevice] = React.useState<{ label: string; category: string; roomId?: string; roomName?: string } | null>(null);
 
   const loadHomeData = React.useCallback(async () => {
     try {
@@ -362,12 +373,32 @@ function LandingScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Top Navigation */}
       <View style={styles.nav}>
-        <Text style={[styles.navLogo, { color: colors.accent }]}>⚡ SmartGrid</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Image source={require('./assets/image.png')} style={{ width: 28, height: 28, marginRight: 8, tintColor: colors.accent }} />
+          <Text style={[styles.navLogo, { color: colors.accent }]}>SmartGrid</Text>
+        </View>
         <View style={styles.navRight}>
-          <TouchableOpacity style={styles.themeToggle} onPress={() => setThemeMode(isDark ? 'light' : 'dark')}>
-            <Text style={styles.themeToggleText}>{isDark ? '🌙' : '☀️'}</Text>
+          <TouchableOpacity
+            style={[styles.themeToggle, { backgroundColor: 'transparent' }]}
+            onPress={() => setThemeMode(isDark ? 'light' : 'dark')}
+          >
+            <Ionicons name={isDark ? 'moon' : 'sunny'} size={22} color={isDark ? '#FFD54F' : '#FF9800'} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={logout}>
+          <TouchableOpacity
+            onPress={logout}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: 'rgba(255, 68, 68, 0.1)',
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: 'rgba(255, 68, 68, 0.25)',
+              gap: 6,
+            }}
+          >
+            <Ionicons name="log-out-outline" size={16} color="#ff4444" />
             <Text style={{ color: '#ff4444', fontSize: 13, fontWeight: '600' }}>Logout</Text>
           </TouchableOpacity>
         </View>
@@ -432,7 +463,7 @@ function LandingScreen() {
               justifyContent: 'space-between', marginBottom: 20,
             }}>
               {[
-                { icon: 'hardware-chip-outline' as const, label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked', color: colors.accent },
+                { asset: 'devices.png', icon: 'hardware-chip-outline' as const, label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked', color: colors.accent },
                 { icon: 'flash-outline' as const, label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours', color: '#FFB300' },
                 { icon: 'wallet-outline' as const, label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated', color: '#FF9800' },
                 { icon: 'leaf-outline' as const, label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint', color: '#66BB6A' },
@@ -452,7 +483,11 @@ function LandingScreen() {
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: c.color + '18', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
-                    <Ionicons name={c.icon} size={22} color={c.color} />
+                    {c.asset ? (
+                      <Image source={require('./assets/devices.png')} style={{ width: 22, height: 22, tintColor: c.color }} />
+                    ) : (
+                      <Ionicons name={c.icon} size={22} color={c.color} />
+                    )}
                   </View>
                   <Text style={{ color: c.color, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
                   <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>{c.label}</Text>
@@ -461,17 +496,20 @@ function LandingScreen() {
               ))}
             </View>
 
-            {/* 3D Home Section */}
+            {/* 3D Home Section — matches your 2D floor plan (Bedroom, Kitchen, Bathroom, Living, Dining) */}
             <View style={{ marginBottom: 20 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                 <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>
-                  🏠 Your Home
+                  <Ionicons name="home-outline" size={18} color={colors.accent} /> Your Home
                 </Text>
                 <View style={{ flex: 1 }} />
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
                   {devices.length} device{devices.length !== 1 ? 's' : ''}
                 </Text>
               </View>
+              <Text style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 8 }}>
+                Drag to rotate · Pinch to zoom · Tap a device for power & environmental impact
+              </Text>
 
               <House3DViewer
                 devices={devices.map(d => ({
@@ -482,6 +520,14 @@ function LandingScreen() {
                 rooms={rooms.map(r => ({ roomId: r.roomId, name: r.name }))}
                 height={devices.length > 0 ? 420 : 340}
                 isDark={isDark}
+                onDevicePress={(dev) => {
+                  const matched = devices.find(d => d.label === dev.label || d.category === dev.category);
+                  if (matched) {
+                    setTappedDevice({ label: matched.label, category: matched.category, roomId: matched.roomId, roomName: dev.roomName });
+                  } else {
+                    setTappedDevice(dev);
+                  }
+                }}
               />
             </View>
 
@@ -489,7 +535,7 @@ function LandingScreen() {
             {devices.length > 0 && (
               <View style={{ marginBottom: 20 }}>
                 <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
-                  ⚡ My Devices
+                  <Ionicons name="flash-outline" size={18} color={colors.accent} /> My Devices
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {devices.map(device => (
@@ -518,9 +564,12 @@ function LandingScreen() {
                         {device.power?.active_watts_typical ?? '?'}W
                       </Text>
                       {device.power?.standby_watts_typical > 0 && (
-                        <Text style={{ color: '#FF9800', fontSize: 9, marginTop: 2 }}>
-                          👻 {device.power.standby_watts_typical}W standby
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                          <Image source={require('./assets/ghost.png')} style={{ width: 10, height: 10, tintColor: '#FF9800' }} resizeMode="contain" />
+                          <Text style={{ color: '#FF9800', fontSize: 9, marginLeft: 3 }}>
+                            {device.power.standby_watts_typical}W standby
+                          </Text>
+                        </View>
                       )}
                     </View>
                   ))}
@@ -538,7 +587,7 @@ function LandingScreen() {
               marginBottom: 16,
             }}>
               <Text style={{ color: colors.accent, fontSize: 14, fontWeight: '700', marginBottom: 8 }}>
-                💡 Energy Tip
+                <Ionicons name="bulb-outline" size={14} color={colors.accent} /> Energy Tip
               </Text>
               <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20 }}>
                 {stats && stats.standbyWaste > 3
@@ -553,6 +602,83 @@ function LandingScreen() {
           Power data based on Berkeley Lab and ENERGY STAR research
         </Text>
       </ScrollView>
+
+      {/* Device Detail Modal */}
+      <Modal
+        visible={tappedDevice !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTappedDevice(null)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={() => setTappedDevice(null)}
+        >
+          <View style={{
+            backgroundColor: isDark ? '#1a1a2e' : '#ffffff',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 24,
+            paddingBottom: 40,
+          }}>
+            <View style={{ width: 40, height: 4, backgroundColor: isDark ? '#444' : '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+            {tappedDevice && (() => {
+              const matchedDev = devices.find(d => d.label === tappedDevice.label || d.category === tappedDevice.category);
+              const power = matchedDev?.power;
+
+              return (
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                    <Appliance3DModel category={tappedDevice.category} size={48} showLabel={false} />
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>{tappedDevice.label || tappedDevice.category}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>{tappedDevice.roomName || tappedDevice.roomId || 'Unknown room'}</Text>
+                    </View>
+                  </View>
+
+                  {power && (
+                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                      <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : '#E8F5E9', borderRadius: 12, padding: 14, alignItems: 'center' }}>
+                        <Text style={{ color: colors.accent, fontSize: 24, fontWeight: '800' }}>{power.active_watts_typical}W</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>Active</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(255,152,0,0.1)' : '#FFF3E0', borderRadius: 12, padding: 14, alignItems: 'center' }}>
+                        <Text style={{ color: '#FF9800', fontSize: 24, fontWeight: '800' }}>{power.standby_watts_typical}W</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>Standby</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {power && (
+                    <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f5', borderRadius: 12, padding: 14 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Monthly cost</Text>
+                        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>${((power.active_watts_typical * 4 + power.standby_watts_typical * 20) * 30 * 0.30 / 1000).toFixed(2)}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Annual cost</Text>
+                        <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>${((power.active_watts_typical * 4 + power.standby_watts_typical * 20) * 365 * 0.30 / 1000).toFixed(2)}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Standby waste/yr</Text>
+                        <Text style={{ color: '#FF9800', fontSize: 12, fontWeight: '600' }}>${(power.standby_watts_typical * 24 * 365 * 0.30 / 1000).toFixed(2)}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={{ backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 }}
+                    onPress={() => setTappedDevice(null)}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Close</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }

@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView, Image } from 'react-native';
 import type { HomeScene, SceneObject } from '../services/apiClient';
 import { Appliance3DModel } from './Appliance3DModel';
 
@@ -42,7 +42,7 @@ export function Scene3D({
     return (
       <View style={[styles.container, { height }]}>
         <View style={styles.emptyRoom}>
-          <Text style={{ fontSize: 48 }}>🏠</Text>
+          <Image source={require('../../assets/home.png')} style={{ width: 48, height: 48 }} />
           <Text style={styles.emptyText}>
             {scene ? 'No devices in this room' : 'No scene data'}
           </Text>

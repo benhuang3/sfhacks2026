@@ -11,6 +11,8 @@ import {
   TextInput, Image, ActivityIndicator, Dimensions, Animated,
   Platform,
 } from 'react-native';
+import { useTheme } from '../../App';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
@@ -23,14 +25,14 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 // Device icons
 const CATEGORY_ICONS: Record<string, string> = {
-  'Television': '📺', 'TV': '📺', 'Laptop': '💻', 'Monitor': '🖥️',
-  'Microwave': '🍿', 'Oven': '🍳', 'Toaster': '🍞',
-  'Refrigerator': '🧊', 'Fridge': '🧊', 'Hair Dryer': '💨',
-  'Phone Charger': '🔌', 'Clock': '⏰', 'Computer Peripheral': '🖱️',
-  'Washing Machine': '🫧', 'Dryer': '👕', 'Air Conditioner': '❄️',
-  'Space Heater': '🔥', 'Light Bulb': '💡', 'Lamp': '💡',
-  'Dishwasher': '🍽️', 'Gaming Console': '🎮', 'Router': '📡',
-  'Fan': '🌀', 'Water Heater': '🚿', 'Remote / Standby Device': '🔘',
+  'Television': 'tv-outline', 'TV': 'tv-outline', 'Laptop': 'laptop-outline', 'Monitor': 'desktop-outline',
+  'Microwave': 'restaurant-outline', 'Oven': 'flame-outline', 'Toaster': 'cafe-outline',
+  'Refrigerator': 'snow-outline', 'Fridge': 'snow-outline', 'Hair Dryer': 'cut-outline',
+  'Phone Charger': 'battery-charging-outline', 'Clock': 'time-outline', 'Computer Peripheral': 'hardware-chip-outline',
+  'Washing Machine': 'water-outline', 'Dryer': 'water-outline', 'Air Conditioner': 'snow-outline',
+  'Space Heater': 'flame-outline', 'Light Bulb': 'bulb-outline', 'Lamp': 'bulb-outline',
+  'Dishwasher': 'restaurant-outline', 'Gaming Console': 'game-controller-outline', 'Router': 'wifi-outline',
+  'Fan': 'sync-outline', 'Water Heater': 'water-outline', 'Remote / Standby Device': 'radio-button-on-outline',
 };
 
 interface Candidate {
@@ -247,7 +249,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
         {scanData.ocr_texts.length > 0 && (
           <View style={[styles.ocrBanner, { backgroundColor: isDark ? '#1a1a2e' : '#e8e8f4' }]}>
             <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-              📝 Text detected: {scanData.ocr_texts.slice(0, 3).join(', ')}
+              <Ionicons name="document-text-outline" size={11} color={colors.textSecondary} /> Text detected: {scanData.ocr_texts.slice(0, 3).join(', ')}
             </Text>
           </View>
         )}
@@ -288,7 +290,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
                 </Text>
               </View>
               {selectedCategory === c.category && (
-                <Text style={styles.checkmark}>✓</Text>
+                <Ionicons name="checkmark" size={18} color={colors.accent} style={styles.checkmark} />
               )}
             </TouchableOpacity>
           ))}
@@ -300,7 +302,9 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
           onPress={() => setShowSearch(!showSearch)}
         >
           <Text style={{ color: colors.accent, fontWeight: '600' }}>
-            {showSearch ? '▲ Hide search' : '🔍 Not in the list? Search...'}
+            {showSearch ? '▲ Hide search' : ''}
+            {!showSearch && <Ionicons name="search-outline" size={14} color={colors.accent} />}
+            {!showSearch && ' Not in the list? Search...'}
           </Text>
         </TouchableOpacity>
 
@@ -339,7 +343,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
                     {c.category}
                   </Text>
                   {selectedCategory === c.category && (
-                    <Text style={{ color: colors.accent, marginLeft: 'auto' }}>✓</Text>
+                    <Ionicons name="checkmark" size={18} color={colors.accent} style={{ marginLeft: 'auto' }} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -392,8 +396,8 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
                     <Text style={{
                       color: selectedHomeId === h.id ? '#fff' : colors.text,
                       fontWeight: '600', fontSize: 13,
-                    }}>
-                      🏠 {h.name}
+                    }}>  
+                      <Ionicons name="home-outline" size={13} color={selectedHomeId === h.id ? '#fff' : colors.text} /> {h.name}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -428,7 +432,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
         {/* Power profile preview */}
         {selectedCategory && scanData.power_profile?.profile && (
           <View style={[styles.powerPreview, { backgroundColor: isDark ? '#111122' : '#f0f4ff' }]}>
-            <Text style={[styles.powerTitle, { color: colors.text }]}>⚡ Power Estimate</Text>
+            <Text style={[styles.powerTitle, { color: colors.text }]}><Ionicons name="flash-outline" size={14} color={colors.accent} /> Power Estimate</Text>
             <View style={styles.powerRow}>
               <View style={styles.powerStat}>
                 <Text style={[styles.powerValue, { color: colors.accent }]}>
@@ -472,7 +476,7 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.confirmText}>
-                ✓ Add {selectedCategory} to Home
+                <Ionicons name="checkmark" size={16} color="#fff" /> Add {selectedCategory} to Home
               </Text>
             )}
           </TouchableOpacity>

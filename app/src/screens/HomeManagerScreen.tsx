@@ -11,7 +11,9 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { showAlert, showConfirm } from '../utils/alert';
 import {
@@ -170,12 +172,12 @@ export function HomeManagerScreen({
 
   const getCategoryIcon = (cat: string): string => {
     const icons: Record<string, string> = {
-      TV: '📺', Television: '📺', Refrigerator: '🧊', Microwave: '📻',
-      Laptop: '💻', Oven: '🔥', Toaster: '🍞', 'Hair Dryer': '💨',
-      'Washing Machine': '🧺', Dryer: '🌀', 'Air Conditioner': '❄️',
-      'Space Heater': '🔥', Monitor: '🖥️', 'Light Bulb': '💡', Light: '💡',
+      TV: 'tv-outline', Television: 'tv-outline', Refrigerator: 'snow-outline', Microwave: 'restaurant-outline',
+      Laptop: 'laptop-outline', Oven: 'flame-outline', Toaster: 'cafe-outline', 'Hair Dryer': 'cut-outline',
+      'Washing Machine': 'water-outline', Dryer: 'water-outline', 'Air Conditioner': 'snow-outline',
+      'Space Heater': 'flame-outline', Monitor: 'desktop-outline', 'Light Bulb': 'bulb-outline', Light: 'bulb-outline',
     };
-    return icons[cat] || '🔌';
+    return icons[cat] || 'power-outline';
   };
 
   return (
@@ -194,7 +196,7 @@ export function HomeManagerScreen({
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Create Home */}
         <View style={[styles.createSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>➕ Create Home</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}><Ionicons name="add-circle-outline" size={16} color={colors.accent} /> Create Home</Text>
           <TextInput
             style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]}
             placeholder="Home name (e.g., My Apartment)"
@@ -233,7 +235,7 @@ export function HomeManagerScreen({
         {/* Homes list */}
         {!loading && homes.length === 0 && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🏠</Text>
+            <Image source={require('../../assets/home.png')} style={{ width: 48, height: 48, marginBottom: 12 }} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No Homes Yet</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Create your first home above to start tracking energy.</Text>
           </View>
@@ -244,12 +246,12 @@ export function HomeManagerScreen({
           return (
             <View key={home.id} style={[styles.homeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.homeHeader}>
-                <View>
-                  <Text style={[styles.homeName, { color: colors.text }]}>🏠 {home.name}</Text>
+              <View style={{ flex: 1 }}>
+                  <Text style={[styles.homeName, { color: colors.text }]}><Ionicons name="home-outline" size={16} color={colors.accent} /> {home.name}</Text>
                   <Text style={[styles.homeRooms, { color: colors.textSecondary }]}>{home.rooms.join(' • ')}</Text>
                 </View>
-                <TouchableOpacity onPress={() => handleDeleteHome(home.id)}>
-                  <Text style={styles.deleteBtn}>🗑️</Text>
+                <TouchableOpacity onPress={() => handleDeleteHome(home.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.deleteBtn}>
+                  <Ionicons name="trash-outline" size={20} color="#F44336" />
                 </TouchableOpacity>
               </View>
 
@@ -269,9 +271,9 @@ export function HomeManagerScreen({
                       {d.category} • {d.power.active_watts_typical}W active • {d.power.standby_watts_typical}W standby
                     </Text>
                   </View>
-                  {d.is_critical && <Text style={styles.criticalBadge}>⚠️</Text>}
+                  {d.is_critical && <Ionicons name="lock-closed" size={16} color="#ff9800" style={styles.criticalBadge} />}
                   <TouchableOpacity onPress={() => handleDeleteDevice(d.id)}>
-                    <Text style={styles.removeDeviceBtn}>✕</Text>
+                    <Ionicons name="close" size={18} color="#ff6b6b" />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -290,7 +292,7 @@ export function HomeManagerScreen({
                     onPress={() => setDeviceForm(f => ({ ...f, is_critical: !f.is_critical }))}
                   >
                     <Text style={[styles.criticalToggleText, { color: colors.textSecondary }]}>
-                      {deviceForm.is_critical ? '✅' : '⬜'} Critical device (don't auto-turn-off)
+                      {deviceForm.is_critical ? <Ionicons name="checkbox" size={18} color={colors.accent} /> : <Ionicons name="square-outline" size={18} color={colors.textSecondary} />} Critical device (don't auto-turn-off)
                     </Text>
                   </TouchableOpacity>
                   <View style={styles.formActions}>
@@ -322,13 +324,13 @@ export function HomeManagerScreen({
                   style={[styles.actionBtn, { backgroundColor: isDark ? '#1f1f2e' : '#e8e8e8' }]}
                   onPress={() => onViewSummary(home.id)}
                 >
-                  <Text style={[styles.actionBtnText, { color: colors.text }]}>📊 Summary</Text>
+                  <Text style={[styles.actionBtnText, { color: colors.text }]}><Ionicons name="bar-chart-outline" size={14} color={colors.text} /> Summary</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.optimizeBtn]}
                   onPress={() => onViewActions(home.id)}
                 >
-                  <Text style={[styles.actionBtnText, { color: colors.text }]}>🤖 Optimize</Text>
+                  <Text style={[styles.actionBtnText, { color: colors.text }]}><Image source={require('../../assets/gemini.png')} style={{ width: 14, height: 14 }} /> Optimize</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -380,10 +382,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#12121a', borderRadius: 16, padding: 20,
     marginBottom: 16, borderWidth: 1, borderColor: '#1f1f2e',
   },
-  homeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  homeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   homeName: { color: '#fff', fontSize: 18, fontWeight: '700' },
   homeRooms: { color: '#888', fontSize: 12, marginTop: 4 },
-  deleteBtn: { fontSize: 18, padding: 4 },
+  deleteBtn: { padding: 8 },
 
   deviceCount: { color: '#4CAF50', fontSize: 13, fontWeight: '600', marginBottom: 8 },
   deviceRow: {

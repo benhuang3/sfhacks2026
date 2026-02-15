@@ -1,4 +1,8 @@
 /**
+ * LiveScanScreen — Real-time camera preview with cloud-based Gemini Vision detection.
+ *
+ * Captures photos from the camera and sends them to the backend /scan endpoint
+ * which uses Gemini Vision AI for accurate appliance detection.
  * LiveScanScreen — Real-time camera preview with on-device object detection
  * and outline tracing via DeepLabV3 segmentation.
  *
@@ -20,7 +24,10 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 
+import { uploadScanImage } from '../services/apiService';
+import { getDisplayName } from '../utils/applianceClasses';
 import { useScannerPipeline } from '../hooks/useScannerPipeline';
 import { useObjectTracker } from '../hooks/useObjectTracker';
 import { useSegmentationOverlay } from '../hooks/useSegmentationOverlay';
@@ -59,16 +66,17 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   segRequestRef.current = segOverlay.requestSegmentation;
 
   // State
-  const [trackedObjects, setTrackedObjects] = useState<TrackedObject[]>([]);
   const [isScanning, setIsScanning] = useState(true);
-  const [isStubMode, setIsStubMode] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [lastResult, setLastResult] = useState<any>(null);
+  const [detectedItems, setDetectedItems] = useState<Array<{label: string; confidence: number}>>([]);
   const [cameraLayout, setCameraLayout] = useState({ width: 1, height: 1 });
+  const [statusMsg, setStatusMsg] = useState('Ready to scan');
   const photoDimsRef = useRef({ width: 640, height: 480 });
   const cameraLayoutRef = useRef({ width: 1, height: 1 });
   const isDetectingRef = useRef(false);
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const emptyFrameCountRef = useRef(0);
 
   // Camera layout measurement
   const onCameraLayout = useCallback((e: LayoutChangeEvent) => {
@@ -78,31 +86,46 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Detection loop with backpressure
+  // Auto-scan loop — captures and sends to Gemini Vision backend every 3s
   // ---------------------------------------------------------------------------
-  const runDetection = useCallback(async () => {
-    if (
-      isDetectingRef.current ||
-      isCapturingRef.current ||
-      !pipeline.isReady ||
-      !cameraRef.current
-    )
-      return;
+  const runCloudDetection = useCallback(async () => {
+    if (isCapturingRef.current || !cameraRef.current || isAnalyzing) return;
 
-    isDetectingRef.current = true;
+    setIsAnalyzing(true);
+    setStatusMsg('Analyzing...');
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.3,
+        quality: 0.5,
         base64: false,
         exif: false,
       });
-      if (!photo?.uri) return;
-
-      // Track photo dimensions for coordinate mapping
-      if (photo.width && photo.height) {
-        photoDimsRef.current = { width: photo.width, height: photo.height };
+      if (!photo?.uri) {
+        setIsAnalyzing(false);
+        setStatusMsg('Ready to scan');
+        return;
       }
 
+      const result = await uploadScanImage(photo.uri);
+      log.scan('Cloud detection result', result);
+
+      // Parse results from backend
+      const candidates = (result as any).candidates || [];
+      const detectedName = (result as any).detected_appliance?.name || '';
+      const confidence = (result as any).detected_appliance?.confidence || 0;
+
+      if (detectedName && detectedName !== 'Unknown') {
+        const items: Array<{label: string; confidence: number}> = [];
+        if (confidence > 0) {
+          items.push({ label: detectedName, confidence });
+        }
+        candidates.forEach((c: any) => {
+          if (c.category !== detectedName && c.confidence > 0.1) {
+            items.push({ label: c.category, confidence: c.confidence });
+          }
+        });
+        setDetectedItems(items.slice(0, 4));
+        setLastResult(result);
+        setStatusMsg(`${items.length} detected`);
       const detections = await pipeline.detect(photo.uri);
       const tracked = updateWithDetectionsRef.current(detections);
       setTrackedObjects(tracked);
@@ -125,17 +148,18 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         emptyFrameCountRef.current += 1;
         if (emptyFrameCountRef.current >= 8) setIsStubMode(true);
       } else {
-        emptyFrameCountRef.current = 0;
-        setIsStubMode(false);
+        setDetectedItems([]);
+        setStatusMsg('No appliance detected');
       }
     } catch (err) {
-      log.error('scan', 'Detection loop error', err);
+      log.error('scan', 'Cloud detection error', err);
+      setStatusMsg('Scan error — retrying...');
     } finally {
-      isDetectingRef.current = false;
+      setIsAnalyzing(false);
     }
-  }, [pipeline.isReady, pipeline.detect]);
+  }, [isAnalyzing]);
 
-  // Resume scanning when screen regains focus (e.g. back from ScanConfirm)
+  // Resume scanning when screen regains focus
   useEffect(() => {
     if (isFocused) {
       setIsScanning(true);
@@ -144,11 +168,11 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
     }
   }, [isFocused]);
 
-  // Start/stop detection interval (also gated on isFocused)
+  // Start/stop auto-scan interval
   useEffect(() => {
-    if (isScanning && isFocused && pipeline.isReady) {
-      intervalRef.current = setInterval(runDetection, 800);
-      log.scan('Detection loop started (800ms interval)');
+    if (isScanning && isFocused) {
+      intervalRef.current = setInterval(runCloudDetection, 3500);
+      log.scan('Cloud detection loop started (3.5s interval)');
     }
     return () => {
       if (intervalRef.current) {
@@ -156,40 +180,58 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         intervalRef.current = null;
       }
     };
-  }, [isScanning, isFocused, pipeline.isReady, runDetection]);
+  }, [isScanning, isFocused, runCloudDetection]);
 
   // ---------------------------------------------------------------------------
-  // Capture — full-res photo + navigate to confirm
+  // Capture — full-res photo + send to backend + navigate to confirm
   // ---------------------------------------------------------------------------
   const handleCapture = useCallback(async () => {
     if (!cameraRef.current || isCapturingRef.current) return;
 
-    // Block both capture re-entry and detection loop
     isCapturingRef.current = true;
     setIsScanning(false);
+    setIsAnalyzing(true);
+    setStatusMsg('Capturing...');
     log.scan('Capture pressed — taking full-res photo');
-
-    // Wait for any in-flight detection to finish
-    const waitForDetection = async () => {
-      let attempts = 0;
-      while (isDetectingRef.current && attempts < 20) {
-        await new Promise((r) => setTimeout(r, 50));
-        attempts++;
-      }
-    };
-    await waitForDetection();
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
+        quality: 0.85,
         base64: false,
         exif: false,
       });
       if (!photo?.uri) {
         isCapturingRef.current = false;
         setIsScanning(true);
+        setIsAnalyzing(false);
+        setStatusMsg('Ready to scan');
         return;
       }
+
+      setStatusMsg('Analyzing with Gemini AI...');
+      const result = await uploadScanImage(photo.uri);
+      log.scan('Capture scan complete', result);
+
+      // Build scan data from backend response
+      const scanData = {
+        candidates: (result as any).candidates || [],
+        bbox: (result as any).bbox || null,
+        detected_appliance: (result as any).detected_appliance || {
+          brand: 'Unknown',
+          model: 'Unknown',
+          name: 'Unknown',
+          category: 'other',
+          confidence: 0,
+        },
+        power_profile: (result as any).power_profile || null,
+        ocr_texts: (result as any).ocr_texts || [],
+        filename: photo.uri.split('/').pop() ?? 'capture.jpg',
+        detections: ((result as any).candidates || []).map((c: any) => ({
+          label: c.category,
+          category: c.category,
+          score: c.confidence,
+        })),
+      };
 
       // Run one final detection on the full-res image
       const detections = await pipeline.detect(photo.uri);
@@ -207,13 +249,16 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         topLabel: scanData.detected_appliance.name,
       });
       isCapturingRef.current = false;
+      setIsAnalyzing(false);
       onCapture?.(scanData, photo.uri);
     } catch (err) {
       log.error('scan', 'Capture failed', err);
       isCapturingRef.current = false;
-      setIsScanning(true); // Resume on failure
+      setIsScanning(true);
+      setIsAnalyzing(false);
+      setStatusMsg('Capture failed — try again');
     }
-  }, [pipeline, tracker, trackedObjects, onCapture]);
+  }, [onCapture]);
 
   // ---------------------------------------------------------------------------
   // Permission not yet determined
@@ -249,51 +294,11 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   }
 
   // ---------------------------------------------------------------------------
-  // Model loading state
-  // ---------------------------------------------------------------------------
-  if (!pipeline.isReady) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingTitle}>Loading AI Model...</Text>
-        <View style={styles.progressBarBg}>
-          <View
-            style={[
-              styles.progressBarFill,
-              {
-                width: `${Math.round(pipeline.downloadProgress * 100)}%`,
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.progressText}>
-          {Math.round(pipeline.downloadProgress * 100)}%
-        </Text>
-        {pipeline.error && (
-          <Text style={styles.errorText}>
-            Error: {String(pipeline.error)}
-          </Text>
-        )}
-        {onBack && (
-          <TouchableOpacity style={styles.backLink} onPress={onBack}>
-            <Text style={styles.backLinkText}>Go Back</Text>
-          </TouchableOpacity>
-        )}
-      </SafeAreaView>
-    );
-  }
-
-  // ---------------------------------------------------------------------------
   // Main camera + overlay view
-  // CameraView must have NO children — overlays go in a sibling View.
   // ---------------------------------------------------------------------------
-  const applianceCount = trackedObjects.filter(
-    (o) => o.framesSinceLastSeen === 0,
-  ).length;
-
   return (
     <View style={styles.container}>
-      {/* Camera preview — no children allowed */}
+      {/* Camera preview */}
       <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
@@ -301,8 +306,13 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         onLayout={onCameraLayout}
       />
 
-      {/* All overlays in a sibling view on top of the camera */}
+      {/* All overlays */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {/* Analyzing overlay */}
+        {isAnalyzing && (
+          <View style={styles.analyzingOverlay}>
+            <ActivityIndicator size="small" color="#4CAF50" />
+            <Text style={styles.analyzingText}>Gemini Vision AI</Text>
         {/* Object outlines (SVG) + fallback bounding boxes */}
         <OutlineOverlay
           overlays={segOverlay.overlays}
@@ -324,23 +334,17 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         <SafeAreaView style={styles.topBar} pointerEvents="box-none">
           {onBack && (
             <TouchableOpacity onPress={onBack} style={styles.topBackButton}>
-              <Text style={styles.topBackText}>{'<'}</Text>
+              <Ionicons name="arrow-back" size={22} color="#fff" />
             </TouchableOpacity>
           )}
           <View style={styles.statusPill}>
             <View
               style={[
                 styles.statusDot,
-                { backgroundColor: isScanning ? '#4CAF50' : '#888' },
+                { backgroundColor: isScanning ? (isAnalyzing ? '#FFC107' : '#4CAF50') : '#888' },
               ]}
             />
-            <Text style={styles.statusText}>
-              {isScanning
-                ? applianceCount > 0
-                  ? `${applianceCount} detected`
-                  : 'Scanning...'
-                : 'Paused'}
-            </Text>
+            <Text style={styles.statusText}>{statusMsg}</Text>
           </View>
           {/* Segmentation model download progress */}
           {!segOverlay.isReady && segOverlay.downloadProgress < 1 && (
@@ -353,23 +357,27 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
         </SafeAreaView>
 
         {/* Detection chips */}
-        {trackedObjects.length > 0 && (
+        {detectedItems.length > 0 && (
           <View style={styles.detectionList} pointerEvents="none">
-            {trackedObjects
-              .filter((o) => o.framesSinceLastSeen <= 3)
-              .slice(0, 4)
-              .map((obj) => (
-                <View key={obj.id} style={styles.detectionChip}>
-                  <Text style={styles.detectionChipText}>
-                    {getDisplayName(obj.label)}
-                  </Text>
-                  <Text style={styles.detectionChipScore}>
-                    {Math.round(obj.score * 100)}%
-                  </Text>
-                </View>
-              ))}
+            {detectedItems.map((item, idx) => (
+              <View key={`det-${idx}`} style={styles.detectionChip}>
+                <Ionicons name="checkmark-circle" size={14} color="#4CAF50" style={{ marginRight: 4 }} />
+                <Text style={styles.detectionChipText}>
+                  {getDisplayName(item.label)}
+                </Text>
+                <Text style={styles.detectionChipScore}>
+                  {Math.round(item.confidence * 100)}%
+                </Text>
+              </View>
+            ))}
           </View>
         )}
+
+        {/* Powered by badge */}
+        <View style={styles.poweredBadge} pointerEvents="none">
+          <Ionicons name="sparkles" size={12} color="#A78BFA" />
+          <Text style={styles.poweredText}>Powered by Gemini Vision AI</Text>
+        </View>
 
         {/* Bottom controls */}
         <View style={styles.bottomBar}>
@@ -381,6 +389,7 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
               emptyFrameCountRef.current = 0;
             }}
           >
+            <Ionicons name={isScanning ? 'pause' : 'play'} size={18} color="#fff" />
             <Text style={styles.toggleButtonText}>
               {isScanning ? 'Pause' : 'Resume'}
             </Text>
@@ -388,10 +397,13 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
 
           {/* Capture button */}
           <TouchableOpacity
-            style={styles.captureButton}
+            style={[styles.captureButton, isAnalyzing && { opacity: 0.5 }]}
             onPress={handleCapture}
+            disabled={isAnalyzing}
           >
-            <View style={styles.captureButtonInner} />
+            <View style={styles.captureButtonInner}>
+              <Ionicons name="scan" size={28} color="#333" />
+            </View>
           </TouchableOpacity>
 
           {/* Placeholder for symmetry */}
@@ -446,55 +458,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Model loading
-  loadingTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 20,
-    marginBottom: 16,
-  },
-  progressBarBg: {
-    width: '80%',
-    height: 8,
-    backgroundColor: '#2a2a3e',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 4,
-  },
-  progressText: {
-    color: '#888',
-    fontSize: 14,
-    marginTop: 8,
-  },
-  errorText: {
-    color: '#ff4444',
-    fontSize: 14,
-    marginTop: 12,
-    textAlign: 'center',
-  },
-
-  // Stub mode banner
-  stubBanner: {
+  // Analyzing overlay
+  analyzingOverlay: {
     position: 'absolute',
-    top: '40%',
-    left: 24,
-    right: 24,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    borderRadius: 12,
-    padding: 16,
+    top: '42%' as any,
+    alignSelf: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 10,
     zIndex: 10,
   },
-  stubBannerText: {
-    color: '#FFC107',
+  analyzingText: {
+    color: '#4CAF50',
     fontSize: 14,
     fontWeight: '600',
-    textAlign: 'center',
   },
 
   // Top bar
@@ -517,11 +498,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  topBackText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -542,6 +518,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // Powered by badge
+  poweredBadge: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 150 : 120,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  poweredText: {
+    color: '#A78BFA',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+
   // Bottom bar
   bottomBar: {
     position: 'absolute',
@@ -560,10 +555,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
+    gap: 2,
   },
   toggleButtonText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   captureButton: {
@@ -580,6 +576,8 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Detection list
