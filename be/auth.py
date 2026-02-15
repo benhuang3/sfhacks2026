@@ -1,6 +1,6 @@
 """
 =============================================================================
-  Auth Service — SmartGrid Home (SF Hacks 2026)
+  Auth Service — WattVision (SF Hacks 2026)
 =============================================================================
 
 JWT-based authentication:

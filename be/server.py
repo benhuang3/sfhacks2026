@@ -1,6 +1,6 @@
 """
 =============================================================================
-  SmartGrid Home — Consolidated FastAPI Server (SF Hacks 2026)
+  WattVision — Consolidated FastAPI Server (SF Hacks 2026)
 =============================================================================
 
 Endpoints:
@@ -200,9 +200,9 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="SmartGrid Home API",
+    title="WattVision API",
     version="0.1.0",
-    description="Backend for SmartGrid Home — SF Hacks 2026",
+    description="Backend for WattVision — SF Hacks 2026",
     lifespan=lifespan,
 )
 
@@ -1384,7 +1384,7 @@ async def chat_endpoint(req: ChatRequest):
         from google.genai import types as genai_types
 
         system_msg = (
-            "You are SmartGrid AI, a friendly and knowledgeable home energy advisor. "
+            "You are WattVision AI, a friendly and knowledgeable home energy advisor. "
             "Your role is to:\n"
             "- Help users understand their home energy consumption\n"
             "- Provide tips to reduce electricity bills\n"
@@ -1561,7 +1561,7 @@ def _get_energy_fallback(question: str) -> str:
                 "3. Use warm white (2700K) for bedrooms, daylight (5000K) for workspaces\n"
                 "4. Smart bulbs can schedule on/off automatically")
     elif any(w in q for w in ["hello", "hi ", "hey", "howdy", "what can you", "who are", "help"]):
-        return ("👋 **Hello! I'm SmartGrid AI, your home energy advisor!**\n\n"
+        return ("👋 **Hello! I'm WattVision AI, your home energy advisor!**\n\n"
                 "I can help you with:\n"
                 "• 📊 Understanding your energy consumption\n"
                 "• 💰 Tips to reduce your electricity bill\n"
@@ -1584,7 +1584,7 @@ def _get_energy_fallback(question: str) -> str:
                 "• 150W fridge × 24 hrs × 0.3 duty cycle = 1.08 kWh = **$0.32/day**\n\n"
                 "💡 Check your Dashboard to see real usage data for your scanned devices!")
     else:
-        return ("⚡ **SmartGrid AI Energy Tips:**\n\n"
+        return ("⚡ **WattVision AI Energy Tips:**\n\n"
                 "Here are some quick energy facts:\n\n"
                 "• Average US home uses ~10,500 kWh/year (~$3,150 at $0.30/kWh)\n"
                 "• Standby power wastes 5-10% of your total bill\n"

@@ -1,4 +1,4 @@
-# SmartGrid Home — Install & Run Guide
+# WattVision — Install & Run Guide
 
 ## Prerequisites
 

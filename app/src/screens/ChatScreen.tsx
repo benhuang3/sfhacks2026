@@ -144,8 +144,9 @@ export function ChatScreen() {
     scrollToBottom();
 
     try {
-      // Build history for context (last 10 messages)
-      const history = updatedMessages.slice(-10).map(m => ({
+      // Build history for context (last 10 messages, excluding the current one
+      // which is sent separately as `message` — avoids duplicate user turns)
+      const history = messages.slice(-10).map(m => ({
         role: m.role,
         content: m.content,
       }));
@@ -190,7 +191,7 @@ export function ChatScreen() {
         },
       ]}>
         {!isUser && (
-          <Text style={[s.roleLabel, { color: colors.accent }]}><Ionicons name="flash-outline" size={12} color={colors.accent} /> SmartGrid AI</Text>
+          <Text style={[s.roleLabel, { color: colors.accent }]}><Ionicons name="flash-outline" size={12} color={colors.accent} /> WattVision AI</Text>
         )}
         <Text style={[
           s.messageText,
@@ -226,7 +227,7 @@ export function ChatScreen() {
       <View style={[s.header, { borderBottomColor: colors.border }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Image source={require('../../assets/image.png')} style={{ width: 22, height: 22, marginRight: 8, tintColor: colors.accent }} />
-          <Text style={[s.headerTitle, { color: colors.text }]}>SmartGrid AI</Text>
+          <Text style={[s.headerTitle, { color: colors.text }]}>WattVision AI</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
           <Text style={[s.geminiIcon, { color: colors.textSecondary }]}>♊︎</Text>
@@ -272,7 +273,7 @@ export function ChatScreen() {
         ListFooterComponent={
           isLoading ? (
             <View style={[s.messageBubble, s.assistantBubble, { backgroundColor: isDark ? '#1a1a2e' : '#e8e8e8' }]}>
-              <Text style={[s.roleLabel, { color: colors.accent }]}><Ionicons name="flash-outline" size={12} color={colors.accent} /> SmartGrid AI</Text>
+              <Text style={[s.roleLabel, { color: colors.accent }]}><Ionicons name="flash-outline" size={12} color={colors.accent} /> WattVision AI</Text>
               <View style={s.typingRow}>
                 <ActivityIndicator size="small" color={colors.accent} />
                 <Text style={[s.typingText, { color: colors.textSecondary }]}>Thinking…</Text>

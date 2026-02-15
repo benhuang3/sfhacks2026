@@ -1,6 +1,6 @@
 """
 =============================================================================
-  Aggregation Service — SmartGrid Home (SF Hacks 2026)
+  Aggregation Service — WattVision (SF Hacks 2026)
 =============================================================================
 
 Computes per-home energy, cost, and CO₂ summaries from device estimates

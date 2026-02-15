@@ -1,8 +1,8 @@
-# CLAUDE.md — SmartGrid Home (SF Hacks 2026)
+# CLAUDE.md — WattVision (SF Hacks 2026)
 
 ## Project Overview
 
-**SmartGrid Home** is a smart home energy management app built for SF Hacks 2026. Users can scan appliances with their phone camera (on-device AI detection), monitor energy usage, detect "ghost energy" waste, get ROI reports for smart alternatives, and visualize their home in 3D.
+**WattVision** is a smart home energy management app built for SF Hacks 2026. Users can scan appliances with their phone camera (on-device AI detection), monitor energy usage, detect "ghost energy" waste, get ROI reports for smart alternatives, and visualize their home in 3D.
 
 ## Tech Stack (Actual)
 

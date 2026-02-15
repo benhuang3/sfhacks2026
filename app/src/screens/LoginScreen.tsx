@@ -45,7 +45,7 @@ export function LoginScreen({ onGoSignup, onGoForgot }: Props) {
         <View style={styles.logoBox}>
           <View style={styles.logoRow}>
             <Image source={require('../../assets/image.png')} style={styles.logoImage} resizeMode="contain" />
-            <Text style={styles.logoText}>SmartGrid Home</Text>
+            <Text style={styles.logoText}>WattVision</Text>
           </View>
         </View>
 

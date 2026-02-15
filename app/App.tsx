@@ -1,5 +1,5 @@
 /**
- * SmartGrid Home — Main App with React Navigation + Auth
+ * WattVision Home — Main App with React Navigation + Auth
  *
  * Navigation structure:
  *   AuthStack (not logged in):
@@ -421,7 +421,7 @@ function WebTopNavBar({ state, navigation }: any) {
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 32 }}>
         <Image source={require('./assets/image.png')} style={{ width: 28, height: 28, marginRight: 8, tintColor: colors.accent }} />
-        <Text style={{ color: colors.accent, fontSize: 20, fontWeight: '800' }}>SmartGrid</Text>
+        <Text style={{ color: colors.accent, fontSize: 20, fontWeight: '800' }}>WattVision</Text>
       </View>
 
       {state.routes.map((route: any, index: number) => {
@@ -659,7 +659,7 @@ function LandingScreen() {
       <View style={styles.nav}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Image source={require('./assets/image.png')} style={{ width: 28, height: 28, marginRight: 8, tintColor: colors.accent }} />
-          <Text style={[styles.navLogo, { color: colors.accent }]}>SmartGrid</Text>
+          <Text style={[styles.navLogo, { color: colors.accent }]}>WattVision</Text>
         </View>
         <View style={styles.navRight}>
           <TouchableOpacity

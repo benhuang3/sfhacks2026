@@ -1,6 +1,6 @@
 """
 =============================================================================
-  AI Optimizer Agent — SmartGrid Home (SF Hacks 2026)
+  AI Optimizer Agent — WattVision (SF Hacks 2026)
 =============================================================================
 
 Phase 2: Cost-minimization agent that proposes safe actions to reduce

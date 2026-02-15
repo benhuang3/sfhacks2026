@@ -1,6 +1,6 @@
 """
 =============================================================================
-  Scan Service — SmartGrid Home (SF Hacks 2026)
+  Scan Service — WattVision (SF Hacks 2026)
 =============================================================================
 
 Handles appliance scan CRUD, MongoDB Atlas Vector Search (768-dim embeddings),

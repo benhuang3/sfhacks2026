@@ -1,6 +1,6 @@
 """
 =============================================================================
-  Data Models — SmartGrid Home (SF Hacks 2026)
+  Data Models — WattVision (SF Hacks 2026)
 =============================================================================
 
 Pydantic models for all MongoDB collections:

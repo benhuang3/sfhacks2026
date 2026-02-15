@@ -1,4 +1,4 @@
-# SmartGrid Home — Backend Dependencies
+# WattVision — Backend Dependencies
 # Install: pip install -r requirements.txt
 
 # Web framework

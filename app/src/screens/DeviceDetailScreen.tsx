@@ -769,8 +769,8 @@ export function DeviceDetailScreen({ device: initialDevice, rooms, onBack, onDev
                   Demo Preview
                 </Text>
                 <Image
-                  source={{ uri: `data:image/png;base64,${demoImage}` }}
-                  style={{ width: '100%', flex: 1, borderRadius: 12, marginBottom: 12 }}
+                  source={{ uri: `data:image/jpeg;base64,${demoImage}` }}
+                  style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12, marginBottom: 12 }}
                   resizeMode="contain"
                 />
                 <TouchableOpacity

@@ -1,4 +1,4 @@
-# SmartGrid Home
+# WattVision
 
 Scan your home appliances with on-device AI to monitor energy usage and detect ghost energy drain.
 

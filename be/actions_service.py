@@ -1,6 +1,6 @@
 """
 =============================================================================
-  Actions Service — SmartGrid Home (SF Hacks 2026)
+  Actions Service — WattVision (SF Hacks 2026)
 =============================================================================
 
 Handles action execution, audit logging, and revert functionality.

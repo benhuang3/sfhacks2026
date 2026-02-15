@@ -1,6 +1,6 @@
 """
 =============================================================================
-  Homes & Devices Service — SmartGrid Home (SF Hacks 2026)
+  Homes & Devices Service — WattVision (SF Hacks 2026)
 =============================================================================
 
 CRUD for homes and devices collections in MongoDB.

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "SmartGrid Home",
-    "slug": "smartgrid-home",
+    "name": "WattVision",
+    "slug": "wattvision",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,14 +15,14 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "SmartGrid Home needs camera access to scan and identify your appliances",
+        "NSCameraUsageDescription": "WattVision needs camera access to scan and identify your appliances",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
         }
       },
-      "bundleIdentifier": "com.anonymous.smartgrid-home"
+      "bundleIdentifier": "com.anonymous.wattvision"
     },
     "android": {
       "adaptiveIcon": {
@@ -45,7 +45,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "SmartGrid Home needs camera access to scan and identify your appliances"
+          "cameraPermission": "WattVision needs camera access to scan and identify your appliances"
         }
       ],
       "expo-asset"

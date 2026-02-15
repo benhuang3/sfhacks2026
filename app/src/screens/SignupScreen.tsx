@@ -47,11 +47,11 @@ export function SignupScreen({ onGoLogin }: Props) {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.logoBox}>
           <Image source={require('../../assets/image.png')} style={{ width: 44, height: 44, marginRight: 10 }} />
-          <Text style={styles.logoText}>SmartGrid Home</Text>
+          <Text style={styles.logoText}>WattVision</Text>
         </View>
 
         <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Join SmartGrid Home</Text>
+        <Text style={styles.subtitle}>Join WattVision</Text>
 
         {!!error && <Text style={styles.error}>{error}</Text>}
 

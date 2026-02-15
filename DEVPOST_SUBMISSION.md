@@ -1,9 +1,9 @@
-# SmartGrid Home — SF Hacks 2026 DevPost Submission
+# WattVision — SF Hacks 2026 DevPost Submission
 
 ---
 
 ## Project Title
-**SmartGrid Home**
+**WattVision**
 
 ---
 
@@ -13,7 +13,7 @@ AI-powered energy management app: scan appliances with your camera, visualize us
 ---
 
 ## Project Tracks
-- **Best Hack for Climate Action** — SmartGrid Home directly reduces household energy waste by identifying ghost energy and recommending efficiency upgrades
+- **Best Hack for Climate Action** — WattVision directly reduces household energy waste by identifying ghost energy and recommending efficiency upgrades
 - **Best Design Hack** — Interactive 3D house model with room-level device visualization, SaaS-quality charts, gamification, and dark mode
 - **MLH: Best Use of Gemini API** — Gemini powers device power profiling, natural language home commands, and AI chat for energy optimization
 - **MLH: Best Use of MongoDB Atlas** — All device profiles, homes, rooms, scan results, and power data stored in MongoDB with vector search support
@@ -24,11 +24,11 @@ AI-powered energy management app: scan appliances with your camera, visualize us
 
 ### What it does
 
-SmartGrid Home is a comprehensive smart home energy management platform that helps users understand and reduce their electricity consumption. The app combines AI-powered device detection with interactive 3D visualization to make energy management intuitive and engaging.
+WattVision is a comprehensive smart home energy management platform that helps users understand and reduce their electricity consumption. The app combines AI-powered device detection with interactive 3D visualization to make energy management intuitive and engaging.
 
 **Core Features:**
 
-1. **AI Camera Scanner** — Point your phone camera at any appliance and SmartGrid Home identifies it using Google Gemini Vision. The app instantly pulls up energy specs including active wattage, standby (ghost) power draw, and estimated annual cost.
+1. **AI Camera Scanner** — Point your phone camera at any appliance and WattVision identifies it using Google Gemini Vision. The app instantly pulls up energy specs including active wattage, standby (ghost) power draw, and estimated annual cost.
 
 2. **Interactive 3D Home Viewer** — A fully rendered Three.js 3D house model displays your rooms and devices in an isometric view. Each room has unique furniture (beds, kitchen counters, bathtubs, sofas, dining tables) matching real floor plans. Tap any room to see its total power consumption, per-device wattage breakdown, and estimated monthly cost. Toggle the roof on/off to look inside. Full 360° rotation with pinch-to-zoom.
 
@@ -84,7 +84,7 @@ SmartGrid Home is a comprehensive smart home energy management platform that hel
 - Gamification significantly increases user engagement with otherwise dry energy data
 - MongoDB's flexible schema is perfect for storing heterogeneous device profiles
 
-### What's next for SmartGrid Home
+### What's next for WattVision
 
 - Real smart plug integration (TP-Link Kasa, Shelly) for live wattage monitoring
 - Utility bill OCR — snap a photo of your electricity bill for automatic rate detection
@@ -116,7 +116,7 @@ San Francisco State University
 
 ## Gemini API Implementation Details
 
-SmartGrid Home uses the Gemini API in three distinct ways:
+WattVision uses the Gemini API in three distinct ways:
 
 1. **Power Profiling Agent** (`be/agents.py`): Uses `gemini-2.0-flash` via LangChain's `ChatGoogleGenerativeAI` with `PydanticOutputParser` to estimate device power consumption. When a user scans an appliance not in our database, the agent sends a structured prompt with brand, model, and category to Gemini, which returns a validated JSON response with active/standby wattage ranges, energy star rating, and usage profile.
 
