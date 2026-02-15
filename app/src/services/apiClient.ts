@@ -5,14 +5,12 @@
  * physical device, or localhost for emulators.
  */
 
-import { log } from '../utils/logger';
-
-// Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
+// Cloudflare tunnel URL — works from any network
+const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
-log.config('apiClient BASE_URL', { url: BASE_URL });
+console.log('[apiClient] BASE_URL =', BASE_URL);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,7 +57,6 @@ function parseJsonSafe(text: string): any {
 // ---------------------------------------------------------------------------
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  log.api(`POST ${path}`, { url: `${BASE_URL}${path}` });
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
@@ -78,11 +75,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   }
 
   if (!res.ok || !data.success) {
-    log.error('api', `POST ${path} failed (${res.status})`, new Error(data.error || data.detail?.error));
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
 
-  log.api(`POST ${path} -> ${res.status}`);
   return data.data as T;
 }
 
@@ -138,7 +133,6 @@ export async function saveScan(params: {
  * Health check — verify server is reachable.
  */
 export async function checkHealth(): Promise<{ status: string; database: string }> {
-  log.api('GET /health');
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}/health`);
@@ -148,7 +142,6 @@ export async function checkHealth(): Promise<{ status: string; database: string 
   const text = await res.text();
   const data = parseJsonSafe(text);
   if (data === null) throw new Error('Server returned non-JSON response.');
-  log.api(`GET /health -> ${res.status}`, data.data);
   return data.data;
 }
 
@@ -157,7 +150,6 @@ export async function checkHealth(): Promise<{ status: string; database: string 
 // ---------------------------------------------------------------------------
 
 async function get<T>(path: string): Promise<T> {
-  log.api(`GET ${path}`);
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`);
@@ -170,15 +162,12 @@ async function get<T>(path: string): Promise<T> {
     throw new Error('Server returned an invalid response. The tunnel may be down.');
   }
   if (!res.ok || !data.success) {
-    log.error('api', `GET ${path} failed (${res.status})`, new Error(data.error || data.detail?.error));
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
-  log.api(`GET ${path} -> ${res.status}`);
   return data.data as T;
 }
 
 async function del<T>(path: string): Promise<T> {
-  log.api(`DELETE ${path}`);
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
@@ -191,10 +180,8 @@ async function del<T>(path: string): Promise<T> {
     throw new Error('Server returned an invalid response. The tunnel may be down.');
   }
   if (!res.ok || !data.success) {
-    log.error('api', `DELETE ${path} failed (${res.status})`, new Error(data.error || data.detail?.error));
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
-  log.api(`DELETE ${path} -> ${res.status}`);
   return data.data as T;
 }
 

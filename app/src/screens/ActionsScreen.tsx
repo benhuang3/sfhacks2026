@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { showAlert, showConfirm } from '../utils/alert';
+import { useTheme } from '../../App';
 import {
   proposeActions,
   executeActions,
@@ -20,7 +21,6 @@ import {
   type ActionProposal,
   type ActionRecord,
 } from '../services/apiClient';
-import { log } from '../utils/logger';
 
 interface ActionsScreenProps {
   homeId: string;
@@ -54,6 +54,7 @@ function getStatusColor(status: string): string {
 }
 
 export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
+  const { colors, isDark } = useTheme();
   const [tab, setTab] = useState<Tab>('proposals');
   const [proposals, setProposals] = useState<ActionProposal[]>([]);
   const [history, setHistory] = useState<ActionRecord[]>([]);
@@ -62,28 +63,24 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadProposals = useCallback(async () => {
-    log.action('Loading AI proposals', { homeId });
     try {
       setLoading(true);
       const data = await proposeActions(homeId, { top_n: 8 });
       setProposals(data.proposals || []);
-      log.action(`Loaded ${data.proposals?.length ?? 0} proposal(s)`);
     } catch (err) {
-      log.error('action', 'Failed to load proposals', err);
+      console.warn('Failed to load proposals:', err);
     } finally {
       setLoading(false);
     }
   }, [homeId]);
 
   const loadHistory = useCallback(async () => {
-    log.action('Loading action history', { homeId });
     try {
       setLoading(true);
       const data = await listActions(homeId);
       setHistory(data || []);
-      log.action(`Loaded ${data?.length ?? 0} action record(s)`);
     } catch (err) {
-      log.error('action', 'Failed to load history', err);
+      console.warn('Failed to load history:', err);
     } finally {
       setLoading(false);
     }
@@ -126,13 +123,11 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
       : `Execute ${selectedIds.size} selected action(s)?`;
 
     showConfirm('Confirm Execution', message, async () => {
-      log.action('Execute actions confirmed', { count: selectedIds.size, ids: Array.from(selectedIds) });
       try {
         setExecuting(true);
         const result = await executeActions(homeId, Array.from(selectedIds));
         const succeeded = result.execution_results.filter(r => r.status === 'executed').length;
         const failed = result.execution_results.filter(r => r.status === 'failed').length;
-        log.action('Execution complete', { succeeded, failed });
 
         showAlert(
           'Execution Complete',
@@ -141,8 +136,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
         setSelectedIds(new Set());
         setTab('history');
       } catch (err: unknown) {
-        log.error('action', 'Execute actions failed', err);
-        showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Execution failed');
+        showAlert('Error', err instanceof Error ? err.message : 'Execution failed');
       } finally {
         setExecuting(false);
       }
@@ -150,15 +144,12 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
   };
 
   const handleRevert = async (actionId: string) => {
-    log.action('Revert pressed', { actionId });
     showConfirm('Revert Action', 'Undo this action?', async () => {
       try {
         await revertAction(homeId, actionId);
-        log.action('Action reverted', { actionId });
         showAlert('Reverted', 'Action has been reverted.');
         loadHistory();
       } catch (err: unknown) {
-        log.error('action', 'Revert failed', err);
         showAlert('Error', err instanceof Error ? err.message : 'Operation failed');
       }
     });
@@ -173,36 +164,36 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
     .reduce((sum, p) => sum + p.estimated_cost_usd, 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>← Back</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>AI Optimizer</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>AI Optimizer</Text>
         <TouchableOpacity
           onPress={() => tab === 'proposals' ? loadProposals() : loadHistory()}
           style={styles.headerBtn}
         >
-          <Text style={styles.headerBtnText}>↻</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>↻</Text>
         </TouchableOpacity>
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabRow}>
+      <View style={[styles.tabRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity
-          style={[styles.tab, tab === 'proposals' && styles.tabActive]}
+          style={[styles.tab, tab === 'proposals' && { borderBottomWidth: 2, borderBottomColor: colors.accent }]}
           onPress={() => setTab('proposals')}
         >
-          <Text style={[styles.tabText, tab === 'proposals' && styles.tabTextActive]}>
+          <Text style={[styles.tabText, { color: colors.textSecondary }, tab === 'proposals' && { color: colors.text }]}>
             🤖 Proposals
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, tab === 'history' && styles.tabActive]}
+          style={[styles.tab, tab === 'history' && { borderBottomWidth: 2, borderBottomColor: colors.accent }]}
           onPress={() => setTab('history')}
         >
-          <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>
+          <Text style={[styles.tabText, { color: colors.textSecondary }, tab === 'history' && { color: colors.text }]}>
             📋 History
           </Text>
         </TouchableOpacity>
@@ -211,8 +202,8 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {loading && (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color="#4CAF50" size="large" />
-            <Text style={styles.loadingText}>
+            <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
               {tab === 'proposals' ? 'AI is analyzing your devices...' : 'Loading actions...'}
             </Text>
           </View>
@@ -224,25 +215,25 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
             {proposals.length === 0 ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyIcon}>🤖</Text>
-                <Text style={styles.emptyTitle}>No Proposals</Text>
-                <Text style={styles.emptySubtitle}>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No Proposals</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                   Add devices to your home, then the AI will suggest cost-saving actions.
                 </Text>
               </View>
             ) : (
               <>
                 {/* Summary bar */}
-                <View style={styles.summaryBar}>
+                <View style={[styles.summaryBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.summaryInfo}>
-                    <Text style={styles.summaryLabel}>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
                       {selectedIds.size}/{proposals.length} selected
                     </Text>
-                    <Text style={styles.summaryValue}>
+                    <Text style={[styles.summaryValue, { color: colors.accent }]}>
                       Save ${totalSavings.toFixed(0)}/yr · Cost ${totalCost.toFixed(0)}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={selectAll} style={styles.selectAllBtn}>
-                    <Text style={styles.selectAllText}>
+                  <TouchableOpacity onPress={selectAll} style={[styles.selectAllBtn, { backgroundColor: colors.border }]}>
+                    <Text style={[styles.selectAllText, { color: colors.accent }]}>
                       {selectedIds.size === proposals.length ? 'Deselect All' : 'Select All'}
                     </Text>
                   </TouchableOpacity>
@@ -254,7 +245,8 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                     key={p.id}
                     style={[
                       styles.proposalCard,
-                      selectedIds.has(p.id) && styles.proposalCardSelected,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                      selectedIds.has(p.id) && { borderColor: colors.accent, backgroundColor: isDark ? 'rgba(76, 175, 80, 0.05)' : 'rgba(46, 125, 50, 0.06)' },
                     ]}
                     onPress={() => toggleSelect(p.id)}
                     activeOpacity={0.7}
@@ -263,12 +255,12 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                       <View style={styles.proposalLeft}>
                         <Text style={styles.proposalIcon}>{getActionIcon(p.action_type)}</Text>
                         <View>
-                          <Text style={styles.proposalLabel}>{p.label}</Text>
-                          <Text style={styles.proposalAction}>{getActionLabel(p.action_type)}</Text>
+                          <Text style={[styles.proposalLabel, { color: colors.text }]}>{p.label}</Text>
+                          <Text style={[styles.proposalAction, { color: colors.textSecondary }]}>{getActionLabel(p.action_type)}</Text>
                         </View>
                       </View>
                       <View style={styles.proposalRight}>
-                        <Text style={styles.proposalSaving}>
+                        <Text style={[styles.proposalSaving, { color: colors.accent }]}>
                           ${p.estimated_annual_dollars_saved.toFixed(2)}/yr
                         </Text>
                         <Text style={styles.checkbox}>
@@ -277,36 +269,36 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                       </View>
                     </View>
 
-                    <Text style={styles.proposalRationale}>{p.rationale}</Text>
+                    <Text style={[styles.proposalRationale, { color: colors.textSecondary, borderTopColor: colors.border }]}>{p.rationale}</Text>
 
                     <View style={styles.proposalStats}>
-                      <View style={styles.pStat}>
-                        <Text style={styles.pStatValue}>{p.estimated_annual_kwh_saved.toFixed(1)}</Text>
-                        <Text style={styles.pStatLabel}>kWh/yr</Text>
+                      <View style={[styles.pStat, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f5' }]}>
+                        <Text style={[styles.pStatValue, { color: colors.text }]}>{p.estimated_annual_kwh_saved.toFixed(1)}</Text>
+                        <Text style={[styles.pStatLabel, { color: colors.textSecondary }]}>kWh/yr</Text>
                       </View>
-                      <View style={styles.pStat}>
-                        <Text style={styles.pStatValue}>{p.estimated_co2_kg_saved.toFixed(1)}</Text>
-                        <Text style={styles.pStatLabel}>kg CO₂</Text>
+                      <View style={[styles.pStat, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f5' }]}>
+                        <Text style={[styles.pStatValue, { color: colors.text }]}>{p.estimated_co2_kg_saved.toFixed(1)}</Text>
+                        <Text style={[styles.pStatLabel, { color: colors.textSecondary }]}>kg CO₂</Text>
                       </View>
-                      <View style={styles.pStat}>
-                        <Text style={styles.pStatValue}>${p.estimated_cost_usd.toFixed(0)}</Text>
-                        <Text style={styles.pStatLabel}>Cost</Text>
+                      <View style={[styles.pStat, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f5' }]}>
+                        <Text style={[styles.pStatValue, { color: colors.text }]}>${p.estimated_cost_usd.toFixed(0)}</Text>
+                        <Text style={[styles.pStatLabel, { color: colors.textSecondary }]}>Cost</Text>
                       </View>
-                      <View style={styles.pStat}>
-                        <Text style={styles.pStatValue}>
+                      <View style={[styles.pStat, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f5' }]}>
+                        <Text style={[styles.pStatValue, { color: colors.text }]}>
                           {p.payback_months > 0 ? `${p.payback_months.toFixed(0)}mo` : 'Free'}
                         </Text>
-                        <Text style={styles.pStatLabel}>Payback</Text>
+                        <Text style={[styles.pStatLabel, { color: colors.textSecondary }]}>Payback</Text>
                       </View>
                     </View>
 
                     {/* Feasibility bar */}
                     <View style={styles.feasRow}>
-                      <Text style={styles.feasLabel}>Feasibility</Text>
-                      <View style={styles.feasTrack}>
-                        <View style={[styles.feasFill, { width: `${p.feasibility_score * 100}%` }]} />
+                      <Text style={[styles.feasLabel, { color: colors.textSecondary }]}>Feasibility</Text>
+                      <View style={[styles.feasTrack, { backgroundColor: colors.border }]}>
+                        <View style={[styles.feasFill, { width: `${p.feasibility_score * 100}%`, backgroundColor: colors.accent }]} />
                       </View>
-                      <Text style={styles.feasValue}>{(p.feasibility_score * 100).toFixed(0)}%</Text>
+                      <Text style={[styles.feasValue, { color: colors.textSecondary }]}>{(p.feasibility_score * 100).toFixed(0)}%</Text>
                     </View>
 
                     {/* Safety flags */}
@@ -326,6 +318,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                 <TouchableOpacity
                   style={[
                     styles.executeBtn,
+                    { backgroundColor: colors.accent },
                     (selectedIds.size === 0 || executing) && styles.disabledBtn,
                   ]}
                   onPress={handleExecuteSelected}
@@ -351,20 +344,20 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
             {history.length === 0 ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyIcon}>📋</Text>
-                <Text style={styles.emptyTitle}>No Actions Yet</Text>
-                <Text style={styles.emptySubtitle}>
+                <Text style={[styles.emptyTitle, { color: colors.text }]}>No Actions Yet</Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                   Execute proposals to see the audit log here.
                 </Text>
               </View>
             ) : (
               history.map((a) => (
-                <View key={a.id} style={styles.historyCard}>
+                <View key={a.id} style={[styles.historyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.historyHeader}>
                     <View style={styles.historyLeft}>
                       <Text style={styles.historyIcon}>{getActionIcon(a.action_type)}</Text>
                       <View>
-                        <Text style={styles.historyLabel}>{a.label || 'Device'}</Text>
-                        <Text style={styles.historyAction}>{getActionLabel(a.action_type)}</Text>
+                        <Text style={[styles.historyLabel, { color: colors.text }]}>{a.label || 'Device'}</Text>
+                        <Text style={[styles.historyAction, { color: colors.textSecondary }]}>{getActionLabel(a.action_type)}</Text>
                       </View>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(a.status) + '22' }]}>
@@ -375,29 +368,29 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                   </View>
 
                   {a.rationale && (
-                    <Text style={styles.historyRationale}>{a.rationale}</Text>
+                    <Text style={[styles.historyRationale, { color: colors.textSecondary }]}>{a.rationale}</Text>
                   )}
 
                   <View style={styles.historyStats}>
-                    <Text style={styles.historyStat}>
+                    <Text style={[styles.historyStat, { color: colors.textSecondary }]}>
                       💰 ${a.estimated_savings?.dollars_per_year?.toFixed(2) ?? '–'}/yr
                     </Text>
-                    <Text style={styles.historyStat}>
+                    <Text style={[styles.historyStat, { color: colors.textSecondary }]}>
                       ⚡ {a.estimated_savings?.kwh_per_year?.toFixed(1) ?? '–'} kWh/yr
                     </Text>
                   </View>
 
                   <View style={styles.historyDates}>
-                    <Text style={styles.historyDate}>
+                    <Text style={[styles.historyDate, { color: colors.textSecondary }]}>
                       Created: {new Date(a.createdAt).toLocaleDateString()}
                     </Text>
                     {a.executedAt && (
-                      <Text style={styles.historyDate}>
+                      <Text style={[styles.historyDate, { color: colors.textSecondary }]}>
                         Executed: {new Date(a.executedAt).toLocaleDateString()}
                       </Text>
                     )}
                     {a.revertedAt && (
-                      <Text style={styles.historyDate}>
+                      <Text style={[styles.historyDate, { color: colors.textSecondary }]}>
                         Reverted: {new Date(a.revertedAt).toLocaleDateString()}
                       </Text>
                     )}
@@ -422,83 +415,81 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a12' },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#12121a',
-    borderBottomWidth: 1, borderBottomColor: '#1f1f2e',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   headerBtn: { padding: 8 },
-  headerBtnText: { color: '#4CAF50', fontSize: 14, fontWeight: '600' },
-  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  headerBtnText: { fontSize: 14, fontWeight: '600' },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
 
   tabRow: {
-    flexDirection: 'row', backgroundColor: '#12121a',
-    borderBottomWidth: 1, borderBottomColor: '#1f1f2e',
+    flexDirection: 'row',
+    borderBottomWidth: 1,
   },
   tab: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#4CAF50' },
-  tabText: { color: '#666', fontSize: 14, fontWeight: '600' },
-  tabTextActive: { color: '#fff' },
+  tabText: { fontSize: 14, fontWeight: '600' },
 
   scroll: { flex: 1 },
   scrollContent: { padding: 16, maxWidth: 600, alignSelf: 'center', width: '100%' },
 
   loadingBox: { alignItems: 'center', paddingVertical: 60 },
-  loadingText: { color: '#888', fontSize: 14, marginTop: 12 },
+  loadingText: { fontSize: 14, marginTop: 12 },
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 56, marginBottom: 16 },
-  emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  emptySubtitle: { color: '#666', fontSize: 14, textAlign: 'center' },
+  emptyTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, textAlign: 'center' },
 
   // Summary bar
   summaryBar: {
-    flexDirection: 'row', backgroundColor: '#12121a', borderRadius: 12,
-    padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#1f1f2e',
+    flexDirection: 'row', borderRadius: 12,
+    padding: 14, marginBottom: 16, borderWidth: 1,
     alignItems: 'center', justifyContent: 'space-between',
   },
   summaryInfo: {},
-  summaryLabel: { color: '#888', fontSize: 12 },
-  summaryValue: { color: '#4CAF50', fontSize: 14, fontWeight: '700', marginTop: 2 },
-  selectAllBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#1f1f2e' },
-  selectAllText: { color: '#4CAF50', fontSize: 12, fontWeight: '600' },
+  summaryLabel: { fontSize: 12 },
+  summaryValue: { fontSize: 14, fontWeight: '700', marginTop: 2 },
+  selectAllBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  selectAllText: { fontSize: 12, fontWeight: '600' },
 
   // Proposal cards
   proposalCard: {
-    backgroundColor: '#12121a', borderRadius: 14, padding: 16,
-    marginBottom: 12, borderWidth: 1, borderColor: '#1f1f2e',
+    borderRadius: 14, padding: 16,
+    marginBottom: 12, borderWidth: 1,
   },
-  proposalCardSelected: { borderColor: '#4CAF50', backgroundColor: 'rgba(76, 175, 80, 0.05)' },
+  proposalCardSelected: {},
   proposalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10,
   },
   proposalLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   proposalIcon: { fontSize: 24 },
-  proposalLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  proposalAction: { color: '#888', fontSize: 11, marginTop: 2 },
+  proposalLabel: { fontSize: 14, fontWeight: '600' },
+  proposalAction: { fontSize: 11, marginTop: 2 },
   proposalRight: { alignItems: 'flex-end', gap: 4 },
-  proposalSaving: { color: '#4CAF50', fontSize: 16, fontWeight: '700' },
+  proposalSaving: { fontSize: 16, fontWeight: '700' },
   checkbox: { fontSize: 18 },
 
   proposalRationale: {
-    color: '#aaa', fontSize: 12, lineHeight: 18, marginBottom: 12,
-    paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#1f1f2e',
+    fontSize: 12, lineHeight: 18, marginBottom: 12,
+    paddingVertical: 8, borderTopWidth: 1,
   },
 
   proposalStats: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   pStat: {
-    flex: 1, backgroundColor: '#1a1a2e', borderRadius: 8, padding: 8, alignItems: 'center',
+    flex: 1, borderRadius: 8, padding: 8, alignItems: 'center',
   },
-  pStatValue: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  pStatLabel: { color: '#888', fontSize: 10, marginTop: 2 },
+  pStatValue: { fontSize: 14, fontWeight: '700' },
+  pStatLabel: { fontSize: 10, marginTop: 2 },
 
   feasRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  feasLabel: { color: '#888', fontSize: 11, width: 60 },
+  feasLabel: { fontSize: 11, width: 60 },
   feasTrack: {
-    flex: 1, height: 6, backgroundColor: '#1f1f2e', borderRadius: 3, overflow: 'hidden',
+    flex: 1, height: 6, borderRadius: 3, overflow: 'hidden',
   },
-  feasFill: { height: '100%', backgroundColor: '#4CAF50', borderRadius: 3 },
-  feasValue: { color: '#888', fontSize: 11, width: 30, textAlign: 'right' },
+  feasFill: { height: '100%', borderRadius: 3 },
+  feasValue: { fontSize: 11, width: 30, textAlign: 'right' },
 
   flagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   flagBadge: {
@@ -509,7 +500,7 @@ const styles = StyleSheet.create({
 
   // Execute
   executeBtn: {
-    backgroundColor: '#4CAF50', paddingVertical: 18, borderRadius: 14,
+    paddingVertical: 18, borderRadius: 14,
     alignItems: 'center', marginTop: 8, marginBottom: 32,
   },
   executeBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
@@ -517,23 +508,23 @@ const styles = StyleSheet.create({
 
   // History cards
   historyCard: {
-    backgroundColor: '#12121a', borderRadius: 14, padding: 16,
-    marginBottom: 12, borderWidth: 1, borderColor: '#1f1f2e',
+    borderRadius: 14, padding: 16,
+    marginBottom: 12, borderWidth: 1,
   },
   historyHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8,
   },
   historyLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   historyIcon: { fontSize: 22 },
-  historyLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  historyAction: { color: '#888', fontSize: 11, marginTop: 2 },
+  historyLabel: { fontSize: 14, fontWeight: '600' },
+  historyAction: { fontSize: 11, marginTop: 2 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 10, fontWeight: '800' },
-  historyRationale: { color: '#aaa', fontSize: 12, lineHeight: 18, marginBottom: 8 },
+  historyRationale: { fontSize: 12, lineHeight: 18, marginBottom: 8 },
   historyStats: { flexDirection: 'row', gap: 16, marginBottom: 8 },
-  historyStat: { color: '#888', fontSize: 12 },
+  historyStat: { fontSize: 12 },
   historyDates: { gap: 2, marginBottom: 8 },
-  historyDate: { color: '#555', fontSize: 11 },
+  historyDate: { fontSize: 11 },
   revertBtn: {
     backgroundColor: 'rgba(244, 67, 54, 0.1)', paddingVertical: 10,
     borderRadius: 8, alignItems: 'center', borderWidth: 1,

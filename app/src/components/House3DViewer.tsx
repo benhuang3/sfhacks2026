@@ -97,8 +97,8 @@ export function House3DViewer({
   scene.fog = new THREE.FogExp2('${bg}', 0.008);
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
-  camera.position.set(16, 14, 16);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(14, 18, 14);
+  camera.lookAt(0, 0.5, 0);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -208,19 +208,19 @@ export function House3DViewer({
   const WALL_T = 0.15;
 
   // 5-room floor plan (matches architectural layout image):
-  //  ┌──────────┬──────────────┬──────────┐
-  //  │ Bedroom  │   Kitchen    │ Bathroom │  top row (depth 4.5)
-  //  │ (4×4.5)  │   (5×4.5)    │ (3×4.5)  │
-  //  ├──────────┼──────────────┴──────────┤
-  //  │  Living  │      Dining Room       │  bottom row (depth 5)
-  //  │  (4×5)   │        (8×5)           │
-  //  └──────────┴────────────────────────┘
+  //  ┌───────────┬──────────────┬──────────┐
+  //  │  Bedroom  │   Kitchen    │ Bathroom │  top row (depth 4.5)
+  //  │ (4.5×4.5) │  (4.5×4.5)   │ (3×4.5)  │
+  //  ├───────────┼──────────────┴──────────┤
+  //  │  Living   │      Dining Room       │  bottom row (depth 5)
+  //  │ (4.5×5)   │        (7.5×5)          │
+  //  └───────────┴────────────────────────┘
   //  Total: 12 wide × 9.5 deep
-  const BR_W = 4, BR_D = 4.5;    // bedroom (top-left)
-  const KI_W = 5, KI_D = 4.5;    // kitchen (top-center)
+  const BR_W = 4.5, BR_D = 4.5;  // bedroom (top-left)
+  const KI_W = 4.5, KI_D = 4.5;  // kitchen (top-center)
   const BA_W = 3, BA_D = 4.5;    // bathroom (top-right)
-  const LR_W = 4, LR_D = 5;     // living room (bottom-left)
-  const DN_W = 8, DN_D = 5;     // dining room (bottom-right)
+  const LR_W = 4.5, LR_D = 5;   // living room (bottom-left)
+  const DN_W = 7.5, DN_D = 5;   // dining room (bottom-right)
   const TOTAL_W = BR_W + KI_W + BA_W;  // 12
   const TOTAL_D = BR_D + LR_D;         // 9.5
 
@@ -251,9 +251,9 @@ export function House3DViewer({
 
   // ================================================================
   // Furniture builders — coordinates stay within each room's bounds
-  // Bedroom (4×4.5 → ±1.8x, ±2.05z), Kitchen (5×4.5 → ±2.3x, ±2.05z)
-  // Bathroom (3×4.5 → ±1.3x, ±2.05z), Living (4×5 → ±1.8x, ±2.3z)
-  // Dining (8×5 → ±3.8x, ±2.3z)
+  // Bedroom (4.5×4.5 → ±2.05x, ±2.05z), Kitchen (4.5×4.5 → ±2.05x, ±2.05z)
+  // Bathroom (3×4.5 → ±1.3x, ±2.05z), Living (4.5×5 → ±2.05x, ±2.3z)
+  // Dining (7.5×5 → ±3.55x, ±2.3z)
   // NO electronics — only furniture and decorations
   // ================================================================
 
@@ -1334,8 +1334,8 @@ export function House3DViewer({
   // ================================================================
   var isDragging = false;
   var prevX = 0, prevY = 0;
-  var rotY = 0.6, rotX = 0.55;
-  var zoom = 20;
+  var rotY = 0.75, rotX = 0.72;
+  var zoom = 22;
   var pinchDist = 0;
   var lastInteraction = Date.now();
 
@@ -1430,7 +1430,7 @@ export function House3DViewer({
     camera.position.x = Math.sin(rotY) * Math.cos(rotX) * zoom;
     camera.position.y = Math.sin(rotX) * zoom;
     camera.position.z = Math.cos(rotY) * Math.cos(rotX) * zoom;
-    camera.lookAt(0, 1.0, 0);
+    camera.lookAt(0, 0.5, 0);
 
     // Pulse glow rings + device point lights
     var pulse = 0.3 + Math.sin(now * 0.004) * 0.3;
