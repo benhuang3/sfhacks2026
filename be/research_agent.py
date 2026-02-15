@@ -266,7 +266,7 @@ async def _query_gemini(brand: str, model: str, category: str) -> Optional[dict]
                     ),
                 )
             ),
-            timeout=30.0,
+            timeout=20.0,
         )
 
         if not resp or not resp.text:
@@ -388,7 +388,7 @@ async def _add_product_images(result: dict, category: str) -> None:
     try:
         images = await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True),
-            timeout=20.0,
+            timeout=15.0,
         )
         for alt, img in zip(alts, images):
             alt["image_base64"] = img if isinstance(img, str) else None

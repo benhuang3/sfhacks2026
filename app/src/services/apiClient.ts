@@ -570,7 +570,7 @@ export async function researchDevice(
   model: string,
   category: string,
 ): Promise<ResearchResult> {
-  return post<ResearchResult>('/research-device', { brand, model, category }, 60000);
+  return post<ResearchResult>('/research-device', { brand, model, category }, 120000);
 }
 
 // ---------------------------------------------------------------------------

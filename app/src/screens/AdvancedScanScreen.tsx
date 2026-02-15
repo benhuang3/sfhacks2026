@@ -313,16 +313,16 @@ export function AdvancedScanScreen({ onBack, onUpload, onNavigateQueue }: Advanc
               scanData,
             };
 
-            addToQueue(device);
-            showToast(`${getDisplayName(obj.label)} added to queue`);
-
-            // Reset
+            // Defer side effects out of state updater to avoid
+            // "Cannot update ScanQueueProvider while rendering AdvancedScanScreen"
             setTimeout(() => {
+              addToQueue(device);
+              showToast(`${getDisplayName(obj.label)} added to queue`);
               setCaptureState('idle');
               setSelectedObjectId(null);
               selectedObjectRef.current = null;
               setCapturedAngles([]);
-            }, 100);
+            }, 0);
           }
 
           return updated;
