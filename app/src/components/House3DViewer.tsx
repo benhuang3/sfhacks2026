@@ -12,7 +12,7 @@
  *  - Runs inside WebView (Expo Go compatible)
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 
@@ -32,6 +32,7 @@ interface House3DViewerProps {
   devices?: DeviceInfo[];
   isDark?: boolean;
   height?: number;
+  onDevicePress?: (device: { label: string; category: string; roomId: string; roomName?: string }) => void;
 }
 
 export function House3DViewer({
@@ -45,6 +46,7 @@ export function House3DViewer({
   devices = [],
   isDark = true,
   height = 400,
+  onDevicePress,
 }: House3DViewerProps) {
 
   const htmlContent = useMemo(() => {
@@ -81,13 +83,41 @@ export function House3DViewer({
 </head>
 <body>
 <div id="tooltip"></div>
-<div id="info">Drag to rotate · Pinch to zoom · Tap room for details</div>
+<div id="info">Drag to rotate · Pinch to zoom · Tap device for details</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
 <script>
 (function() {
   const ROOMS = ${roomsJson};
   const DEVICES = ${devicesJson};
   const IS_DARK = ${isDark};
+
+  // ================================================================
+  // glTF Model Loading Infrastructure
+  // Maps category → glTF model URL. Falls back to primitive if load fails.
+  // Add model URLs here as they become available.
+  // ================================================================
+  var MODEL_URLS = {
+    // Example: 'Television': 'https://example.com/models/tv.glb',
+    // Add low-poly model URLs here when available
+  };
+
+  var modelCache = {};
+  var GLTFLoaderInstance = null;
+  try { GLTFLoaderInstance = new THREE.GLTFLoader(); } catch(e) {}
+
+  function loadGLTFModel(category, callback) {
+    var url = MODEL_URLS[category];
+    if (!url || !GLTFLoaderInstance) { callback(null); return; }
+    if (modelCache[category]) { callback(modelCache[category].clone()); return; }
+    GLTFLoaderInstance.load(url, function(gltf) {
+      var model = gltf.scene;
+      model.traverse(function(child) {
+        if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+      });
+      modelCache[category] = model;
+      callback(model.clone());
+    }, undefined, function() { callback(null); });
+  }
 
   // ================================================================
   // Scene Setup
@@ -207,7 +237,12 @@ export function House3DViewer({
   const WALL_H = 3.0;
   const WALL_T = 0.15;
 
-  // 5-room floor plan (matches architectural layout image):
+  // 5-room floor plan — matches provided 2D blueprint exactly:
+  //  Bedroom (top-left): Bed (top-center), Study Table (left), Furniture/dresser (bottom)
+  //  Kitchen (top-center): cooking (left), sink (right), open to hallway
+  //  Bathroom (top-right): Bath-tub (top), Toilet (center), Sink (right)
+  //  Living (bottom-left): TV Desk (top), main table (center), Sofa (bottom), lamp table (bottom-left)
+  //  Dining (bottom-right): table (center), chairs around, cupboards (bottom)
   //  ┌───────────┬──────────────┬──────────┐
   //  │  Bedroom  │   Kitchen    │ Bathroom │  top row (depth 4.5)
   //  │ (4.5×4.5) │  (4.5×4.5)   │ (3×4.5)  │
@@ -215,7 +250,7 @@ export function House3DViewer({
   //  │  Living   │      Dining Room       │  bottom row (depth 5)
   //  │ (4.5×5)   │        (7.5×5)          │
   //  └───────────┴────────────────────────┘
-  //  Total: 12 wide × 9.5 deep
+  //  Total: 12 wide × 9.5 deep. All furniture and devices rendered inside room bounds.
   const BR_W = 4.5, BR_D = 4.5;  // bedroom (top-left)
   const KI_W = 4.5, KI_D = 4.5;  // kitchen (top-center)
   const BA_W = 3, BA_D = 4.5;    // bathroom (top-right)
@@ -982,10 +1017,25 @@ export function House3DViewer({
   }
 
   // ================================================================
+  // Clamp device position to room bounds (avoid undefined roomW/roomD)
+  // ================================================================
+  function clampSpot(x, z, roomW, roomD) {
+    var w = (roomW != null && roomW > 0) ? roomW : 4;
+    var d = (roomD != null && roomD > 0) ? roomD : 4;
+    var margin = 0.35;
+    var hw = w / 2 - margin;
+    var hd = d / 2 - margin;
+    return {
+      x: Math.max(-hw, Math.min(hw, Number(x) || 0)),
+      z: Math.max(-hd, Math.min(hd, Number(z) || 0)),
+    };
+  }
+
+  // ================================================================
   // Smart placement: returns {x, z, key} based on room type + device
   // Devices go to logical positions (TV on TV stand, fridge in corner, etc.)
   // ================================================================
-  function getSmartSpot(rType, cat, idx, used) {
+  function getSmartSpot(rType, cat, idx, used, roomW, roomD) {
     var c = (cat || '').toLowerCase();
 
     // --- LIVING ROOM spots ---
@@ -1080,7 +1130,9 @@ export function House3DViewer({
     // Try to find a matching spot for this device category
     for (var key in spots) {
       if (c.includes(key) && !used[spots[key].key]) {
-        return spots[key];
+        var s = spots[key];
+        var clamped = clampSpot(s.x, s.z, roomW, roomD);
+        return { x: clamped.x, z: clamped.z, key: s.key };
       }
     }
 
@@ -1096,20 +1148,62 @@ export function House3DViewer({
       { x: -1.0, z: 0, key: 'fb7' },
     ];
     for (var fi = 0; fi < fallbackSpots.length; fi++) {
-      if (!used[fallbackSpots[fi].key]) return fallbackSpots[fi];
+      if (!used[fallbackSpots[fi].key]) {
+        var fb = fallbackSpots[fi];
+        var fbc = clampSpot(fb.x, fb.z, roomW, roomD);
+        return { x: fbc.x, z: fbc.z, key: fb.key };
+      }
     }
     // Last resort: offset based on index
-    return { x: (idx % 3 - 1) * 1.2, z: Math.floor(idx / 3) * 1.2 - 0.5, key: 'last' + idx };
+    var lr = { x: (idx % 3 - 1) * 1.0, z: Math.floor(idx / 3) * 1.0 - 0.5 };
+    var lrc = clampSpot(lr.x, lr.z, roomW, roomD);
+    return { x: lrc.x, z: lrc.z, key: 'last' + idx };
   }
+
+  // ================================================================
+  // Deterministic room-type → GRID slot mapping
+  // Maps each room to the correct physical position based on type,
+  // matching the 2D floorplan exactly.
+  // ================================================================
+  var ROOM_SLOT = {
+    bedroom: 0,   // top-left
+    kitchen: 1,   // top-center
+    bathroom: 2,  // top-right
+    living: 3,    // bottom-left
+    dining: 4,    // bottom-right
+  };
+
+  // Extension wing positions for extra rooms (office, laundry, garage, etc.)
+  var EXT_IDX = 0;
+  var EXTENSIONS = [
+    { x: HW + 2.5, z: -HD + 2.25, w: 4, d: 4.5 },   // right wing top
+    { x: HW + 2.5, z: HD - 2.5, w: 4, d: 5 },        // right wing bottom
+    { x: -HW - 2.5, z: -HD + 2.25, w: 4, d: 4.5 },   // left wing top
+    { x: -HW - 2.5, z: HD - 2.5, w: 4, d: 5 },       // left wing bottom
+  ];
 
   // ================================================================
   // Build Rooms
   // ================================================================
   var roomGroups = [];
   var clickableFloors = [];
+  var usedSlots = {};
 
   ROOMS.forEach(function(room, i) {
-    var pos = GRID[i % GRID.length];
+    var type = roomType(room.roomId);
+    var slotIdx = ROOM_SLOT[type];
+    var pos;
+
+    // Use deterministic slot if available and not already taken
+    if (slotIdx !== undefined && !usedSlots[slotIdx]) {
+      pos = GRID[slotIdx];
+      usedSlots[slotIdx] = true;
+    } else {
+      // Extra room: place as extension wing
+      pos = EXTENSIONS[EXT_IDX % EXTENSIONS.length];
+      EXT_IDX++;
+    }
+
     var rg = new THREE.Group();
     rg.position.set(pos.x, 0, pos.z);
     rg.userData = { roomId: room.roomId, name: room.name, index: i };
@@ -1159,15 +1253,41 @@ export function House3DViewer({
       var glowMat = new THREE.MeshStandardMaterial({ color: dc, roughness: 0.2, metalness: 0.3, emissive: dc, emissiveIntensity: 0.4 });
       var bodyMat = new THREE.MeshStandardMaterial({ color: dc, roughness: 0.3, metalness: 0.2, emissive: dc, emissiveIntensity: 0.15 });
 
-      // Get smart placement position
-      var spot = getSmartSpot(type, dev.category, di, usedSpots);
+      // Get smart placement position (pass room dims for clamping)
+      var spot = getSmartSpot(type, dev.category, di, usedSpots, pos.w, pos.d);
       usedSpots[spot.key] = true;
 
       var devG = new THREE.Group();
       devG.position.set(spot.x, 0, spot.z);
+      devG.userData = { isDevice: true, deviceLabel: dev.label, deviceCategory: dev.category, roomId: room.roomId, roomName: room.name };
 
       // Build the specific 3D appliance model
+      // Try glTF model first, fallback to primitive
       buildDevice3D(dev.category, devG, dc, glowMat, bodyMat);
+      loadGLTFModel(dev.category, function(gltfScene) {
+        if (gltfScene) {
+          // Remove primitive children (keep glow rings & labels)
+          var toRemove = [];
+          devG.children.forEach(function(child) {
+            if (child.isMesh && !child.userData.isGlow) toRemove.push(child);
+          });
+          toRemove.forEach(function(child) { devG.remove(child); });
+          gltfScene.scale.set(0.5, 0.5, 0.5);
+          gltfScene.position.y = 0;
+          devG.add(gltfScene);
+        }
+      });
+
+      // Tag all meshes in this device group as clickable
+      devG.traverse(function(child) {
+        if (child.isMesh) {
+          child.userData.isDeviceMesh = true;
+          child.userData.deviceLabel = dev.label;
+          child.userData.deviceCategory = dev.category;
+          child.userData.roomId = room.roomId;
+          child.userData.roomName = room.name;
+        }
+      });
 
       // ---- Glow ring on floor (pulsing) ----
       var ringGeo = new THREE.RingGeometry(0.35, 0.45, 32);
@@ -1380,30 +1500,95 @@ export function House3DViewer({
   }, { passive: true });
 
   // ================================================================
-  // Raycaster — tap room for tooltip
+  // Raycaster — tap room for tooltip, tap device for postMessage
   // ================================================================
   var raycaster = new THREE.Raycaster();
   var mouse = new THREE.Vector2();
   var tooltip = document.getElementById('tooltip');
+  var dragDistance = 0;
+  var pointerDownPos = { x: 0, y: 0 };
+
+  renderer.domElement.addEventListener('pointerdown', function(e) {
+    pointerDownPos = { x: e.clientX, y: e.clientY };
+  });
 
   renderer.domElement.addEventListener('click', function(e) {
+    // Ignore drags (only handle taps/clicks)
+    var dx = e.clientX - pointerDownPos.x;
+    var dy = e.clientY - pointerDownPos.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 8) return;
+
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    var hits = raycaster.intersectObjects(clickableFloors);
+
+    // Check ALL meshes in the house, not just floors
+    var allMeshes = [];
+    house.traverse(function(obj) { if (obj.isMesh) allMeshes.push(obj); });
+    var hits = raycaster.intersectObjects(allMeshes);
+
     if (hits.length > 0) {
-      var ud = hits[0].object.userData;
-      var rm = ud.name || ud.roomId;
-      var devs = DEVICES.filter(function(d) { return d.roomId === ud.roomId; });
-      var html = '<div class="tt-room">' + rm + '</div><div class="tt-devices">';
-      if (devs.length === 0) html += 'No devices';
-      else devs.forEach(function(d) { html += '<div class="tt-device">• ' + (d.label || d.category) + '</div>'; });
-      html += '</div>';
-      tooltip.innerHTML = html;
-      tooltip.style.display = 'block';
-      tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 230) + 'px';
-      tooltip.style.top = Math.max(e.clientY - 60, 10) + 'px';
-      setTimeout(function() { tooltip.style.display = 'none'; }, 3000);
+      var hit = hits[0].object;
+
+      // Check if a device was clicked (walk up to find device group)
+      var deviceData = null;
+      var current = hit;
+      while (current) {
+        if (current.userData && current.userData.isDevice) {
+          deviceData = current.userData;
+          break;
+        }
+        if (current.userData && current.userData.isDeviceMesh) {
+          deviceData = current.userData;
+          break;
+        }
+        current = current.parent;
+      }
+
+      if (deviceData) {
+        // Send device tap to React Native
+        try {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'deviceTap',
+              label: deviceData.deviceLabel,
+              category: deviceData.deviceCategory,
+              roomId: deviceData.roomId,
+              roomName: deviceData.roomName,
+            }));
+          }
+        } catch(err) {}
+
+        // Also show tooltip for device
+        var html = '<div class="tt-room">' + (deviceData.deviceLabel || deviceData.deviceCategory) + '</div>';
+        html += '<div class="tt-devices"><div class="tt-device">Category: ' + deviceData.deviceCategory + '</div>';
+        html += '<div class="tt-device">Room: ' + (deviceData.roomName || deviceData.roomId) + '</div>';
+        html += '<div class="tt-device" style="color:#4CAF50;margin-top:4px">Tap for details</div></div>';
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+        tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 230) + 'px';
+        tooltip.style.top = Math.max(e.clientY - 60, 10) + 'px';
+        setTimeout(function() { tooltip.style.display = 'none'; }, 3000);
+        return;
+      }
+
+      // Check if floor was clicked (room tooltip)
+      var ud = hit.userData;
+      if (ud && ud.type === 'floor') {
+        var rm = ud.name || ud.roomId;
+        var devs = DEVICES.filter(function(d) { return d.roomId === ud.roomId; });
+        var html = '<div class="tt-room">' + rm + '</div><div class="tt-devices">';
+        if (devs.length === 0) html += 'No devices';
+        else devs.forEach(function(d) { html += '<div class="tt-device">• ' + (d.label || d.category) + '</div>'; });
+        html += '</div>';
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+        tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 230) + 'px';
+        tooltip.style.top = Math.max(e.clientY - 60, 10) + 'px';
+        setTimeout(function() { tooltip.style.display = 'none'; }, 3000);
+      } else {
+        tooltip.style.display = 'none';
+      }
     } else {
       tooltip.style.display = 'none';
     }
@@ -1476,11 +1661,26 @@ export function House3DViewer({
 </html>`;
   }, [rooms, devices, isDark]);
 
+  const handleMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'deviceTap' && onDevicePress) {
+        onDevicePress({
+          label: data.label,
+          category: data.category,
+          roomId: data.roomId,
+          roomName: data.roomName,
+        });
+      }
+    } catch {}
+  }, [onDevicePress]);
+
   return (
-    <View style={[styles.container, { height }]}>
+    <View style={[styles.container, { height: Math.max(height, 280) }]}>
       <WebView
+        key={`house3d-${rooms.length}-${devices.length}`}
         source={{ html: htmlContent }}
-        style={styles.webview}
+        style={[styles.webview, { minHeight: 280 }]}
         scrollEnabled={false}
         bounces={false}
         javaScriptEnabled={true}
@@ -1490,6 +1690,7 @@ export function House3DViewer({
         allowsInlineMediaPlayback={true}
         overScrollMode="never"
         nestedScrollEnabled={false}
+        onMessage={handleMessage}
         {...(Platform.OS === 'android' ? { hardwareAccelerationDisabledInWebView: false } : {})}
       />
     </View>

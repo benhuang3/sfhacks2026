@@ -9,8 +9,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity, ScrollView,
-  Dimensions, ActivityIndicator, Platform,
+  useWindowDimensions, ActivityIndicator, Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import Svg, { Circle, G, Text as SvgText } from 'react-native-svg';
@@ -35,8 +36,6 @@ interface Props {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const SCREEN_W = Dimensions.get('window').width;
-
 const CATEGORY_COLORS: Record<string, string> = {
   'Television': '#FF6384', 'TV': '#FF6384',
   'Refrigerator': '#36A2EB', 'Washing Machine': '#FFCE56',
@@ -93,20 +92,20 @@ function DonutChart({ slices, size = 180, strokeWidth = 28, textColor = '#fff', 
         })}
       </G>
       <SvgText
-        x={cx} y={cy - 8}
+        x={cx} y={cy - 10}
         textAnchor="middle"
         fill={textColor}
-        fontSize="22"
-        fontWeight="800"
+        fontSize="16"
+        fontWeight="700"
         fontFamily="System"
       >
         ${total.toFixed(0)}
       </SvgText>
       <SvgText
-        x={cx} y={cy + 16}
+        x={cx} y={cy + 8}
         textAnchor="middle"
         fill={subColor}
-        fontSize="13"
+        fontSize="10"
         fontFamily="System"
       >
         /year
@@ -121,6 +120,7 @@ function DonutChart({ slices, size = 180, strokeWidth = 28, textColor = '#fff', 
 export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Props) {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
+  const { width: SCREEN_W } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<HomeSummary | null>(null);
   const [home, setHome] = useState<Home | null>(null);
@@ -259,7 +259,7 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>📊 Energy Dashboard</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}><Ionicons name="bar-chart-outline" size={18} color={colors.accent} /> Energy Dashboard</Text>
         {home && <Text style={[styles.headerSub, { color: colors.textSecondary }]}>{home.name}</Text>}
       </View>
 
@@ -301,21 +301,23 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
       {stats.savedDollars > 0 && (
         <View style={[styles.savingsCard, { backgroundColor: isDark ? '#1a2e1a' : '#e8f5e9', borderColor: colors.accent }]}>
           <Text style={{ color: colors.accent, fontSize: 16, fontWeight: '700' }}>
-            💰 You're saving ${stats.savedDollars.toFixed(2)}/year from {stats.savedKwh.toFixed(0)} kWh!
+            <Ionicons name="wallet-outline" size={16} color={colors.accent} /> You're saving ${stats.savedDollars.toFixed(2)}/year from {stats.savedKwh.toFixed(0)} kWh!
           </Text>
         </View>
       )}
 
-      {/* Donut Chart */}
+      {/* Donut Chart — Cost Breakdown by Category (fixed layout so $ doesn't overwrite) */}
       <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.chartTitle, { color: colors.text }]}>Cost Breakdown by Category</Text>
-        <View style={styles.donutRow}>
-          <DonutChart slices={donutSlices} textColor={colors.text} subColor={colors.textSecondary} />
-          <View style={styles.legendCol}>
+        <View style={[styles.donutRow, { flexWrap: 'wrap', minHeight: 140, alignItems: 'flex-start' }]}>
+          <View style={{ width: Math.min(160, SCREEN_W * 0.4), alignItems: 'center', justifyContent: 'center' }}>
+            <DonutChart slices={donutSlices} size={Math.min(140, SCREEN_W * 0.35)} strokeWidth={24} textColor={colors.text} subColor={colors.textSecondary} />
+          </View>
+          <View style={[styles.legendCol, { flex: 1, minWidth: 140 }]}>
             {donutSlices.slice(0, 6).map((s, i) => (
-              <View key={i} style={styles.legendItem}>
+              <View key={`cat-${s.label}-${i}`} style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: s.color }]} />
-                <Text style={[styles.legendText, { color: colors.textSecondary }]} numberOfLines={1}>
+                <Text style={[styles.legendText, { color: colors.textSecondary, fontSize: 12 }]} numberOfLines={1}>
                   {s.label}: ${s.value.toFixed(0)}
                 </Text>
               </View>
@@ -324,14 +326,14 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
         </View>
       </View>
 
-      {/* Line Chart */}
+      {/* Inline 7-day graph (always visible) */}
       <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.chartTitle, { color: colors.text }]}>7-Day Energy Trend (est.)</Text>
         {stats.dailyCost > 0 ? (
           <LineChart
             data={lineData}
             width={SCREEN_W - 80}
-            height={180}
+            height={200}
             yAxisLabel="$"
             yAxisSuffix=""
             chartConfig={{
@@ -344,21 +346,37 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
               propsForDots: { r: '4', strokeWidth: '2', stroke: '#4CAF50' },
             }}
             bezier
-            style={{ borderRadius: 12 }}
+            style={{ borderRadius: 12, marginLeft: -16 }}
           />
         ) : (
-          <Text style={{ color: colors.textSecondary, textAlign: 'center', padding: 40 }}>
-            Scan devices to see energy trends
-          </Text>
+          <View style={{ minHeight: 160, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 24 }}>
+              Add a home and devices to see your 7-day cost trend
+            </Text>
+            <LineChart
+              data={{ labels: ['M', 'T', 'W', 'T', 'F', 'S', 'S'], datasets: [{ data: [1, 2, 1.5, 2.2, 1.8, 2.5, 2] }] }}
+              width={SCREEN_W - 80}
+              height={160}
+              yAxisLabel="$"
+              chartConfig={{
+                backgroundColor: 'transparent',
+                color: () => 'rgba(76, 175, 80, 0.3)',
+                labelColor: () => colors.textSecondary,
+              }}
+              bezier
+              style={{ borderRadius: 12, marginLeft: -16 }}
+            />
+            <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 8 }}>Sample trend (connect home to see real data)</Text>
+          </View>
         )}
       </View>
 
-      {/* Device list */}
+      {/* Device list (keyed by deviceId so content doesn't get overwritten) */}
       {stats.breakdown.length > 0 && (
         <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.chartTitle, { color: colors.text }]}>Devices ({stats.deviceCount})</Text>
-          {stats.breakdown.sort((a, b) => b.annual_cost - a.annual_cost).map((d, i) => (
-            <View key={i} style={[styles.deviceRow, { borderBottomColor: colors.border }]}>
+          {[...stats.breakdown].sort((a, b) => b.annual_cost - a.annual_cost).map((d, i) => (
+            <View key={d.deviceId || `breakdown-${i}`} style={[styles.deviceRow, { borderBottomColor: colors.border }]}>
               <View style={{ marginRight: 12 }}>
                 <Appliance3DModel category={d.category} size={36} showLabel={false} />
               </View>
@@ -403,7 +421,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 24, fontWeight: '800' },
   statLabel: { fontSize: 12, marginTop: 4 },
   savingsCard: { marginHorizontal: 20, borderRadius: 12, padding: 16, borderWidth: 1, marginBottom: 16 },
-  chartCard: { marginHorizontal: 20, borderRadius: 16, padding: 20, borderWidth: 1, marginBottom: 16 },
+  chartCard: { marginHorizontal: 20, borderRadius: 16, padding: 20, borderWidth: 1, marginBottom: 16, overflow: 'hidden' as const },
   chartTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, letterSpacing: 0.3 },
   donutRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   legendCol: { flex: 1, gap: 6 },

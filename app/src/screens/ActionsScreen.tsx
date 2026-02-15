@@ -10,7 +10,9 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { showAlert, showConfirm } from '../utils/alert';
 import { useTheme } from '../../App';
 import {
@@ -31,10 +33,10 @@ type Tab = 'proposals' | 'history';
 
 function getActionIcon(type: string): string {
   const icons: Record<string, string> = {
-    smart_plug: '🔌', schedule: '⏰', turn_off: '🔴',
-    set_mode: '🌿', replace: '🔄', suggest_manual: '💡',
+    smart_plug: 'power-outline', schedule: 'time-outline', turn_off: 'close-circle-outline',
+    set_mode: 'leaf-outline', replace: 'refresh-outline', suggest_manual: 'bulb-outline',
   };
-  return icons[type] || '⚡';
+  return icons[type] || 'flash-outline';
 }
 
 function getActionLabel(type: string): string {
@@ -186,7 +188,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
           onPress={() => setTab('proposals')}
         >
           <Text style={[styles.tabText, { color: colors.textSecondary }, tab === 'proposals' && { color: colors.text }]}>
-            🤖 Proposals
+            <Image source={require('../../assets/gemini.png')} style={{ width: 14, height: 14 }} /> Proposals
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -194,7 +196,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
           onPress={() => setTab('history')}
         >
           <Text style={[styles.tabText, { color: colors.textSecondary }, tab === 'history' && { color: colors.text }]}>
-            📋 History
+            <Ionicons name="clipboard-outline" size={14} color={tab === 'history' ? colors.text : colors.textSecondary} /> History
           </Text>
         </TouchableOpacity>
       </View>
@@ -214,11 +216,14 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
           <>
             {proposals.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>🤖</Text>
+                <Image source={require('../../assets/gemini.png')} style={{ width: 48, height: 48, marginBottom: 12 }} />
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>No Proposals</Text>
                 <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-                  Add devices to your home, then the AI will suggest cost-saving actions.
+                  Add devices to your home, then the AI will suggest cost-saving actions. If you already have devices, pull down or tap below to retry.
                 </Text>
+                <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.accent }]} onPress={loadProposals}>
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <>
@@ -253,7 +258,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                   >
                     <View style={styles.proposalHeader}>
                       <View style={styles.proposalLeft}>
-                        <Text style={styles.proposalIcon}>{getActionIcon(p.action_type)}</Text>
+                        <Ionicons name={getActionIcon(p.action_type) as any} size={22} color={colors.accent} style={{ marginRight: 8 }} />
                         <View>
                           <Text style={[styles.proposalLabel, { color: colors.text }]}>{p.label}</Text>
                           <Text style={[styles.proposalAction, { color: colors.textSecondary }]}>{getActionLabel(p.action_type)}</Text>
@@ -261,10 +266,10 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                       </View>
                       <View style={styles.proposalRight}>
                         <Text style={[styles.proposalSaving, { color: colors.accent }]}>
-                          ${p.estimated_annual_dollars_saved.toFixed(2)}/yr
+                          ${(p.estimated_annual_dollars_saved ?? 0).toFixed(2)}/yr
                         </Text>
                         <Text style={styles.checkbox}>
-                          {selectedIds.has(p.id) ? '✅' : '⬜'}
+                          {selectedIds.has(p.id) ? <Ionicons name="checkbox" size={20} color={colors.accent} /> : <Ionicons name="square-outline" size={20} color={colors.textSecondary} />}
                         </Text>
                       </View>
                     </View>
@@ -306,7 +311,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                       <View style={styles.flagsRow}>
                         {p.safety_flags.map((f, i) => (
                           <View key={i} style={styles.flagBadge}>
-                            <Text style={styles.flagText}>⚠️ {f}</Text>
+                            <Text style={styles.flagText}><Ionicons name="warning-outline" size={12} color="#ff9800" /> {f}</Text>
                           </View>
                         ))}
                       </View>
@@ -328,7 +333,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
                     <Text style={styles.executeBtnText}>
-                      ⚡ Execute {selectedIds.size} Action{selectedIds.size !== 1 ? 's' : ''}
+                      <Ionicons name="flash-outline" size={16} color="#fff" /> Execute {selectedIds.size} Action{selectedIds.size !== 1 ? 's' : ''}
                       {totalSavings > 0 ? ` · Save $${totalSavings.toFixed(0)}/yr` : ''}
                     </Text>
                   )}
@@ -343,7 +348,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
           <>
             {history.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>📋</Text>
+                <Ionicons name="clipboard-outline" size={48} color="#555" style={{ marginBottom: 12 }} />
                 <Text style={[styles.emptyTitle, { color: colors.text }]}>No Actions Yet</Text>
                 <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                   Execute proposals to see the audit log here.
@@ -354,7 +359,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                 <View key={a.id} style={[styles.historyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.historyHeader}>
                     <View style={styles.historyLeft}>
-                      <Text style={styles.historyIcon}>{getActionIcon(a.action_type)}</Text>
+                      <Ionicons name={getActionIcon(a.action_type) as any} size={22} color={colors.accent} style={{ marginRight: 8 }} />
                       <View>
                         <Text style={[styles.historyLabel, { color: colors.text }]}>{a.label || 'Device'}</Text>
                         <Text style={[styles.historyAction, { color: colors.textSecondary }]}>{getActionLabel(a.action_type)}</Text>
@@ -373,10 +378,10 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
 
                   <View style={styles.historyStats}>
                     <Text style={[styles.historyStat, { color: colors.textSecondary }]}>
-                      💰 ${a.estimated_savings?.dollars_per_year?.toFixed(2) ?? '–'}/yr
+                      <Ionicons name="wallet-outline" size={12} color={colors.textSecondary} /> ${a.estimated_savings?.dollars_per_year?.toFixed(2) ?? '–'}/yr
                     </Text>
                     <Text style={[styles.historyStat, { color: colors.textSecondary }]}>
-                      ⚡ {a.estimated_savings?.kwh_per_year?.toFixed(1) ?? '–'} kWh/yr
+                      <Ionicons name="flash-outline" size={12} color={colors.textSecondary} /> {a.estimated_savings?.kwh_per_year?.toFixed(1) ?? '–'} kWh/yr
                     </Text>
                   </View>
 
@@ -401,7 +406,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
                       style={styles.revertBtn}
                       onPress={() => handleRevert(a.id)}
                     >
-                      <Text style={styles.revertBtnText}>↩️ Revert</Text>
+                      <Text style={styles.revertBtnText}><Ionicons name="arrow-undo-outline" size={14} color="#FF9800" /> Revert</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -440,7 +445,9 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 56, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  emptySubtitle: { fontSize: 14, textAlign: 'center' },
+  emptySubtitle: { fontSize: 14, textAlign: 'center', paddingHorizontal: 24, marginBottom: 16 },
+  retryBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   // Summary bar
   summaryBar: {
