@@ -16,6 +16,7 @@ import type { ScanResultData } from './UploadScanScreen';
 import { Appliance3DModel } from '../components/Appliance3DModel';
 import { LineGraph } from '../components/LineGraph';
 import { useTheme } from '../../App';
+import { RATE_PER_KWH, CO2_PER_KWH, TREE_ABSORBS_PER_YEAR, DEFAULT_USAGE_HOURS } from '../utils/energyConstants';
 
 interface DashboardScreenProps {
   onBack: () => void;
@@ -149,24 +150,21 @@ export function DashboardScreen({ onBack, onScan, scannedDevices, onClearHistory
     const totalStandby = devices.reduce((sum, d) => 
       sum + (d.power_profile?.profile?.standby_watts_typical ?? 0), 0);
     
-    // Assume 4h active per device per day
-    const dailyKwh = (totalActive * 4 + totalStandby * 20) / 1000;
+    // Use shared constants for usage hours and rates
+    const dailyKwh = (totalActive * DEFAULT_USAGE_HOURS + totalStandby * (24 - DEFAULT_USAGE_HOURS)) / 1000;
     const monthlyKwh = dailyKwh * 30;
     const yearlyKwh = monthlyKwh * 12;
     
-    const costPerKwh = 0.30;
-    const dailyCost = dailyKwh * costPerKwh;
-    const monthlyCost = monthlyKwh * costPerKwh;
-    const yearlyCost = yearlyKwh * costPerKwh;
+    const dailyCost = dailyKwh * RATE_PER_KWH;
+    const monthlyCost = monthlyKwh * RATE_PER_KWH;
+    const yearlyCost = yearlyKwh * RATE_PER_KWH;
     
     // Standby-only cost (24h/day)
-    const standbyYearlyCost = (totalStandby * 24 * 365 * costPerKwh) / 1000;
+    const standbyYearlyCost = (totalStandby * 24 * 365 * RATE_PER_KWH) / 1000;
     
-    // Environmental impact (kg CO₂ — consistent with backend)
-    const CO2_PER_KWH = 0.25; // kg CO₂/kWh
-    const TREE_ABSORBS = 21.77; // kg CO₂ per tree per year
+    // Environmental impact (kg CO₂ — EPA factor from energyConstants)
     const yearlyCO2 = yearlyKwh * CO2_PER_KWH;
-    const treesNeeded = yearlyCO2 / TREE_ABSORBS;
+    const treesNeeded = yearlyCO2 / TREE_ABSORBS_PER_YEAR;
     
     // Achievements calculation
     const achievements = [];

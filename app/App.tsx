@@ -14,7 +14,7 @@
  *     - My Home    → HomeManagerScreen → HomeSummary → Actions → 3D
  */
 
-import React, { useEffect, useState, createContext, useContext } from 'react';
+import React, { useEffect, useState, useCallback, createContext, useContext } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Image,
   Platform, useColorScheme, ActivityIndicator, ScrollView, Modal,
@@ -225,19 +225,22 @@ function HomeNavigator() {
 function DashboardWrapper() {
   const [scannedDevices, setScannedDevices] = useState<ScanResultData[]>([]);
 
-  useEffect(() => {
-    AsyncStorage.getItem('scannedDevices').then((d) => {
-      if (d) {
-        try {
-          setScannedDevices(JSON.parse(d));
-        } catch (err) {
-          console.warn('[App] Failed to parse scannedDevices from AsyncStorage, clearing corrupt value', err);
-          AsyncStorage.removeItem('scannedDevices').catch(() => {});
-          setScannedDevices([]);
+  // Reload from AsyncStorage every time the tab gains focus
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem('scannedDevices').then((d) => {
+        if (d) {
+          try {
+            setScannedDevices(JSON.parse(d));
+          } catch (err) {
+            console.warn('[App] Failed to parse scannedDevices from AsyncStorage, clearing corrupt value', err);
+            AsyncStorage.removeItem('scannedDevices').catch(() => {});
+            setScannedDevices([]);
+          }
         }
-      }
-    }).catch(() => {});
-  }, []);
+      }).catch(() => {});
+    }, [])
+  );
 
   return (
     <ChartDashboardScreen
@@ -291,7 +294,7 @@ function MainTabs() {
       <Tab.Screen
         name="MyHome"
         component={HomeNavigator}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="flash" size={size} color={color} />, tabBarLabel: 'My Home' }}
+        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, tabBarLabel: 'My Home' }}
       />
       <Tab.Screen
         name="Chat"

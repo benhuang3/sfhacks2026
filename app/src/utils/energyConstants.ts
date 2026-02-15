@@ -26,7 +26,7 @@ export function getCategoryIcon(category: string): string {
   const icons: Record<string, string> = {
     'Television': '📺',
     'Refrigerator': '🧊',
-    'Microwave': '📻',
+    'Microwave': '🍳',
     'Laptop': '💻',
     'Oven': '🔥',
     'Toaster': '🍞',

@@ -452,27 +452,137 @@ CATEGORY_DEFAULTS: dict[str, PowerProfile] = {
     "stove": PowerProfile(category="Stove", standby_watts_range=[1, 5], standby_watts_typical=2.0, active_watts_range=[1000, 3000], active_watts_typical=1500.0, confidence=0.8, source="Berkeley Lab / DOE", notes=[]),
 }
 
-# Catch-all unknown device
+# Catch-all unknown device — intentionally conservative
 _UNKNOWN_DEFAULT = PowerProfile(
     category="Unknown Device",
     standby_watts_range=[0.5, 5],
-    standby_watts_typical=2.0,  # Conservative estimate
+    standby_watts_typical=2.0,
     active_watts_range=[20, 200],
-    active_watts_typical=75.0,
-    confidence=0.3,
-    source="Estimate",
+    active_watts_typical=50.0,  # Lowered from 75W — less biased default
+    confidence=0.2,
+    source="Conservative Estimate",
     notes=["Unknown device type — using conservative estimate", "Consider re-scanning with clearer photo"],
 )
 
+# Additional fuzzy keyword aliases → CATEGORY_DEFAULTS key
+_FUZZY_ALIASES: dict[str, str] = {
+    "smart tv": "tv", "flatscreen": "tv", "flat screen": "tv", "led tv": "tv",
+    "samsung tv": "tv", "lg tv": "tv", "sony tv": "tv", "vizio": "tv",
+    "tcl tv": "tv", "roku": "tv", "fire stick": "tv",
+    "ice box": "fridge", "freezer": "fridge", "mini fridge": "fridge",
+    "cooler": "fridge", "wine cooler": "fridge",
+    "micro wave": "microwave", "microoven": "microwave",
+    "notebook": "laptop", "macbook": "laptop", "chromebook": "laptop",
+    "desktop": "monitor", "imac": "monitor", "pc": "monitor",
+    "computer": "monitor", "screen": "monitor",
+    "ceiling fan": "fan", "stand fan": "fan", "box fan": "fan",
+    "exhaust fan": "fan", "pedestal fan": "fan",
+    "wifi": "router", "modem": "router", "mesh": "router",
+    "access point": "router", "extender": "router",
+    "playstation": "gaming console", "xbox": "gaming console",
+    "switch": "gaming console", "nintendo": "gaming console",
+    "ps5": "gaming console", "ps4": "gaming console",
+    "clothes dryer": "dryer", "tumble dryer": "dryer",
+    "laundry": "washing machine", "front loader": "washing machine",
+    "top loader": "washing machine", "wash machine": "washing machine",
+    "iron": "hair dryer",  # similar wattage
+    "flat iron": "hair dryer",
+    "curling iron": "hair dryer",
+    "straightener": "hair dryer",
+    "space heater": "heater", "electric heater": "heater",
+    "radiator": "heater", "baseboard": "heater",
+    "portable heater": "heater", "central heat": "heater",
+    "ac": "air conditioner", "hvac": "air conditioner",
+    "window unit": "air conditioner", "mini split": "air conditioner",
+    "central air": "air conditioner", "portable ac": "air conditioner",
+    "floor lamp": "light bulb", "desk lamp": "light bulb",
+    "led bulb": "light bulb", "cfl": "light bulb",
+    "smart light": "light bulb", "hue": "light bulb",
+    "pendant": "light bulb", "chandelier": "light bulb",
+    "sconce": "light bulb", "night light": "light bulb",
+    "espresso": "coffee maker", "keurig": "coffee maker",
+    "nespresso": "coffee maker", "drip coffee": "coffee maker",
+    "bread maker": "toaster", "toaster oven": "toaster",
+    "electric kettle": "toaster",  # similar wattage
+    "kettle": "toaster",
+    "food processor": "blender", "mixer": "blender",
+    "juicer": "blender", "immersion blender": "blender",
+    "dish washer": "dishwasher",
+    "usb": "phone charger", "wireless charger": "phone charger",
+    "charging pad": "phone charger", "power bank": "phone charger",
+    "alexa": "router", "echo": "router", "google home": "router",
+    "speaker": "router",  # smart speakers ~5-10W, closer to router than 75W
+    "printer": "monitor",  # ~25W typical
+    "vacuum": "hair dryer",  # ~1000-1500W
+    "robot vacuum": "phone charger",  # ~30W charging
+    "roomba": "phone charger",
+    "dehumidifier": "fan",  # ~30-50W
+    "humidifier": "fan",
+    "air purifier": "fan",
+    "water heater": "heater",
+    "instant pot": "microwave",  # ~1000W
+    "pressure cooker": "microwave",
+    "slow cooker": "coffee maker",  # ~200-300W
+    "crock pot": "coffee maker",
+    "rice cooker": "coffee maker",
+    "electric grill": "oven",
+    "deep fryer": "microwave",
+    "air fryer": "microwave",
+    "induction": "stove",
+    "hot plate": "stove",
+    "electric stove": "stove",
+    "gas stove": "stove",
+    "range hood": "fan",
+    "garbage disposal": "blender",
+    "desk": "table", "shelf": "cupboard", "bookshelf": "cupboard",
+    "dresser": "cupboard", "cabinet": "cupboard",
+    "couch": "sofa", "loveseat": "sofa", "ottoman": "sofa",
+    "armchair": "chair", "recliner": "chair", "stool": "chair",
+    "nightstand": "table", "end table": "table", "coffee table": "table",
+    "mirror": "table",  # 0W furniture
+    "rug": "table", "carpet": "table", "curtain": "table",
+    "pillow": "bed", "mattress": "bed", "blanket": "bed",
+    "shower": "bathtub", "tub": "bathtub",
+    "faucet": "sink", "tap": "sink",
+}
+
 
 def _resolve_fallback(device_name: str) -> PowerProfile:
-    """Pick the best fallback profile by scanning the device name for keywords."""
-    name_lower = device_name.lower()
+    """Pick the best fallback profile by scanning the device name for keywords.
+    Uses a two-pass approach: exact keyword match, then fuzzy alias match.
+    """
+    name_lower = device_name.lower().strip()
+
+    # Pass 1: Direct match against CATEGORY_DEFAULTS keys
     for keyword, profile in CATEGORY_DEFAULTS.items():
         if keyword in name_lower:
             logger.info("Fallback matched keyword '%s' for device '%s'", keyword, device_name)
             return profile.model_copy()
-    logger.warning("No category keyword matched for '%s' — using unknown default", device_name)
+
+    # Pass 2: Fuzzy alias → CATEGORY_DEFAULTS lookup
+    for alias, cat_key in _FUZZY_ALIASES.items():
+        if alias in name_lower:
+            profile = CATEGORY_DEFAULTS.get(cat_key)
+            if profile:
+                logger.info("Fuzzy alias '%s' → '%s' for device '%s'", alias, cat_key, device_name)
+                result = profile.model_copy()
+                result.confidence = max(0.2, result.confidence - 0.1)  # slightly lower confidence
+                result.notes = result.notes + [f"Matched via alias: {alias}"]
+                return result
+
+    # Pass 3: Check individual words for partial matches
+    words = name_lower.replace("-", " ").replace("_", " ").split()
+    for word in words:
+        if len(word) < 3:
+            continue
+        for keyword, profile in CATEGORY_DEFAULTS.items():
+            if word in keyword or keyword in word:
+                logger.info("Word '%s' partial-matched keyword '%s' for '%s'", word, keyword, device_name)
+                result = profile.model_copy()
+                result.confidence = max(0.15, result.confidence - 0.15)
+                return result
+
+    logger.warning("No category keyword matched for '%s' — using unknown default (50W)", device_name)
     return _UNKNOWN_DEFAULT.model_copy()
 
 

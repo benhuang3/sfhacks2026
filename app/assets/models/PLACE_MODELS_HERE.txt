@@ -1,0 +1,41 @@
+=== 3D Model Placement Guide ===
+
+Place GLB/GLTF model files in this directory.
+
+Supported file types: .glb (preferred), .gltf
+
+Model requirements:
+  - Poly count: < 5000 (furniture), < 2000 (small devices)
+  - Scale: 1 unit = 1 meter
+  - Origin: centered at bottom-center of the object
+  - Up axis: Y-up
+  - Materials: embedded PBR materials (metallic-roughness workflow)
+
+Expected model files:
+  bed.glb             — Double bed with headboard (~1.5m wide)
+  wardrobe.glb        — Bedroom wardrobe/closet (~0.8m wide)
+  sofa.glb            — Living room sofa/sectional (~1.6m wide)
+  coffee_table.glb    — Glass/wood coffee table (~0.9m wide)
+  tv_stand.glb        — Entertainment center (~1.1m wide)
+  dining_table.glb    — Farmhouse dining table (~1.8m long)
+  dining_chair.glb    — Wooden dining chair (~0.38m wide)
+  bathtub.glb         — Freestanding clawfoot bathtub (~0.7m wide)
+  toilet.glb          — Modern one-piece toilet (~0.4m wide)
+  sink.glb            — Pedestal or vanity sink (~0.5m wide)
+  kitchen_counter.glb — Kitchen counter with cabinets (~4m wide)
+  desk.glb            — Office desk (~1.8m wide)
+  office_chair.glb    — Ergonomic office chair (~0.4m wide)
+  fridge.glb          — Refrigerator (~0.6m wide, ~1.4m tall)
+  tv.glb              — Flat screen TV (~0.9m wide)
+
+After adding models:
+  1. Host them on a CDN or serve from your backend
+  2. Add the URL to app/src/components/house3d/modelRegistry.ts
+  3. The 3D viewer will automatically load and use them,
+     falling back to procedural geometry if loading fails
+
+Free model sources (look for low-poly, CC-licensed):
+  - Sketchfab (https://sketchfab.com — filter by CC license + low poly)
+  - Kenney.nl (https://kenney.nl — CC0 furniture packs)
+  - Poly Pizza (https://poly.pizza — CC0 models)
+  - Quaternius (https://quaternius.com — CC0 packs)

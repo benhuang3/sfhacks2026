@@ -58,14 +58,19 @@ function parseJsonSafe(text: string): any {
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
-  } catch {
-    throw new Error('Cannot reach server. Make sure the backend & tunnel are running.');
+  } catch (err) {
+    throw new Error(`Cannot reach server: ${err instanceof Error ? err.message : 'Network error'}. Make sure the backend & tunnel are running.`);
+  } finally {
+    clearTimeout(timeout);
   }
 
   const text = await res.text();
@@ -151,10 +156,14 @@ export async function checkHealth(): Promise<{ status: string; database: string 
 
 async function get<T>(path: string): Promise<T> {
   let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    res = await fetch(`${BASE_URL}${path}`);
-  } catch {
-    throw new Error('Cannot reach server. Make sure the backend & tunnel are running.');
+    res = await fetch(`${BASE_URL}${path}`, { signal: controller.signal });
+  } catch (err) {
+    throw new Error(`Cannot reach server: ${err instanceof Error ? err.message : 'Network error'}. Make sure the backend & tunnel are running.`);
+  } finally {
+    clearTimeout(timeout);
   }
   const text = await res.text();
   const data = parseJsonSafe(text);

@@ -43,7 +43,28 @@ def compute_device_breakdown(
     """Compute annual energy, cost, CO₂ for a single device."""
     power = device.get("power", {})
     standby_w = power.get("standby_watts_typical", 2.0)
-    active_w = power.get("active_watts_typical", 75.0)
+
+    # Category-based default wattage instead of blanket 75W
+    category = device.get("category", "").lower()
+    _CATEGORY_WATT_DEFAULTS = {
+        "television": 80, "tv": 80, "refrigerator": 150, "fridge": 150,
+        "microwave": 1000, "laptop": 35, "monitor": 25, "oven": 2500,
+        "toaster": 1100, "washing machine": 400, "washer": 400,
+        "dryer": 2500, "hair dryer": 1500, "air conditioner": 1000,
+        "heater": 1500, "space heater": 1500, "light": 10, "lamp": 10,
+        "light bulb": 10, "fan": 35, "router": 8, "gaming console": 120,
+        "coffee maker": 800, "blender": 400, "dishwasher": 180,
+        "phone charger": 12, "stove": 1500, "cooking": 1500,
+        "sofa": 0, "bed": 0, "chair": 0, "table": 0, "sink": 0,
+        "toilet": 0, "bathtub": 0, "cupboard": 0,
+    }
+    cat_default = 50.0  # conservative default (was 75)
+    for k, w in _CATEGORY_WATT_DEFAULTS.items():
+        if k in category:
+            cat_default = float(w)
+            break
+
+    active_w = power.get("active_watts_typical", cat_default)
 
     standby_range = power.get("standby_watts_range", [standby_w * 0.5, standby_w * 2])
     active_range = power.get("active_watts_range", [active_w * 0.5, active_w * 2])

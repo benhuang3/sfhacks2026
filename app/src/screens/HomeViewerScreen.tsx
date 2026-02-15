@@ -641,7 +641,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
         {viewMode === '3d' ? (
           <House3DViewer
             rooms={rooms}
-            devices={devices.map(d => ({ label: d.label, category: d.category, roomId: d.roomId }))}
+            devices={devices.map(d => ({ label: d.label, category: d.category, roomId: d.roomId, watts: d.power?.active_watts_typical ?? 0 }))}
             isDark={isDark}
             height={SCREEN_H - 280}
             onDevicePress={(dev) => {

@@ -20,6 +20,7 @@ interface DeviceInfo {
   label: string;
   category: string;
   roomId: string;
+  watts?: number;
 }
 
 interface RoomInfo {
@@ -37,11 +38,11 @@ interface House3DViewerProps {
 
 export function House3DViewer({
   rooms = [
-    { roomId: 'living-room', name: 'Living Room' },
     { roomId: 'bedroom', name: 'Bedroom' },
-    { roomId: 'office', name: 'Office' },
-    { roomId: 'dining-room', name: 'Dining Room' },
     { roomId: 'kitchen', name: 'Kitchen' },
+    { roomId: 'bathroom', name: 'Bathroom' },
+    { roomId: 'living-room', name: 'Living Room' },
+    { roomId: 'dining-room', name: 'Dining Room' },
   ],
   devices = [],
   isDark = true,
@@ -69,22 +70,45 @@ export function House3DViewer({
     text-align: center; white-space: nowrap;
   }
   #tooltip {
-    position: absolute; display: none; padding: 10px 16px; border-radius: 12px;
+    position: absolute; display: none; padding: 12px 18px; border-radius: 14px;
     background: ${isDark ? 'rgba(10,10,30,0.95)' : 'rgba(255,255,255,0.97)'};
     color: ${textColor}; font-size: 12px; pointer-events: none;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4); backdrop-filter: blur(8px);
-    border: 1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'};
-    max-width: 220px; z-index: 10;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 40px rgba(76,175,80,0.1);
+    backdrop-filter: blur(12px);
+    border: 1px solid ${isDark ? 'rgba(76,175,80,0.3)' : 'rgba(0,0,0,0.1)'};
+    max-width: 240px; z-index: 10;
+    animation: tooltipIn 0.2s ease-out;
   }
-  #tooltip .tt-room { font-weight: 700; font-size: 14px; color: #4CAF50; margin-bottom: 6px; }
-  #tooltip .tt-devices { font-size: 11px; opacity: 0.85; line-height: 1.5; }
+  @keyframes tooltipIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  #tooltip .tt-room { font-weight: 700; font-size: 14px; color: #4CAF50; margin-bottom: 6px; letter-spacing: 0.3px; }
+  #tooltip .tt-devices { font-size: 11px; opacity: 0.85; line-height: 1.6; }
   #tooltip .tt-device { padding: 2px 0; }
+  #roofToggle {
+    position: absolute; top: 14px; right: 14px;
+    width: 48px; height: 48px; border-radius: 50%;
+    background: ${isDark ? 'rgba(20,20,40,0.85)' : 'rgba(255,255,255,0.92)'};
+    border: 2px solid ${isDark ? 'rgba(76,175,80,0.5)' : 'rgba(0,0,0,0.12)'};
+    color: ${textColor}; font-size: 22px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    z-index: 20; transition: all 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #roofToggle:active { transform: scale(0.9); }
+  #roofToggle .label {
+    position: absolute; top: 52px; right: 0;
+    font-size: 9px; white-space: nowrap; opacity: 0.7;
+    color: ${textColor}; pointer-events: none;
+  }
 </style>
 </head>
 <body>
 <div id="tooltip"></div>
+<div id="roofToggle" title="Toggle Roof">🏠<span class="label">Roof On</span></div>
 <div id="info">Drag to rotate · Pinch to zoom · Tap device for details</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"><\/script>
 <script>
 (function() {
   const ROOMS = ${roomsJson};
@@ -97,13 +121,184 @@ export function House3DViewer({
   // Add model URLs here as they become available.
   // ================================================================
   var MODEL_URLS = {
-    // Example: 'Television': 'https://example.com/models/tv.glb',
-    // Add low-poly model URLs here when available
+    // Add GLB model URLs here when available. Example:
+    // 'sofa': 'https://cdn.example.com/models/sofa_lowpoly.glb',
+    // 'bed': 'https://cdn.example.com/models/bed_lowpoly.glb',
   };
+
+  // ================================================================
+  // HOUSE_LAYOUT — Single source of truth for per-room furniture
+  // NOTHING renders in a room unless it is defined here.
+  // Each room has UNIQUE furniture — no duplicates across rooms.
+  // Positions are LOCAL to room center (0,0,0). y=0 is floor level.
+  // ================================================================
+  var HOUSE_LAYOUT = {
+    bedroom: {
+      name: 'Bedroom', bounds: { w: 4.5, d: 4.5 },
+      furniture: [
+        { id: 'bed1', type: 'bed', pos: {x:-0.4, z:-1.0}, size: {w:1.6, d:2.0, h:0.6} },
+        { id: 'nightstand1', type: 'nightstand', pos: {x:0.6, z:-1.5}, size: {w:0.3, d:0.3, h:0.4} },
+        { id: 'desk1', type: 'study_desk', pos: {x:-1.52, z:0.5}, size: {w:0.55, d:1.0, h:0.75} },
+        { id: 'chair1', type: 'desk_chair', pos: {x:-1.05, z:0.5}, size: {w:0.4, d:0.4, h:0.5} },
+        { id: 'dresser1', type: 'dresser', pos: {x:0.5, z:0.5}, size: {w:0.9, d:0.42, h:0.88} },
+        { id: 'wardrobe1', type: 'wardrobe', pos: {x:1.6, z:0.1}, size: {w:0.4, d:0.8, h:2.2} },
+      ]
+    },
+    kitchen: {
+      name: 'Kitchen', bounds: { w: 4.5, d: 4.5 },
+      furniture: [
+        { id: 'counter1', type: 'sink_counter', pos: {x:0, z:-1.72}, size: {w:3.9, d:0.58, h:0.86} },
+        { id: 'counter2', type: 'cooking_counter', pos: {x:0, z:-0.72}, size: {w:3.9, d:0.58, h:0.86} },
+        { id: 'island1', type: 'kitchen_island', pos: {x:0.5, z:0.8}, size: {w:1.25, d:0.65, h:0.86} },
+        { id: 'stool1', type: 'bar_stool', pos: {x:0.2, z:1.35}, size: {w:0.3, d:0.3, h:0.65} },
+        { id: 'stool2', type: 'bar_stool', pos: {x:0.8, z:1.35}, size: {w:0.3, d:0.3, h:0.65} },
+      ]
+    },
+    bathroom: {
+      name: 'Bathroom', bounds: { w: 3.0, d: 4.5 },
+      furniture: [
+        { id: 'tub1', type: 'bathtub', pos: {x:0.5, z:-1.2}, size: {w:0.7, d:1.5, h:0.6} },
+        { id: 'toilet1', type: 'toilet', pos: {x:-0.5, z:0.2}, size: {w:0.4, d:0.5, h:0.6} },
+        { id: 'sink1', type: 'pedestal_sink', pos: {x:0.6, z:1.4}, size: {w:0.52, d:0.42, h:0.65} },
+        { id: 'mirror1', type: 'bath_mirror', pos: {x:0.6, z:1.74}, size: {w:0.55, d:0.1, h:0.7} },
+        { id: 'towelrack1', type: 'towel_rack', pos: {x:1.1, z:0.0}, size: {w:0.06, d:0.35, h:0.9} },
+      ]
+    },
+    living: {
+      name: 'Living Room', bounds: { w: 4.5, d: 5.0 },
+      furniture: [
+        { id: 'tvstand1', type: 'tv_stand', pos: {x:-0.8, z:-2.0}, size: {w:1.1, d:0.38, h:0.35} },
+        { id: 'sofa1', type: 'sofa', pos: {x:0, z:2.0}, size: {w:1.8, d:0.8, h:0.65} },
+        { id: 'coffee1', type: 'coffee_table', pos: {x:0, z:0.4}, size: {w:1.0, d:0.6, h:0.42} },
+        { id: 'lamptable1', type: 'lamp_table', pos: {x:-1.4, z:0.3}, size: {w:0.4, d:0.4, h:0.45} },
+        { id: 'plant1', type: 'fiddle_leaf', pos: {x:-1.4, z:2.0}, size: {w:0.3, d:0.3, h:0.8} },
+        { id: 'arclamp1', type: 'arc_lamp', pos: {x:1.5, z:-1.5}, size: {w:0.3, d:0.3, h:1.65} },
+      ]
+    },
+    dining: {
+      name: 'Dining Room', bounds: { w: 7.5, d: 5.0 },
+      furniture: [
+        { id: 'table1', type: 'dining_table', pos: {x:0, z:0}, size: {w:1.8, d:1.2, h:0.78} },
+        { id: 'chair_n', type: 'dining_chair', pos: {x:0, z:-1.3}, size: {w:0.38, d:0.36, h:0.92} },
+        { id: 'chair_s', type: 'dining_chair', pos: {x:0, z:1.3}, size: {w:0.38, d:0.36, h:0.92} },
+        { id: 'chair_w', type: 'dining_chair', pos: {x:-1.95, z:0}, size: {w:0.38, d:0.36, h:0.92} },
+        { id: 'chair_e', type: 'dining_chair', pos: {x:1.95, z:0}, size: {w:0.38, d:0.36, h:0.92} },
+        { id: 'cabinet_l', type: 'china_cabinet', pos: {x:-2.5, z:1.93}, size: {w:0.95, d:0.45, h:1.65} },
+        { id: 'cabinet_r', type: 'china_cabinet', pos: {x:2.5, z:1.93}, size: {w:0.95, d:0.45, h:1.65} },
+      ]
+    },
+    office: {
+      name: 'Office', bounds: { w: 4.0, d: 4.5 },
+      furniture: [
+        { id: 'desk1', type: 'office_desk', pos: {x:0, z:-1.6}, size: {w:1.8, d:0.7, h:0.75} },
+        { id: 'chair1', type: 'office_chair', pos: {x:0.1, z:-0.7}, size: {w:0.42, d:0.4, h:0.98} },
+        { id: 'bookshelf1', type: 'bookshelf', pos: {x:-1.7, z:0.3}, size: {w:0.35, d:0.8, h:1.6} },
+        { id: 'filing1', type: 'filing_cabinet', pos: {x:1.6, z:-0.3}, size: {w:0.4, d:0.45, h:0.9} },
+      ]
+    },
+    laundry: {
+      name: 'Laundry', bounds: { w: 4.0, d: 4.5 },
+      furniture: [
+        { id: 'table1', type: 'folding_table', pos: {x:0, z:-1.4}, size: {w:1.4, d:0.6, h:0.78} },
+        { id: 'basket1', type: 'laundry_basket', pos: {x:1.2, z:0.5}, size: {w:0.4, d:0.35, h:0.5} },
+        { id: 'rack1', type: 'drying_rack', pos: {x:-0.9, z:0.8}, size: {w:0.85, d:0.1, h:1.2} },
+      ]
+    },
+    garage: {
+      name: 'Garage', bounds: { w: 4.0, d: 5.0 },
+      furniture: [
+        { id: 'bench1', type: 'workbench', pos: {x:0, z:-1.5}, size: {w:2.0, d:0.7, h:0.85} },
+        { id: 'shelf1', type: 'storage_shelf', pos: {x:-1.5, z:0.5}, size: {w:0.4, d:0.8, h:1.5} },
+      ]
+    },
+  };
+
+  // ================================================================
+  // MODEL_REGISTRY — Maps furniture types to GLB paths + real-world sizes
+  // Set glb to a URL to load a low-poly .glb model.
+  // When glb is null, the engine uses existing procedural builders.
+  // ================================================================
+  var MODEL_REGISTRY = {
+    bed:             { glb: null, target: {w:1.6, d:2.0, h:0.6} },
+    nightstand:      { glb: null, target: {w:0.3, d:0.3, h:0.4} },
+    study_desk:      { glb: null, target: {w:0.55, d:1.0, h:0.75} },
+    desk_chair:      { glb: null, target: {w:0.4, d:0.4, h:0.5} },
+    dresser:         { glb: null, target: {w:0.9, d:0.42, h:0.88} },
+    wardrobe:        { glb: null, target: {w:0.4, d:0.8, h:2.2} },
+    sink_counter:    { glb: null, target: {w:3.9, d:0.58, h:0.86} },
+    cooking_counter: { glb: null, target: {w:3.9, d:0.58, h:0.86} },
+    kitchen_island:  { glb: null, target: {w:1.25, d:0.65, h:0.86} },
+    bar_stool:       { glb: null, target: {w:0.3, d:0.3, h:0.65} },
+    bathtub:         { glb: null, target: {w:0.7, d:1.5, h:0.6} },
+    toilet:          { glb: null, target: {w:0.4, d:0.5, h:0.6} },
+    pedestal_sink:   { glb: null, target: {w:0.52, d:0.42, h:0.65} },
+    bath_mirror:     { glb: null, target: {w:0.55, d:0.1, h:0.7} },
+    towel_rack:      { glb: null, target: {w:0.06, d:0.35, h:0.9} },
+    sofa:            { glb: null, target: {w:1.8, d:0.8, h:0.65} },
+    coffee_table:    { glb: null, target: {w:1.0, d:0.6, h:0.42} },
+    tv_stand:        { glb: null, target: {w:1.1, d:0.38, h:0.35} },
+    lamp_table:      { glb: null, target: {w:0.4, d:0.4, h:0.45} },
+    fiddle_leaf:     { glb: null, target: {w:0.3, d:0.3, h:0.8} },
+    arc_lamp:        { glb: null, target: {w:0.3, d:0.3, h:1.65} },
+    dining_table:    { glb: null, target: {w:1.8, d:1.2, h:0.78} },
+    dining_chair:    { glb: null, target: {w:0.38, d:0.36, h:0.92} },
+    china_cabinet:   { glb: null, target: {w:0.95, d:0.45, h:1.65} },
+    office_desk:     { glb: null, target: {w:1.8, d:0.7, h:0.75} },
+    office_chair:    { glb: null, target: {w:0.42, d:0.4, h:0.98} },
+    bookshelf:       { glb: null, target: {w:0.35, d:0.8, h:1.6} },
+    filing_cabinet:  { glb: null, target: {w:0.4, d:0.45, h:0.9} },
+    folding_table:   { glb: null, target: {w:1.4, d:0.6, h:0.78} },
+    laundry_basket:  { glb: null, target: {w:0.4, d:0.35, h:0.5} },
+    drying_rack:     { glb: null, target: {w:0.85, d:0.1, h:1.2} },
+    workbench:       { glb: null, target: {w:2.0, d:0.7, h:0.85} },
+    storage_shelf:   { glb: null, target: {w:0.4, d:0.8, h:1.5} },
+  };
+
+  // Placement validation: checks if item can fit without leaving room
+  // or overlapping already-placed items (Box3 collision test)
+  function validatePlacement(itemPos, itemSize, roomW, roomD, occupiedBoxes) {
+    var margin = 0.15;
+    var halfW = roomW / 2 - margin;
+    var halfD = roomD / 2 - margin;
+    var iw = itemSize.w / 2;
+    var id2 = itemSize.d / 2;
+    if (itemPos.x - iw < -halfW || itemPos.x + iw > halfW) return false;
+    if (itemPos.z - id2 < -halfD || itemPos.z + id2 > halfD) return false;
+    var newBox = new THREE.Box3(
+      new THREE.Vector3(itemPos.x - iw, 0, itemPos.z - id2),
+      new THREE.Vector3(itemPos.x + iw, itemSize.h, itemPos.z + id2)
+    );
+    for (var oi = 0; oi < occupiedBoxes.length; oi++) {
+      if (newBox.intersectsBox(occupiedBoxes[oi])) return false;
+    }
+    return true;
+  }
 
   var modelCache = {};
   var GLTFLoaderInstance = null;
-  try { GLTFLoaderInstance = new THREE.GLTFLoader(); } catch(e) {}
+  try {
+    GLTFLoaderInstance = new THREE.GLTFLoader();
+    // Set up DRACO decoder for compressed models
+    try {
+      var dracoLoader = new THREE.DRACOLoader();
+      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+      dracoLoader.setDecoderConfig({ type: 'js' });
+      GLTFLoaderInstance.setDRACOLoader(dracoLoader);
+    } catch(de) { /* DRACO optional */ }
+  } catch(e) { /* GLTFLoader not available — using procedural fallback */ }
+
+  // Target sizes for normalization (meters): ensures models are real-world scale
+  var MODEL_TARGET_SIZES = {
+    'bed': { w: 1.6, h: 0.6, d: 2.0 },
+    'sofa': { w: 2.0, h: 0.8, d: 0.8 },
+    'dining_table': { w: 1.8, h: 0.78, d: 1.2 },
+    'chair': { w: 0.45, h: 0.9, d: 0.45 },
+    'Television': { w: 0.9, h: 0.55, d: 0.1 },
+    'Refrigerator': { w: 0.7, h: 1.7, d: 0.7 },
+    'toilet': { w: 0.4, h: 0.45, d: 0.6 },
+    'bathtub': { w: 0.7, h: 0.5, d: 1.5 },
+    'desk': { w: 1.4, h: 0.75, d: 0.7 },
+  };
 
   function loadGLTFModel(category, callback) {
     var url = MODEL_URLS[category];
@@ -111,6 +306,23 @@ export function House3DViewer({
     if (modelCache[category]) { callback(modelCache[category].clone()); return; }
     GLTFLoaderInstance.load(url, function(gltf) {
       var model = gltf.scene;
+      // Normalize model scale to target real-world dimensions
+      var _box = new THREE.Box3().setFromObject(model);
+      var _size = _box.getSize(new THREE.Vector3());
+      var _center = _box.getCenter(new THREE.Vector3());
+      var target = MODEL_TARGET_SIZES[category];
+      if (target) {
+        var sx = target.w / Math.max(_size.x, 0.01);
+        var sy = target.h / Math.max(_size.y, 0.01);
+        var sz = target.d / Math.max(_size.z, 0.01);
+        var s = Math.min(sx, sy, sz);
+        model.scale.multiplyScalar(s);
+      }
+      // Center on XZ, sit on floor (y=0)
+      _box.setFromObject(model);
+      _center = _box.getCenter(new THREE.Vector3());
+      var _min = _box.min;
+      model.position.set(-_center.x, -_min.y, -_center.z);
       model.traverse(function(child) {
         if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
       });
@@ -132,7 +344,7 @@ export function House3DViewer({
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
@@ -148,7 +360,7 @@ export function House3DViewer({
   const sun = new THREE.DirectionalLight(0xffeedd, IS_DARK ? 0.9 : 1.1);
   sun.position.set(10, 18, 8);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 0.5;
   sun.shadow.camera.far = 60;
   sun.shadow.camera.left = -20;
@@ -220,13 +432,155 @@ export function House3DViewer({
   }
 
   // ================================================================
-  // Ground
+  // Ground — lush grass with subtle variation
   // ================================================================
-  const gnd = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), M.ground);
+  var gndGeo = new THREE.PlaneGeometry(60, 60, 40, 40);
+  // vertex-colour noise for natural look
+  var gndColors = [];
+  var posArr = gndGeo.attributes.position.array;
+  for (var gi = 0; gi < posArr.length / 3; gi++) {
+    var r = 0.38 + Math.random() * 0.12;
+    var g2 = 0.55 + Math.random() * 0.15;
+    var b2 = 0.25 + Math.random() * 0.08;
+    gndColors.push(r, g2, b2);
+  }
+  gndGeo.setAttribute('color', new THREE.Float32BufferAttribute(gndColors, 3));
+  var grassMat = new THREE.MeshStandardMaterial({
+    color: IS_DARK ? 0x1a2a1a : 0x5a8a4a,
+    roughness: 0.95,
+    vertexColors: true,
+  });
+  var gnd = new THREE.Mesh(gndGeo, grassMat);
   gnd.rotation.x = -Math.PI / 2;
   gnd.position.y = -0.02;
   gnd.receiveShadow = true;
   scene.add(gnd);
+
+  // Concrete walkway / patio in front of house (HW=6, HD=4.75)
+  var pathMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x3a3a44 : 0xc8c0b0, roughness: 0.7 });
+  box(2.0, 0.04, 5.0, pathMat, -3.75, 0.0, 7.25, null);
+  scene.add(scene.children[scene.children.length - 1]);
+  // Stepping stones along path
+  for (var si = 0; si < 4; si++) {
+    cyl(0.35, 0.35, 0.04, 8, pathMat, -3.75 + (Math.random()-0.5)*0.6, 0.01, 10.25 + si * 1.5, null);
+    scene.add(scene.children[scene.children.length - 1]);
+  }
+
+  // ================================================================
+  // Sky dome (hemisphere gradient)
+  // ================================================================
+  var skyGeo = new THREE.SphereGeometry(80, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  var skyColors = [];
+  var skyPos = skyGeo.attributes.position.array;
+  for (var ski = 0; ski < skyPos.length / 3; ski++) {
+    var sy = skyPos[ski * 3 + 1];
+    var t = Math.max(0, Math.min(1, sy / 80));
+    if (IS_DARK) {
+      skyColors.push(0.04 + t * 0.02, 0.04 + t * 0.06, 0.12 + t * 0.15);
+    } else {
+      skyColors.push(0.55 + t * 0.35, 0.72 + t * 0.2, 0.92 + t * 0.08);
+    }
+  }
+  skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+  var skyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
+  var skyDome = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(skyDome);
+
+  // ================================================================
+  // Low-poly Trees & Bushes
+  // ================================================================
+  function makeTree(tx, tz, scale) {
+    var tg = new THREE.Group();
+    var s = scale || 1;
+    var trunkH = 1.8 * s;
+    cyl(0.12 * s, 0.08 * s, trunkH, 6, new THREE.MeshStandardMaterial({ color: 0x6B4226, roughness: 0.8 }), 0, trunkH / 2, 0, tg);
+    var crownMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x1a5a2a : 0x2E7D32, roughness: 0.85 });
+    var crownMat2 = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x226a36 : 0x388E3C, roughness: 0.85 });
+    var cone1 = new THREE.Mesh(new THREE.ConeGeometry(1.0 * s, 1.6 * s, 7), crownMat);
+    cone1.position.set(0, trunkH + 0.3 * s, 0); cone1.castShadow = true; tg.add(cone1);
+    var cone2 = new THREE.Mesh(new THREE.ConeGeometry(0.8 * s, 1.3 * s, 7), crownMat2);
+    cone2.position.set(0, trunkH + 1.1 * s, 0); cone2.castShadow = true; tg.add(cone2);
+    var cone3 = new THREE.Mesh(new THREE.ConeGeometry(0.55 * s, 0.9 * s, 7), crownMat);
+    cone3.position.set(0, trunkH + 1.8 * s, 0); cone3.castShadow = true; tg.add(cone3);
+    tg.position.set(tx, 0, tz);
+    scene.add(tg);
+  }
+
+  function makeBush(bx, bz, s) {
+    var s2 = s || 0.5;
+    var bushMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x1a5a2a : 0x3E8E4E, roughness: 0.9 });
+    var b1 = new THREE.Mesh(new THREE.SphereGeometry(0.45 * s2, 8, 6), bushMat);
+    b1.position.set(bx, 0.35 * s2, bz); b1.scale.y = 0.7; b1.castShadow = true; scene.add(b1);
+    var b3 = new THREE.Mesh(new THREE.SphereGeometry(0.3 * s2, 8, 6), bushMat);
+    b3.position.set(bx + 0.3 * s2, 0.25 * s2, bz + 0.15 * s2); b3.scale.y = 0.7; scene.add(b3);
+  }
+
+  // Trees around the yard (hardcoded positions — house center at origin)
+  makeTree(-10, -8, 1.2);
+  makeTree(-12, 2, 1.0);
+  makeTree(10, -7, 1.1);
+  makeTree(12, 3, 0.9);
+  makeTree(-8, 10, 1.3);
+  makeTree(9, 10, 1.0);
+  makeTree(14, -3, 0.8);
+  makeTree(-14, -4, 1.0);
+  // Smaller trees closer to house (HW=6, HD=4.75)
+  makeTree(-8.5, -3.75, 0.7);
+  makeTree(8.5, -3.75, 0.6);
+  makeTree(8.5, 3.75, 0.7);
+
+  // Bushes along the house perimeter
+  makeBush(-7.2, -4.25, 0.6);
+  makeBush(-7.2, -2.75, 0.5);
+  makeBush(-7.2, -1.25, 0.6);
+  makeBush(7.2, -4.25, 0.5);
+  makeBush(7.2, -2.75, 0.6);
+  makeBush(7.2, 3.25, 0.5);
+  // Front garden bushes
+  makeBush(-5.0, 5.75, 0.7);
+  makeBush(-2.5, 5.95, 0.6);
+  makeBush(4.5, 5.75, 0.5);
+
+  // Flower beds (small colored spheres near bushes)
+  var flowerColors = [0xFF6699, 0xFFCC33, 0xFF5533, 0xCC66FF, 0xFF9966];
+  for (var fi2 = 0; fi2 < 12; fi2++) {
+    var fc = flowerColors[fi2 % flowerColors.length];
+    var fx = -5.0 + (fi2 % 6) * 1.8 + (Math.random() - 0.5) * 0.4;
+    var fz = 5.5 + Math.random() * 0.8;
+    var flower = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08 + Math.random() * 0.05, 6, 4),
+      new THREE.MeshStandardMaterial({ color: fc, roughness: 0.8 })
+    );
+    flower.position.set(fx, 0.12, fz);
+    scene.add(flower);
+  }
+
+  // ================================================================
+  // Garden fence (picket fence around the yard)
+  // ================================================================
+  var fenceMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x505050 : 0xDDCCBB, roughness: 0.6 });
+  var fenceR = 15;
+  function fenceSegment(x1, z1, x2, z2) {
+    var dx = x2 - x1, dz = z2 - z1;
+    var len = Math.sqrt(dx * dx + dz * dz);
+    var ang = Math.atan2(dx, dz);
+    var rail = box(0.04, 0.04, len, fenceMat, (x1+x2)/2, 0.45, (z1+z2)/2, null);
+    rail.rotation.y = ang; scene.add(rail);
+    var rail2 = box(0.04, 0.04, len, fenceMat, (x1+x2)/2, 0.15, (z1+z2)/2, null);
+    rail2.rotation.y = ang; scene.add(rail2);
+    var pickets = Math.floor(len / 0.6);
+    for (var pi = 0; pi <= pickets; pi++) {
+      var t2 = pi / Math.max(pickets, 1);
+      var px = x1 + dx * t2, pz = z1 + dz * t2;
+      box(0.04, 0.55, 0.04, fenceMat, px, 0.28, pz, null);
+      scene.add(scene.children[scene.children.length - 1]);
+    }
+  }
+  fenceSegment(-fenceR, -fenceR, fenceR, -fenceR);
+  fenceSegment(-fenceR, -fenceR, -fenceR, fenceR);
+  fenceSegment(fenceR, -fenceR, fenceR, fenceR);
+  fenceSegment(-fenceR, fenceR, -4, fenceR);
+  fenceSegment(4, fenceR, fenceR, fenceR);
 
   // ================================================================
   // House Group
@@ -271,8 +625,8 @@ export function House3DViewer({
     { col: 1, row: 1, x: -HW + LR_W + DN_W/2, z: -HD + BR_D + DN_D/2, w: DN_W, d: DN_D },          // dining room
   ];
 
-  function roomType(id) {
-    const l = id.toLowerCase();
+  function roomType(id, name) {
+    const l = ((id || '') + ' ' + (name || '')).toLowerCase();
     if (l.includes('living')) return 'living';
     if (l.includes('kitchen')) return 'kitchen';
     if (l.includes('bed'))    return 'bedroom';
@@ -281,7 +635,7 @@ export function House3DViewer({
     if (l.includes('office') || l.includes('study')) return 'office';
     if (l.includes('laundry')) return 'laundry';
     if (l.includes('garage')) return 'garage';
-    return 'living';
+    return 'generic';
   }
 
   // ================================================================
@@ -370,6 +724,22 @@ export function House3DViewer({
     }
     // Decorative top trim
     box(0.95, 0.03, 0.45, M.darkWood, 0.5, 0.88, 0.5, g);
+
+    // === BEDROOM DECORATIONS ===
+    // Nightstand with alarm clock
+    box(0.3, 0.4, 0.3, M.wood, 0.6, 0.2, -1.5, g);
+    box(0.12, 0.15, 0.08, new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3 }), 0.6, 0.48, -1.5, g);
+    // Bedside rug (soft purple)
+    box(0.8, 0.015, 0.5, new THREE.MeshStandardMaterial({ color: 0x6A0572, roughness: 0.95 }), -0.4, 0.02, 0.3, g);
+    // Ceiling fan (unique to bedroom)
+    cyl(0.04, 0.04, 0.15, 8, M.metal, 0, 2.88, -0.3, g);
+    for (var fa = 0; fa < 4; fa++) {
+      var fAngle = fa * Math.PI / 2;
+      box(0.6, 0.015, 0.12, new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.6 }), Math.cos(fAngle) * 0.4, 2.82, -0.3 + Math.sin(fAngle) * 0.4, g);
+    }
+    // Wardrobe (right wall)
+    box(0.4, 2.2, 0.8, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6 }), 1.6, 1.1, 0.1, g);
+    box(0.02, 2.0, 0.01, M.metal, 1.38, 1.1, 0.1, g);
   }
 
   function buildKitchen(g) {
@@ -425,6 +795,29 @@ export function House3DViewer({
     box(0.7, 0.5, 0.02, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }), -0.5, 0.35, -0.43, g);
     box(0.5, 0.25, 0.01, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.1, metalness: 0.3 }), -0.5, 0.38, -0.42, g);
     box(0.55, 0.03, 0.03, M.metal, -0.5, 0.55, -0.42, g);
+
+    // === KITCHEN DECORATIONS ===
+    // Kitchen island (center of room)
+    box(1.2, 0.8, 0.6, new THREE.MeshStandardMaterial({ color: 0xFAF0E6, roughness: 0.6 }), 0.5, 0.4, 0.8, g);
+    box(1.25, 0.06, 0.65, new THREE.MeshStandardMaterial({ color: 0x2F4F4F, roughness: 0.3, metalness: 0.1 }), 0.5, 0.83, 0.8, g);
+    // Bar stools around island
+    for (var bs = 0; bs < 2; bs++) {
+      cyl(0.12, 0.14, 0.04, 12, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }), 0.2 + bs * 0.6, 0.65, 1.35, g);
+      cyl(0.03, 0.03, 0.6, 8, M.metal, 0.2 + bs * 0.6, 0.32, 1.35, g);
+      // Footrest ring
+      cyl(0.1, 0.1, 0.02, 12, M.metal, 0.2 + bs * 0.6, 0.2, 1.35, g);
+    }
+    // Hanging pot rack with copper pots
+    box(0.8, 0.02, 0.3, M.metal, -0.5, 2.5, -0.72, g);
+    cyl(0.06, 0.04, 0.12, 8, new THREE.MeshStandardMaterial({ color: 0xB87333, metalness: 0.6, roughness: 0.3 }), -0.7, 2.35, -0.72, g);
+    cyl(0.05, 0.035, 0.1, 8, new THREE.MeshStandardMaterial({ color: 0xB87333, metalness: 0.6, roughness: 0.3 }), -0.3, 2.38, -0.72, g);
+    // Kitchen window plant (herb garden)
+    box(0.5, 0.08, 0.12, new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8 }), 1.5, 1.4, -1.78, g);
+    cyl(0.04, 0.03, 0.1, 6, M.plant, 1.35, 1.5, -1.78, g);
+    cyl(0.04, 0.03, 0.12, 6, M.plant, 1.5, 1.52, -1.78, g);
+    cyl(0.035, 0.025, 0.09, 6, M.plant, 1.65, 1.49, -1.78, g);
+    // Tile backsplash (subtle)
+    box(3.9, 0.5, 0.02, new THREE.MeshStandardMaterial({ color: 0xE0D9C8, roughness: 0.3 }), 0, 1.12, -1.96, g);
   }
 
   function buildBathroom(g) {
@@ -521,6 +914,20 @@ export function House3DViewer({
     box(0.03, 0.9, 0.03, M.metal, 1.1, 1.0, 0.16, g);
     // Towel hanging
     box(0.02, 0.25, 0.3, new THREE.MeshStandardMaterial({ color: 0x87CEEB, roughness: 0.9 }), 1.12, 1.08, 0.0, g);
+
+    // === BATHROOM DECORATIONS ===
+    // Bath mat (soft blue)
+    box(0.5, 0.015, 0.35, new THREE.MeshStandardMaterial({ color: 0x4FC3F7, roughness: 0.95 }), -0.5, 0.02, -0.3, g);
+    // Toilet paper holder
+    cyl(0.015, 0.015, 0.12, 8, M.metal, -0.85, 0.6, 0.2, g);
+    cyl(0.035, 0.035, 0.08, 8, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.9 }), -0.85, 0.6, 0.28, g);
+    // Small shelf with toiletries
+    box(0.35, 0.03, 0.1, M.metal, 0.6, 1.75, 1.7, g);
+    cyl(0.02, 0.02, 0.08, 8, new THREE.MeshStandardMaterial({ color: 0x66BB6A, roughness: 0.4 }), 0.5, 1.82, 1.7, g);
+    cyl(0.018, 0.018, 0.1, 8, new THREE.MeshStandardMaterial({ color: 0x42A5F5, roughness: 0.3 }), 0.7, 1.84, 1.7, g);
+    // Shower curtain rod + curtain (decorative)
+    cyl(0.015, 0.015, 1.2, 8, M.metal, 0.5, 2.2, -0.5, g);
+    box(0.02, 1.2, 0.8, new THREE.MeshStandardMaterial({ color: 0xE8E8E8, transparent: true, opacity: 0.6, roughness: 0.9 }), 0.5, 1.55, -0.5, g);
   }
 
   function buildLivingRoom(g) {
@@ -615,6 +1022,22 @@ export function House3DViewer({
     }
     var topLeaf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), M.plant);
     topLeaf.position.set(-1.4, 0.75, 2.0); topLeaf.scale.y = 0.7; g.add(topLeaf);
+
+    // === LIVING ROOM DECORATIONS ===
+    // Large area rug (warm terracotta pattern)
+    box(2.2, 0.015, 1.8, new THREE.MeshStandardMaterial({ color: 0xCC6633, roughness: 0.92 }), 0, 0.02, 0.5, g);
+    box(2.0, 0.016, 1.6, new THREE.MeshStandardMaterial({ color: 0xBB7744, roughness: 0.9 }), 0, 0.022, 0.5, g);
+    // Floor lamp (tall arc lamp, modern)
+    cyl(0.15, 0.15, 0.02, 16, M.metal, 1.5, 0.01, -1.5, g);
+    cyl(0.02, 0.02, 1.6, 8, M.metal, 1.5, 0.82, -1.5, g);
+    // Arc arm
+    box(0.015, 0.015, 0.5, M.metal, 1.5, 1.62, -1.25, g);
+    cyl(0.12, 0.08, 0.12, 12, new THREE.MeshStandardMaterial({ color: 0xFFF8DC, roughness: 0.8, transparent: true, opacity: 0.85 }), 1.5, 1.56, -1.0, g);
+    // Remote control on coffee table
+    box(0.06, 0.015, 0.15, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }), 0.15, 0.44, 0.35, g);
+    // Magazines on coffee table
+    box(0.18, 0.02, 0.24, new THREE.MeshStandardMaterial({ color: 0xE91E63, roughness: 0.8 }), -0.2, 0.44, 0.5, g);
+    box(0.18, 0.02, 0.24, new THREE.MeshStandardMaterial({ color: 0x3F51B5, roughness: 0.8 }), -0.18, 0.46, 0.48, g);
   }
 
   function buildDiningRoom(g) {
@@ -708,6 +1131,40 @@ export function House3DViewer({
     }
     chinaCabinet(-2.5);
     chinaCabinet(2.5);
+
+    // === DINING ROOM DECORATIONS ===
+    // Chandelier (candelabra style over table)
+    cyl(0.02, 0.02, 0.3, 8, M.metal, 0, 2.7, 0, g);
+    // Candle arms
+    for (var ca = 0; ca < 6; ca++) {
+      var cAngle = ca * Math.PI / 3;
+      var cax = Math.cos(cAngle) * 0.25;
+      var caz = Math.sin(cAngle) * 0.25;
+      box(0.015, 0.015, 0.01, M.metal, cax, 2.55, caz, g);
+      // Candle
+      cyl(0.015, 0.015, 0.06, 6, new THREE.MeshStandardMaterial({ color: 0xFFF8DC, roughness: 0.8 }), cax, 2.52, caz, g);
+      // Flame glow
+      var flame = new THREE.Mesh(new THREE.SphereGeometry(0.01, 6, 4), new THREE.MeshStandardMaterial({ color: 0xFFAA00, emissive: 0xFF8800, emissiveIntensity: 1.0 }));
+      flame.position.set(cax, 2.56, caz); g.add(flame);
+    }
+    // Ring
+    var chandRing = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.01, 6, 20), M.metal);
+    chandRing.position.set(0, 2.55, 0); chandRing.rotation.x = Math.PI / 2; g.add(chandRing);
+    // Table centerpiece (vase with flowers)
+    cyl(0.05, 0.07, 0.15, 10, new THREE.MeshStandardMaterial({ color: 0x1565C0, roughness: 0.3 }), 0, 0.87, 0, g);
+    // Flower stems
+    cyl(0.005, 0.005, 0.15, 4, M.plant, -0.02, 1.0, 0, g);
+    cyl(0.005, 0.005, 0.18, 4, M.plant, 0.02, 1.02, 0.02, g);
+    var flw1 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshStandardMaterial({ color: 0xFF1744, roughness: 0.7 }));
+    flw1.position.set(-0.02, 1.1, 0); g.add(flw1);
+    var flw2 = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), new THREE.MeshStandardMaterial({ color: 0xFFEB3B, roughness: 0.7 }));
+    flw2.position.set(0.02, 1.13, 0.02); g.add(flw2);
+    // Sideboard with wine rack (alternative to cabinet)
+    box(1.0, 0.7, 0.35, M.darkWood, 0, 0.35, 1.95, g);
+    // Wine bottles in rack
+    for (var wi = 0; wi < 3; wi++) {
+      cyl(0.025, 0.025, 0.18, 6, new THREE.MeshStandardMaterial({ color: 0x1B5E20, roughness: 0.3 }), -0.2 + wi * 0.2, 0.58, 1.88, g);
+    }
   }
 
   function buildOffice(g) {
@@ -883,6 +1340,19 @@ export function House3DViewer({
   // 3D Appliance Model Builders — recognizable shapes per category
   // ================================================================
   function buildDevice3D(cat, g, dc, glowMat, bodyMat) {
+    // === COMPACT DEVICE INDICATOR ONLY ===
+    // Full-size 3D appliance models are DISABLED to prevent overlap
+    // with room furniture. Devices render as small floor markers
+    // with glow ring + label sprite + emoji badge.
+    var indicator = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.12, 0.06, 12),
+      glowMat
+    );
+    indicator.position.y = 0.03;
+    indicator.castShadow = true;
+    g.add(indicator);
+    return;
+    // --- Below is disabled: full-size device models ---
     var c = (cat || '').toLowerCase();
 
     // ---- TV / Television ----
@@ -1156,6 +1626,143 @@ export function House3DViewer({
       return;
     }
 
+    // ---- Vacuum Cleaner ----
+    if (c.includes('vacuum')) {
+      // Main body
+      cyl(0.12, 0.12, 0.4, 12, bodyMat, 0, 0.4, 0, g);
+      // Handle
+      cyl(0.02, 0.02, 0.5, 6, M.metal, 0, 0.7, 0, g);
+      // Handle grip
+      box(0.08, 0.06, 0.04, new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.6 }), 0, 0.96, 0, g);
+      // Nozzle head
+      box(0.3, 0.06, 0.15, new THREE.MeshStandardMaterial({ color: 0x444444 }), 0, 0.18, 0.15, g);
+      // Dust canister (transparent)
+      cyl(0.09, 0.09, 0.15, 10, new THREE.MeshStandardMaterial({ color: 0xCCCCCC, transparent: true, opacity: 0.4 }), 0, 0.38, 0, g);
+      // Wheels
+      cyl(0.04, 0.04, 0.03, 8, new THREE.MeshStandardMaterial({ color: 0x333333 }), -0.1, 0.2, -0.05, g);
+      cyl(0.04, 0.04, 0.03, 8, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0.1, 0.2, -0.05, g);
+      // Power button
+      cyl(0.025, 0.025, 0.01, 8, new THREE.MeshStandardMaterial({ color: 0xFF0000, emissive: 0xFF0000, emissiveIntensity: 0.4 }), 0, 0.55, 0.12, g);
+      return;
+    }
+
+    // ---- Printer ----
+    if (c.includes('printer')) {
+      // Main body
+      box(0.6, 0.2, 0.4, bodyMat, 0, 0.3, 0, g);
+      // Paper tray top
+      box(0.45, 0.01, 0.25, M.white, 0, 0.41, -0.05, g);
+      // Paper output tray
+      box(0.45, 0.01, 0.18, M.white, 0, 0.2, 0.2, g);
+      // Paper in tray
+      box(0.4, 0.005, 0.15, new THREE.MeshStandardMaterial({ color: 0xFFFFF0 }), 0, 0.21, 0.2, g);
+      // Control panel
+      box(0.15, 0.06, 0.01, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0.18, 0.38, 0.2, g);
+      // LED
+      box(0.04, 0.03, 0.01, new THREE.MeshStandardMaterial({ color: 0x00FF44, emissive: 0x00FF44, emissiveIntensity: 0.6 }), 0.22, 0.38, 0.21, g);
+      // Status LED
+      cyl(0.015, 0.015, 0.01, 6, new THREE.MeshStandardMaterial({ color: 0x00FF00, emissive: 0x00FF00, emissiveIntensity: 0.8 }), 0.12, 0.38, 0.21, g);
+      return;
+    }
+
+    // ---- Speaker / Smart Speaker ----
+    if (c.includes('speaker')) {
+      // Body (cylinder)
+      cyl(0.1, 0.1, 0.35, 16, bodyMat, 0, 0.38, 0, g);
+      // Top dome
+      var dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.3 })
+      );
+      dome.position.set(0, 0.56, 0);
+      g.add(dome);
+      // Speaker grille texture (rings)
+      cyl(0.105, 0.105, 0.02, 16, new THREE.MeshStandardMaterial({ color: 0x555555, wireframe: true }), 0, 0.35, 0, g);
+      cyl(0.105, 0.105, 0.02, 16, new THREE.MeshStandardMaterial({ color: 0x555555, wireframe: true }), 0, 0.45, 0, g);
+      // LED ring
+      var ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.1, 0.012, 6, 20),
+        new THREE.MeshStandardMaterial({ color: 0x00CCFF, emissive: 0x00AAFF, emissiveIntensity: 0.6 })
+      );
+      ring.position.set(0, 0.56, 0);
+      ring.rotation.x = Math.PI / 2;
+      g.add(ring);
+      // Base
+      cyl(0.12, 0.12, 0.02, 16, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0, 0.2, 0, g);
+      return;
+    }
+
+    // ---- Tablet ----
+    if (c.includes('tablet') || c.includes('ipad')) {
+      // Body
+      box(0.35, 0.5, 0.015, new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5, roughness: 0.3 }), 0, 0.47, 0, g);
+      // Screen
+      box(0.31, 0.44, 0.005, new THREE.MeshStandardMaterial({ color: 0x111122, emissive: 0x1a237e, emissiveIntensity: 0.3 }), 0, 0.48, 0.01, g);
+      // Home button
+      cyl(0.02, 0.02, 0.005, 12, new THREE.MeshStandardMaterial({ color: 0x444444 }), 0, 0.22, 0.01, g);
+      // Camera
+      cyl(0.01, 0.01, 0.005, 8, new THREE.MeshStandardMaterial({ color: 0x222222 }), 0, 0.72, 0.01, g);
+      // Screen content glow
+      box(0.2, 0.06, 0.001, new THREE.MeshStandardMaterial({ color: 0x4488FF, emissive: 0x2266DD, emissiveIntensity: 0.4 }), 0, 0.55, 0.016, g);
+      return;
+    }
+
+    // ---- Iron ----
+    if (c.includes('iron')) {
+      // Soleplate
+      box(0.35, 0.03, 0.18, new THREE.MeshStandardMaterial({ color: 0xBBBBBB, metalness: 0.7 }), 0, 0.22, 0, g);
+      // Body
+      box(0.3, 0.12, 0.16, bodyMat, 0, 0.3, -0.01, g);
+      // Handle
+      box(0.2, 0.04, 0.06, new THREE.MeshStandardMaterial({ color: 0x444444 }), 0, 0.4, 0, g);
+      // Water tank (transparent)
+      box(0.1, 0.08, 0.08, new THREE.MeshStandardMaterial({ color: 0x44CCFF, transparent: true, opacity: 0.3 }), 0, 0.3, -0.06, g);
+      // Temperature dial
+      cyl(0.03, 0.03, 0.015, 10, new THREE.MeshStandardMaterial({ color: 0x666666 }), 0.1, 0.37, 0.08, g);
+      // Steam vents
+      for (var ivi = -2; ivi <= 2; ivi++) {
+        cyl(0.008, 0.008, 0.005, 6, M.metal, ivi * 0.06, 0.205, 0, g);
+      }
+      return;
+    }
+
+    // ---- Electric Kettle ----
+    if (c.includes('kettle')) {
+      // Base
+      cyl(0.15, 0.15, 0.03, 16, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0, 0.22, 0, g);
+      // Body
+      cyl(0.12, 0.1, 0.4, 16, bodyMat, 0, 0.43, 0, g);
+      // Water inside (transparent)
+      cyl(0.1, 0.08, 0.25, 12, new THREE.MeshStandardMaterial({ color: 0x44CCFF, transparent: true, opacity: 0.2 }), 0, 0.38, 0, g);
+      // Lid
+      cyl(0.1, 0.08, 0.04, 12, new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5 }), 0, 0.64, 0, g);
+      // Lid handle
+      box(0.06, 0.03, 0.03, M.metal, 0, 0.68, 0, g);
+      // Handle
+      box(0.04, 0.25, 0.04, bodyMat, 0.16, 0.43, 0, g);
+      // Spout
+      box(0.04, 0.06, 0.08, bodyMat, -0.14, 0.55, 0, g);
+      // Heating indicator LED
+      cyl(0.015, 0.015, 0.01, 6, new THREE.MeshStandardMaterial({ color: 0x00FF44, emissive: 0x00FF44, emissiveIntensity: 0.6 }), 0.08, 0.24, 0.14, g);
+      return;
+    }
+
+    // ---- Dehumidifier / Air Purifier ----
+    if (c.includes('dehumidifier') || c.includes('air purifier') || c.includes('purifier')) {
+      box(0.3, 0.55, 0.2, M.white, 0, 0.48, 0, g);
+      // Vent grille
+      for (var dhi = 0; dhi < 6; dhi++) {
+        box(0.25, 0.005, 0.015, M.metal, 0, 0.35 + dhi * 0.04, 0.1, g);
+      }
+      // Control panel
+      box(0.2, 0.06, 0.01, new THREE.MeshStandardMaterial({ color: 0x333333 }), 0, 0.72, 0.1, g);
+      // LED display
+      box(0.1, 0.03, 0.01, new THREE.MeshStandardMaterial({ color: 0x00CCFF, emissive: 0x00AAFF, emissiveIntensity: 0.5 }), 0, 0.73, 0.11, g);
+      // Water tank
+      box(0.25, 0.15, 0.05, new THREE.MeshStandardMaterial({ color: 0x44CCFF, transparent: true, opacity: 0.3 }), 0, 0.28, -0.08, g);
+      return;
+    }
+
     // ---- DEFAULT: generic electronic device ----
     // Sleek box with glowing LED strip
     box(0.35, 0.25, 0.25, bodyMat, 0, 0.33, 0, g);
@@ -1335,10 +1942,11 @@ export function House3DViewer({
   // ================================================================
   var roomGroups = [];
   var clickableFloors = [];
+  var selectedFloor = null;
   var usedSlots = {};
 
   ROOMS.forEach(function(room, i) {
-    var type = roomType(room.roomId);
+    var type = roomType(room.roomId, room.name);
     var slotIdx = ROOM_SLOT[type];
     var pos;
 
@@ -1368,10 +1976,20 @@ export function House3DViewer({
     rg.position.set(pos.x, 0, pos.z);
     rg.userData = { roomId: room.roomId, name: room.name, index: i };
 
-    // Room floor (colored tint)
-    var col = new THREE.Color(ROOM_COLORS[i % ROOM_COLORS.length]);
+    // Room floor — unique material per room type (wood, tile, carpet, etc.)
+    var roomFloorColors = {
+      bedroom: { color: IS_DARK ? 0x3a3040 : 0xC4A882, roughness: 0.7 },   // warm carpet
+      kitchen: { color: IS_DARK ? 0x333844 : 0xB8B0A0, roughness: 0.3 },   // tile
+      bathroom: { color: IS_DARK ? 0x2a3040 : 0xC8D8E8, roughness: 0.2 },  // ceramic tile
+      living: { color: IS_DARK ? 0x3a3028 : 0xBFA76A, roughness: 0.6 },    // hardwood
+      dining: { color: IS_DARK ? 0x362818 : 0xA08050, roughness: 0.55 },   // dark wood
+      office: { color: IS_DARK ? 0x2a2a3a : 0x888888, roughness: 0.4 },    // industrial
+      laundry: { color: IS_DARK ? 0x303038 : 0xC0C0C0, roughness: 0.3 },   // linoleum
+      garage: { color: IS_DARK ? 0x282828 : 0x999999, roughness: 0.5 },    // concrete
+    };
+    var floorStyle = roomFloorColors[type] || { color: IS_DARK ? 0x2a2a3e : 0xddd8cc, roughness: 0.8 };
     var floorMat = new THREE.MeshStandardMaterial({
-      color: col, roughness: 0.8, transparent: true, opacity: IS_DARK ? 0.18 : 0.12,
+      color: floorStyle.color, roughness: floorStyle.roughness,
     });
     var floor = new THREE.Mesh(new THREE.PlaneGeometry(pos.w - 0.2, pos.d - 0.2), floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -1381,41 +1999,164 @@ export function House3DViewer({
     rg.add(floor);
     clickableFloors.push(floor);
 
-    // Room label (floating sprite)
+    // ---- Baseboards (wooden trim along floor-wall junction) ----
+    var bbMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x3a3028 : 0x8B6914, roughness: 0.5 });
+    var bbH = 0.08, bbT = 0.04;
+    var rHW = pos.w / 2 - 0.12, rHD = pos.d / 2 - 0.12;
+    box(pos.w - 0.24, bbH, bbT, bbMat, 0, bbH / 2, -rHD, rg);
+    box(pos.w - 0.24, bbH, bbT, bbMat, 0, bbH / 2, rHD, rg);
+    box(bbT, bbH, pos.d - 0.24, bbMat, -rHW, bbH / 2, 0, rg);
+    box(bbT, bbH, pos.d - 0.24, bbMat, rHW, bbH / 2, 0, rg);
+
+    // ---- Floor pattern lines (wood planks / tile grid) ----
+    var patternMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: IS_DARK ? 0.12 : 0.06 });
+    if (type === 'bedroom' || type === 'living' || type === 'dining' || type === 'office') {
+      // Wood plank lines
+      for (var plk = -pos.w / 2 + 0.4; plk < pos.w / 2 - 0.1; plk += 0.45) {
+        box(0.005, 0.001, pos.d - 0.4, patternMat, plk, 0.035, 0, rg);
+      }
+    } else if (type === 'kitchen' || type === 'bathroom' || type === 'laundry') {
+      // Tile grid lines
+      for (var tlx = -pos.w / 2 + 0.4; tlx < pos.w / 2 - 0.1; tlx += 0.5) {
+        box(0.005, 0.001, pos.d - 0.4, patternMat, tlx, 0.035, 0, rg);
+      }
+      for (var tlz = -pos.d / 2 + 0.4; tlz < pos.d / 2 - 0.1; tlz += 0.5) {
+        box(pos.w - 0.4, 0.001, 0.005, patternMat, 0, 0.035, tlz, rg);
+      }
+    }
+
+    // ---- Ceiling light fixture (visible from above when roof off) ----
+    var ceilLight = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 0.03, 16),
+      new THREE.MeshStandardMaterial({ color: 0xFFFFF0, emissive: 0xFFFFCC, emissiveIntensity: IS_DARK ? 0.4 : 0.15, roughness: 0.2 })
+    );
+    ceilLight.position.set(0, WALL_H - 0.02, 0);
+    ceilLight.receiveShadow = false;
+    rg.add(ceilLight);
+    // Warm point light per room
+    var roomLight = new THREE.PointLight(0xFFF5E0, IS_DARK ? 0.3 : 0.15, Math.max(pos.w, pos.d) * 1.1);
+    roomLight.position.set(0, WALL_H - 0.15, 0);
+    rg.add(roomLight);
+
+    // ---- Room edge glow line (colored border at floor level) ----
+    var edgeColor = ROOM_COLORS[i % ROOM_COLORS.length];
+    var edgeMat = new THREE.MeshBasicMaterial({ color: edgeColor, transparent: true, opacity: 0.35 });
+    var eT = 0.03;
+    box(pos.w - 0.2, 0.015, eT, edgeMat, 0, 0.04, -(pos.d / 2 - 0.12), rg);
+    box(pos.w - 0.2, 0.015, eT, edgeMat, 0, 0.04, (pos.d / 2 - 0.12), rg);
+    box(eT, 0.015, pos.d - 0.2, edgeMat, -(pos.w / 2 - 0.12), 0.04, 0, rg);
+    box(eT, 0.015, pos.d - 0.2, edgeMat, (pos.w / 2 - 0.12), 0.04, 0, rg);
+
+    // Room label (floating sprite with room type color)
+    var roomLabelColors = { bedroom: '#9C27B0', kitchen: '#FF9800', bathroom: '#2196F3', living: '#4CAF50', dining: '#F44336', office: '#607D8B', laundry: '#00BCD4', garage: '#795548' };
+    var labelColor = roomLabelColors[type] || '#4CAF50';
     var lc = document.createElement('canvas');
     lc.width = 512; lc.height = 96;
     var lctx = lc.getContext('2d');
+    // Background pill for readability
+    lctx.fillStyle = IS_DARK ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
+    var textW = lctx.measureText(room.name).width || 200;
+    lctx.beginPath();
+    lctx.roundRect(256 - textW / 2 - 30, 8, textW + 60, 80, 20);
+    lctx.fill();
     lctx.font = 'bold 36px -apple-system, sans-serif';
-    lctx.fillStyle = '#' + col.getHexString();
+    lctx.fillStyle = labelColor;
     lctx.textAlign = 'center';
     lctx.textBaseline = 'middle';
     lctx.fillText(room.name, 256, 48);
     var labelTex = new THREE.CanvasTexture(lc);
-    var labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.85 }));
+    var labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.9 }));
     labelSprite.scale.set(3.5, 0.7, 1);
     labelSprite.position.set(0, WALL_H + 0.6, 0);
     rg.add(labelSprite);
 
     // Build furniture
-    var type = roomType(room.roomId);
     var builder = furnitureBuilders[type] || buildGenericRoom;
     builder(rg);
 
+    // ==== Furniture bounds validation ====
+    // Check all furniture meshes are within room bounds, clamp if needed
+    var furnMargin = 0.1;
+    var furnHW = pos.w / 2 - furnMargin;
+    var furnHD = pos.d / 2 - furnMargin;
+    rg.children.forEach(function(child) {
+      if (child.isMesh && !child.userData.type) {
+        // Skip floor, labels, baseboards etc — only check furniture positioned by builder
+        if (Math.abs(child.position.x) > furnHW || Math.abs(child.position.z) > furnHD) {
+          child.position.x = Math.max(-furnHW, Math.min(furnHW, child.position.x));
+          child.position.z = Math.max(-furnHD, Math.min(furnHD, child.position.z));
+        }
+      }
+    });
+
+    // ==== Compute furniture occupied boxes for device collision avoidance ====
+    var furnitureBoxes = [];
+    rg.children.forEach(function(child) {
+      if (child.isMesh && child.position.y > 0.05 && child.position.y < 2.0) {
+        var fb = new THREE.Box3().setFromObject(child);
+        // Grow slightly for breathing room
+        fb.expandByScalar(0.05);
+        furnitureBoxes.push(fb);
+      }
+    });
+
     // ============================================================
-    // Place scanned devices as recognizable 3D appliance models
-    // at smart positions based on room type & device category
+    // Place scanned devices with collision-aware placement
+    // Uses Box3 collision checks against furniture bounding boxes
     // ============================================================
     var devs = DEVICES.filter(function(d) { return d.roomId === room.roomId; });
     var usedSpots = {};
+    var deviceBoxes = [];
 
     devs.forEach(function(dev, di) {
       var dc = getDevColor(dev.category);
       var glowMat = new THREE.MeshStandardMaterial({ color: dc, roughness: 0.2, metalness: 0.3, emissive: dc, emissiveIntensity: 0.4 });
       var bodyMat = new THREE.MeshStandardMaterial({ color: dc, roughness: 0.3, metalness: 0.2, emissive: dc, emissiveIntensity: 0.15 });
 
-      // Get smart placement position (pass room dims for clamping)
+      // Get smart placement position with collision avoidance
       var spot = getSmartSpot(type, dev.category, di, usedSpots, pos.w, pos.d);
       usedSpots[spot.key] = true;
+
+      // Collision check: ensure device doesn't overlap furniture
+      var devFootprint = new THREE.Box3(
+        new THREE.Vector3(pos.x + spot.x - 0.3, 0, pos.z + spot.z - 0.3),
+        new THREE.Vector3(pos.x + spot.x + 0.3, 1.5, pos.z + spot.z + 0.3)
+      );
+      var hasCollision = false;
+      for (var ci = 0; ci < furnitureBoxes.length; ci++) {
+        if (devFootprint.intersectsBox(furnitureBoxes[ci])) { hasCollision = true; break; }
+      }
+      for (var di2 = 0; di2 < deviceBoxes.length; di2++) {
+        if (devFootprint.intersectsBox(deviceBoxes[di2])) { hasCollision = true; break; }
+      }
+      if (hasCollision) {
+        // Try shifting to nearby clear positions
+        var offsets = [{x:0.6,z:0},{x:-0.6,z:0},{x:0,z:0.6},{x:0,z:-0.6},{x:0.6,z:0.6},{x:-0.6,z:-0.6}];
+        for (var oi = 0; oi < offsets.length; oi++) {
+          var nx = spot.x + offsets[oi].x;
+          var nz = spot.z + offsets[oi].z;
+          var clamped = clampSpot(nx, nz, pos.w, pos.d);
+          var altBox = new THREE.Box3(
+            new THREE.Vector3(pos.x + clamped.x - 0.3, 0, pos.z + clamped.z - 0.3),
+            new THREE.Vector3(pos.x + clamped.x + 0.3, 1.5, pos.z + clamped.z + 0.3)
+          );
+          var altOk = true;
+          for (var ci2 = 0; ci2 < furnitureBoxes.length; ci2++) {
+            if (altBox.intersectsBox(furnitureBoxes[ci2])) { altOk = false; break; }
+          }
+          for (var di3 = 0; di3 < deviceBoxes.length; di3++) {
+            if (altBox.intersectsBox(deviceBoxes[di3])) { altOk = false; break; }
+          }
+          if (altOk) {
+            spot.x = clamped.x;
+            spot.z = clamped.z;
+            devFootprint = altBox;
+            hasCollision = false;
+            break;
+          }
+        }
+      }
+      deviceBoxes.push(devFootprint);
 
       var devG = new THREE.Group();
       devG.position.set(spot.x, 0, spot.z);
@@ -1426,14 +2167,13 @@ export function House3DViewer({
       buildDevice3D(dev.category, devG, dc, glowMat, bodyMat);
       loadGLTFModel(dev.category, function(gltfScene) {
         if (gltfScene) {
-          // Remove primitive children (keep glow rings & labels)
+          // Remove primitive children (keep glow rings, labels, lights)
           var toRemove = [];
           devG.children.forEach(function(child) {
-            if (child.isMesh && !child.userData.isGlow) toRemove.push(child);
+            if (child.isMesh && !child.userData.isGlow && !child.isLight && !child.isSprite) toRemove.push(child);
           });
           toRemove.forEach(function(child) { devG.remove(child); });
-          gltfScene.scale.set(0.5, 0.5, 0.5);
-          gltfScene.position.y = 0;
+          // Model is already normalized by loadGLTFModel — centered, floor-aligned
           devG.add(gltfScene);
         }
       });
@@ -1564,6 +2304,46 @@ export function House3DViewer({
   box(IW, WALL_H, LR_D / 2 - 0.5, M.wallInner, botVertX, WALL_H / 2, rowSplitZ + LR_D / 4 - 0.25, house);
   box(IW, WALL_H, LR_D / 2 - 0.5, M.wallInner, botVertX, WALL_H / 2, rowSplitZ + LR_D * 3 / 4 + 0.25, house);
 
+  // ---- Interior Door Frames, Panels & Transoms ----
+  var doorH = 2.4;
+  var frameW = 0.06;
+  var frameDepth = IW + 0.06;
+  var frameMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x4a3428 : 0x6B4226, roughness: 0.45 });
+  var intDoorMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x5a3a22 : 0x8B6340, roughness: 0.5, side: THREE.DoubleSide });
+  var doorKnobMat = new THREE.MeshStandardMaterial({ color: 0xBBBB00, metalness: 0.8, roughness: 0.2 });
+  var aboveDoorH = WALL_H - doorH;
+
+  // Door in horizontal wall (constant z, runs along x)
+  function addHDoor(gapX, gapZ, gapW) {
+    if (aboveDoorH > 0.02) box(gapW, aboveDoorH, IW, M.wallInner, gapX, doorH + aboveDoorH / 2, gapZ, house);
+    box(frameW, doorH, frameDepth, frameMat, gapX - gapW / 2 + frameW / 2, doorH / 2, gapZ, house);
+    box(frameW, doorH, frameDepth, frameMat, gapX + gapW / 2 - frameW / 2, doorH / 2, gapZ, house);
+    box(gapW, frameW, frameDepth, frameMat, gapX, doorH + frameW / 2, gapZ, house);
+    box(gapW - 0.12, doorH - 0.08, 0.05, intDoorMat, gapX, doorH / 2 - 0.02, gapZ + 0.05, house);
+    cyl(0.025, 0.025, 0.04, 8, doorKnobMat, gapX + gapW / 2 - 0.18, doorH * 0.42, gapZ + 0.09, house);
+  }
+
+  // Door in vertical wall (constant x, runs along z)
+  function addVDoor(gapX, gapZ, gapW) {
+    if (aboveDoorH > 0.02) box(IW, aboveDoorH, gapW, M.wallInner, gapX, doorH + aboveDoorH / 2, gapZ, house);
+    box(frameDepth, doorH, frameW, frameMat, gapX, doorH / 2, gapZ - gapW / 2 + frameW / 2, house);
+    box(frameDepth, doorH, frameW, frameMat, gapX, doorH / 2, gapZ + gapW / 2 - frameW / 2, house);
+    box(frameDepth, frameW, gapW, frameMat, gapX, doorH + frameW / 2, gapZ, house);
+    box(0.05, doorH - 0.08, gapW - 0.12, intDoorMat, gapX + 0.05, doorH / 2 - 0.02, gapZ, house);
+    cyl(0.025, 0.025, 0.04, 8, doorKnobMat, gapX + 0.09, doorH * 0.42, gapZ + gapW / 2 - 0.18, house);
+  }
+
+  // Horizontal wall doors (z = rowSplitZ = -0.25)
+  addHDoor(-3.75, rowSplitZ, 1.0);   // Bedroom ↔ Living
+  addHDoor(0.75, rowSplitZ, 1.0);    // Kitchen ↔ Dining
+
+  // Vertical wall doors - top row
+  addVDoor(topVert1X, -HD + BR_D / 2, 1.0);   // Bedroom ↔ Kitchen
+  addVDoor(topVert2X, -HD + BA_D / 2, 1.0);   // Kitchen ↔ Bathroom
+
+  // Vertical wall doors - bottom row
+  addVDoor(botVertX, rowSplitZ + LR_D / 2, 1.0);  // Living ↔ Dining
+
   // ---- Windows ----
   var winPositions = [
     // Back wall — bedroom, kitchen, bathroom
@@ -1603,11 +2383,74 @@ export function House3DViewer({
   dh.position.set(doorGapX + 0.28, 1.1, HD + 0.08);
   house.add(dh);
 
-  // ---- Wall top trim (no roof — just a thin cap) ----
-  box(TOTAL_W + 0.3, 0.08, 0.3, M.wall, 0, WALL_H + 0.04, -HD, house);
-  box(TOTAL_W + 0.3, 0.08, 0.3, M.wall, 0, WALL_H + 0.04, HD, house);
-  box(0.3, 0.08, TOTAL_D, M.wall, -HW, WALL_H + 0.04, 0, house);
-  box(0.3, 0.08, TOTAL_D, M.wall, HW, WALL_H + 0.04, 0, house);
+  // Front door frame
+  box(frameW, 2.5, 0.12, frameMat, doorGapX - 0.48, 1.25, HD, house);
+  box(frameW, 2.5, 0.12, frameMat, doorGapX + 0.48, 1.25, HD, house);
+  box(1.0, frameW, 0.12, frameMat, doorGapX, 2.5 + frameW / 2, HD, house);
+
+  // ---- Pitched Roof (toggleable) ----
+  var roofGroup = new THREE.Group();
+  roofGroup.userData = { isRoof: true };
+  var roofMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x4a3028 : 0x8B4513, roughness: 0.7 });
+  var roofEdgeMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x3a2018 : 0x6B3310, roughness: 0.6 });
+  var roofH = 2.0;
+  var roofHalfW = TOTAL_W / 2 + 0.5;
+  var roofHalfD = TOTAL_D / 2 + 0.5;
+  var rTop = WALL_H + roofH;
+  var rBase = WALL_H + 0.04;
+  var fVerts = new Float32Array([
+    -roofHalfW, rBase, roofHalfD,    roofHalfW, rBase, roofHalfD,    0, rTop, 0,
+    roofHalfW, rBase, roofHalfD,     roofHalfW, rBase, -roofHalfD,   0, rTop, 0,
+    roofHalfW, rBase, -roofHalfD,    -roofHalfW, rBase, -roofHalfD,  0, rTop, 0,
+    -roofHalfW, rBase, -roofHalfD,   -roofHalfW, rBase, roofHalfD,   0, rTop, 0,
+  ]);
+  var roofGeo = new THREE.BufferGeometry();
+  roofGeo.setAttribute('position', new THREE.BufferAttribute(fVerts, 3));
+  roofGeo.computeVertexNormals();
+  var roofMesh = new THREE.Mesh(roofGeo, roofMat);
+  roofMesh.castShadow = true;
+  roofMesh.receiveShadow = true;
+  roofGroup.add(roofMesh);
+  box(TOTAL_W + 1.0, 0.1, 0.15, roofEdgeMat, 0, rBase, roofHalfD, roofGroup);
+  box(TOTAL_W + 1.0, 0.1, 0.15, roofEdgeMat, 0, rBase, -roofHalfD, roofGroup);
+  box(0.15, 0.1, TOTAL_D + 1.0, roofEdgeMat, -roofHalfW, rBase, 0, roofGroup);
+  box(0.15, 0.1, TOTAL_D + 1.0, roofEdgeMat, roofHalfW, rBase, 0, roofGroup);
+
+  // Chimney (part of roof group)
+  var chimMat = new THREE.MeshStandardMaterial({ color: IS_DARK ? 0x5a3a2a : 0x8B6355, roughness: 0.7 });
+  box(0.6, 2.5, 0.6, chimMat, HW - 2.5, rTop - 0.3, -HD + 1.5, roofGroup);
+  box(0.8, 0.1, 0.8, new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5 }), HW - 2.5, rTop + 0.95, -HD + 1.5, roofGroup);
+  for (var smi = 0; smi < 3; smi++) {
+    var smoke = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15 + smi * 0.08, 6, 4),
+      new THREE.MeshBasicMaterial({ color: 0xCCCCCC, transparent: true, opacity: 0.15 - smi * 0.04 })
+    );
+    smoke.position.set(HW - 2.5 + (Math.random()-0.5)*0.3, rTop + 1.2 + smi * 0.5, -HD + 1.5);
+    smoke.userData = { isSmoke: true, baseY: rTop + 1.2 + smi * 0.5 };
+    roofGroup.add(smoke);
+  }
+  house.add(roofGroup);
+
+  // ---- Roof toggle button logic ----
+  var roofVisible = true;
+  var roofBtn = document.getElementById('roofToggle');
+  roofBtn.addEventListener('click', function(ev) {
+    ev.stopPropagation();
+    roofVisible = !roofVisible;
+    roofGroup.visible = roofVisible;
+    roofBtn.innerHTML = roofVisible
+      ? '🏠<span class="label">Roof On</span>'
+      : '👁<span class="label">Roof Off</span>';
+    roofBtn.style.borderColor = roofVisible
+      ? (IS_DARK ? 'rgba(76,175,80,0.5)' : 'rgba(0,0,0,0.12)')
+      : '#4CAF50';
+    lastInteraction = Date.now();
+  });
+  // Start with roof OFF so user can see inside
+  roofVisible = false;
+  roofGroup.visible = false;
+  roofBtn.innerHTML = '👁<span class="label">Roof Off</span>';
+  roofBtn.style.borderColor = '#4CAF50';
 
   // ================================================================
   // Touch Controls — full 360 rotation
@@ -1719,11 +2562,47 @@ export function House3DViewer({
           }
         } catch(err) {}
 
-        // Also show tooltip for device
+        // Visual pulse feedback — expand glow ring briefly
+        var devGroup = hit;
+        while (devGroup && devGroup.parent !== house && devGroup.parent) {
+          devGroup = devGroup.parent;
+        }
+        if (devGroup) {
+          // Create expanding ring effect
+          var tapRing = new THREE.Mesh(
+            new THREE.RingGeometry(0.5, 0.8, 32),
+            new THREE.MeshBasicMaterial({ color: 0x4CAF50, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+          );
+          tapRing.rotation.x = -Math.PI / 2;
+          tapRing.position.copy(devGroup.position);
+          tapRing.position.y = 0.01;
+          house.add(tapRing);
+          // Animate the ring expanding and fading
+          var tapStart = Date.now();
+          function animateTapRing() {
+            var elapsed = Date.now() - tapStart;
+            var t = elapsed / 600;
+            if (t < 1) {
+              tapRing.scale.set(1 + t * 2, 1 + t * 2, 1);
+              tapRing.material.opacity = 0.8 * (1 - t);
+              requestAnimationFrame(animateTapRing);
+            } else {
+              house.remove(tapRing);
+            }
+          }
+          animateTapRing();
+        }
+
+        // Enhanced tooltip for device with power info
+        var devInfo = DEVICES.find(function(d2) { return d2.label === deviceData.deviceLabel && d2.roomId === deviceData.roomId; });
+        var wattInfo = devInfo && devInfo.watts ? devInfo.watts + 'W' : '';
         var html = '<div class="tt-room">' + (deviceData.deviceLabel || deviceData.deviceCategory) + '</div>';
-        html += '<div class="tt-devices"><div class="tt-device">Category: ' + deviceData.deviceCategory + '</div>';
-        html += '<div class="tt-device">Room: ' + (deviceData.roomName || deviceData.roomId) + '</div>';
-        html += '<div class="tt-device" style="color:#4CAF50;margin-top:4px">Tap for details</div></div>';
+        html += '<div class="tt-devices">';
+        html += '<div class="tt-device"><span style="color:#4CAF50">●</span> ' + deviceData.deviceCategory + '</div>';
+        html += '<div class="tt-device"><span style="color:#2196F3">●</span> Room: ' + (deviceData.roomName || deviceData.roomId) + '</div>';
+        if (wattInfo) html += '<div class="tt-device"><span style="color:#FF9800">●</span> Power: ' + wattInfo + '</div>';
+        html += '<div class="tt-device" style="color:#4CAF50;margin-top:6px;font-weight:600">↗ Tap for details</div>';
+        html += '</div>';
         tooltip.innerHTML = html;
         tooltip.style.display = 'block';
         tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 230) + 'px';
@@ -1732,20 +2611,68 @@ export function House3DViewer({
         return;
       }
 
-      // Check if floor was clicked (room tooltip)
+      // Check if floor was clicked (room tooltip with electricity info)
       var ud = hit.userData;
       if (ud && ud.type === 'floor') {
+        // Room selection highlighting (toggle on/off)
+        if (selectedFloor === hit) {
+          selectedFloor.material.emissive.setHex(0x000000);
+          selectedFloor.material.emissiveIntensity = 0;
+          selectedFloor = null;
+        } else {
+          if (selectedFloor) {
+            selectedFloor.material.emissive.setHex(0x000000);
+            selectedFloor.material.emissiveIntensity = 0;
+          }
+          selectedFloor = hit;
+          selectedFloor.material.emissive.setHex(0x4CAF50);
+          selectedFloor.material.emissiveIntensity = 0.15;
+        }
+
         var rm = ud.name || ud.roomId;
         var devs = DEVICES.filter(function(d) { return d.roomId === ud.roomId; });
-        var html = '<div class="tt-room">' + rm + '</div><div class="tt-devices">';
-        if (devs.length === 0) html += 'No devices';
-        else devs.forEach(function(d) { html += '<div class="tt-device">• ' + (d.label || d.category) + '</div>'; });
+        var totalWatts = 0;
+        devs.forEach(function(d) { totalWatts += (d.watts || 0); });
+        var dailyKwh = (totalWatts * 8 / 1000).toFixed(2);
+        var monthlyCost = (totalWatts * 8 * 30 / 1000 * 0.15).toFixed(2);
+        var html = '<div class="tt-room">' + rm + '</div>';
+        html += '<div style="display:flex;gap:12px;margin:6px 0 8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.1)">';
+        html += '<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:#FF9800">' + totalWatts + 'W</div><div style="font-size:9px;opacity:0.5">Total Power</div></div>';
+        html += '<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:#2196F3">' + dailyKwh + '</div><div style="font-size:9px;opacity:0.5">kWh/day</div></div>';
+        html += '<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:#4CAF50">$' + monthlyCost + '</div><div style="font-size:9px;opacity:0.5">/month</div></div>';
         html += '</div>';
+        html += '<div class="tt-devices">';
+        if (devs.length === 0) {
+          html += '<div style="opacity:0.5;padding:4px 0">No devices scanned yet</div>';
+        } else {
+          devs.forEach(function(d) {
+            var w = d.watts || 0;
+            var wColor = w > 500 ? '#F44336' : w > 100 ? '#FF9800' : '#4CAF50';
+            html += '<div class="tt-device" style="display:flex;justify-content:space-between;align-items:center">';
+            html += '<span><span style="color:' + (getDevColor(d.category) ? '#' + getDevColor(d.category).toString(16).padStart(6, '0') : '#4CAF50') + '">●</span> ' + (d.label || d.category) + '</span>';
+            html += '<span style="color:' + wColor + ';font-weight:600;margin-left:8px">' + w + 'W</span>';
+            html += '</div>';
+          });
+        }
+        html += '</div>';
+        html += '<div style="font-size:9px;opacity:0.4;margin-top:6px;text-align:center">Tap a device for details</div>';
         tooltip.innerHTML = html;
         tooltip.style.display = 'block';
-        tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 230) + 'px';
-        tooltip.style.top = Math.max(e.clientY - 60, 10) + 'px';
-        setTimeout(function() { tooltip.style.display = 'none'; }, 3000);
+        tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 280) + 'px';
+        tooltip.style.top = Math.max(e.clientY - 80, 10) + 'px';
+        // Also send room tap event to React Native
+        try {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'roomTap',
+              roomId: ud.roomId,
+              roomName: rm,
+              deviceCount: devs.length,
+              totalWatts: totalWatts,
+            }));
+          }
+        } catch(err) {}
+        setTimeout(function() { tooltip.style.display = 'none'; }, 5000);
       } else {
         tooltip.style.display = 'none';
       }
@@ -1758,8 +2685,10 @@ export function House3DViewer({
   // Animation loop
   // ================================================================
   var glowRings = [];
+  var smokeObjs = [];
   house.traverse(function(c) {
     if (c.userData && c.userData.isGlow) glowRings.push(c);
+    if (c.userData && c.userData.isSmoke) smokeObjs.push(c);
   });
 
   function animate() {
@@ -1779,7 +2708,6 @@ export function House3DViewer({
 
     // Pulse glow rings + device point lights
     var pulse = 0.3 + Math.sin(now * 0.004) * 0.3;
-    var pulse2 = 0.15 + Math.sin(now * 0.003 + 1) * 0.15;
     glowRings.forEach(function(ring) {
       ring.material.opacity = pulse;
       ring.rotation.z = now * 0.001;
@@ -1790,6 +2718,17 @@ export function House3DViewer({
         obj.intensity = 0.4 + Math.sin(now * 0.003) * 0.3;
       }
     });
+
+    // Animate chimney smoke
+    smokeObjs.forEach(function(s) {
+      s.position.y = s.userData.baseY + Math.sin(now * 0.001 + s.userData.baseY) * 0.3;
+      s.position.x += Math.sin(now * 0.0005) * 0.001;
+    });
+
+    // Pulse selected room floor highlight
+    if (selectedFloor) {
+      selectedFloor.material.emissiveIntensity = 0.08 + Math.sin(now * 0.003) * 0.08;
+    }
 
     renderer.render(scene, camera);
   }
