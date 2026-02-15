@@ -428,22 +428,18 @@ function LandingScreen() {
         </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        {/* Welcome Header */}
-        <View style={styles.hero}>
-          <Text style={[styles.title, { color: colors.text, fontSize: 26 }]}>
-            {user ? `Welcome, ${user.name || user.email.split('@')[0]}` : 'Know Your Power'}
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {stats && stats.deviceCount > 0
-              ? 'Here\'s your energy snapshot.'
-              : 'Scan appliances to start tracking energy.'}
-          </Text>
-        </View>
+      <View style={styles.hero}>
+        <Text style={[styles.title, { color: colors.text, fontSize: 26 }]}>
+          {user ? `Welcome, ${user.name || user.email.split('@')[0]}` : 'Know Your Power'}
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {stats && stats.deviceCount > 0
+            ? 'Here\'s your energy snapshot.'
+            : 'Scan appliances to start tracking energy.'}
+        </Text>
+      </View>
 
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 30 }}>
         {loading ? (
           <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
         ) : (

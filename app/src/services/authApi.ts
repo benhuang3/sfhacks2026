@@ -2,8 +2,6 @@
  * Auth API — calls the FastAPI auth endpoints
  */
 
-// Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
 import { API_V1_URL } from '../utils/apiConfig';
 
 const BASE_URL = API_V1_URL;
@@ -42,12 +40,15 @@ async function authPost<T>(path: string, body: unknown, token?: string): Promise
 
   let res: Response;
   try {
+    console.log('[authApi] Fetching:', `${BASE_URL}${path}`);
     res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
     });
+    console.log('[authApi] Response status:', res.status);
   } catch (networkErr) {
+    console.log('[authApi] Network error:', networkErr);
     throw new Error('Cannot reach server. Make sure the backend is running and the tunnel is active.');
   }
 
