@@ -68,6 +68,15 @@ function DonutChart({ slices, size = 180, strokeWidth = 28, textColor = '#fff', 
   }
 
   let accumulated = 0;
+  const formatMoney0 = (n: number) => {
+    const s = Math.round(n).toString();
+    return '$' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
+  const totalStr = formatMoney0(total);
+  const baseFont = Math.round(size * 0.13);
+  const digits = totalStr.replace(/[^0-9]/g, '').length;
+  const shrink = Math.max(0, digits - 3);
+  const fontSizeMain = Math.max(14, baseFont - shrink * 4);
   return (
     <Svg width={size} height={size}>
       <G rotation="-90" origin={`${cx},${cy}`}>
@@ -92,23 +101,21 @@ function DonutChart({ slices, size = 180, strokeWidth = 28, textColor = '#fff', 
         })}
       </G>
       <SvgText
-        x={cx} y={cy - 10}
+        x={cx} y={cy - Math.round(fontSizeMain / 6)}
         textAnchor="middle"
         fill={textColor}
-        fontSize="16"
-        fontWeight="700"
-        fontFamily="System"
+        fontSize={fontSizeMain}
+        fontWeight="bold"
       >
-        ${total.toFixed(0)}
+        {totalStr}
       </SvgText>
       <SvgText
-        x={cx} y={cy + 8}
+        x={cx} y={cy + 14}
         textAnchor="middle"
         fill={subColor}
-        fontSize="10"
-        fontFamily="System"
+        fontSize={Math.max(11, Math.round(size * 0.075))}
       >
-        /year
+        per year
       </SvgText>
     </Svg>
   );
@@ -220,6 +227,11 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
       color: CATEGORY_COLORS[label] ?? '#888',
     })).sort((a, b) => b.value - a.value);
   }, [stats.breakdown, scannedDevices]);
+
+  const formatMoney0 = (n: number) => {
+    const s = Math.round(n).toString();
+    return '$' + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  };
 
   // 7-day trend data based on real device breakdown
   const lineData = useMemo(() => {
@@ -373,19 +385,26 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
         </View>
       )}
 
-      {/* Donut Chart — Cost Breakdown by Category (fixed layout so $ doesn't overwrite) */}
+      {/* Donut Chart — Cost Breakdown by Category */}
       <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.chartTitle, { color: colors.text }]}>Cost Breakdown by Category</Text>
-        <View style={[styles.donutRow, { flexWrap: 'wrap', minHeight: 140, alignItems: 'flex-start' }]}>
-          <View style={{ width: Math.min(160, SCREEN_W * 0.4), alignItems: 'center', justifyContent: 'center' }}>
-            <DonutChart slices={donutSlices} size={Math.min(140, SCREEN_W * 0.35)} strokeWidth={24} textColor={colors.text} subColor={colors.textSecondary} />
+        <View style={[styles.donutRow, { flexWrap: 'wrap', minHeight: 160, alignItems: 'flex-start' }]}>
+          <View style={{ width: Math.min(180, SCREEN_W * 0.45), alignItems: 'center', justifyContent: 'center' }}>
+            <DonutChart slices={donutSlices} size={Math.min(170, SCREEN_W * 0.42)} strokeWidth={26} textColor={colors.text} subColor={colors.textSecondary} />
           </View>
           <View style={[styles.legendCol, { flex: 1, minWidth: 140 }]}>
             {donutSlices.slice(0, 6).map((s, i) => (
               <View key={`cat-${s.label}-${i}`} style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: s.color }]} />
-                <Text style={[styles.legendText, { color: colors.textSecondary, fontSize: 12 }]} numberOfLines={1}>
-                  {s.label}: <Text style={{ color: colors.text, fontWeight: '600' }}>{'$'}{s.value.toFixed(0)}</Text>
+                <Text
+                  style={[styles.legendLabel, { color: colors.textSecondary }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {s.label}
+                </Text>
+                <Text style={[styles.legendValue, { color: colors.text }]}> 
+                  {formatMoney0(s.value)}
                 </Text>
               </View>
             ))}
@@ -466,35 +485,37 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
         <Text style={[styles.chartTitle, { color: colors.text }]}>
           <Ionicons name="calendar-outline" size={15} color={colors.accent} /> Monthly Billing (est.)
         </Text>
-        {stats.dailyCost > 0 ? (
-          <LineChart
-            data={monthlyData}
-            width={SCREEN_W - 80}
-            height={220}
-            yAxisLabel="$"
-            yAxisSuffix=""
-            chartConfig={{
-              backgroundColor: 'transparent',
-              backgroundGradientFrom: isDark ? '#12121a' : '#ffffff',
-              backgroundGradientTo: isDark ? '#12121a' : '#ffffff',
-              backgroundGradientFromOpacity: 0,
-              backgroundGradientToOpacity: 0,
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
-              labelColor: () => isDark ? '#888' : '#555',
-              propsForDots: { r: '5', strokeWidth: '2', stroke: '#2196F3' },
-              propsForBackgroundLines: {
-                strokeDasharray: '4',
-                stroke: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-              },
-              fillShadowGradientFrom: '#2196F3',
-              fillShadowGradientFromOpacity: 0.25,
-              fillShadowGradientTo: '#2196F3',
-              fillShadowGradientToOpacity: 0.01,
-            }}
-            bezier
-            style={{ borderRadius: 12, marginLeft: -16 }}
-          />
+        {(stats.dailyCost > 0 || stats.monthlyCost > 0) ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <LineChart
+              data={monthlyData}
+              width={Math.max(SCREEN_W - 60, 380)}
+              height={220}
+              yAxisLabel="$"
+              yAxisSuffix=""
+              chartConfig={{
+                backgroundColor: 'transparent',
+                backgroundGradientFrom: isDark ? '#12121a' : '#ffffff',
+                backgroundGradientTo: isDark ? '#12121a' : '#ffffff',
+                backgroundGradientFromOpacity: 0,
+                backgroundGradientToOpacity: 0,
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
+                labelColor: () => isDark ? '#888' : '#555',
+                propsForDots: { r: '5', strokeWidth: '2', stroke: '#2196F3' },
+                propsForBackgroundLines: {
+                  strokeDasharray: '4',
+                  stroke: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                },
+                fillShadowGradientFrom: '#2196F3',
+                fillShadowGradientFromOpacity: 0.25,
+                fillShadowGradientTo: '#2196F3',
+                fillShadowGradientToOpacity: 0.01,
+              }}
+              bezier
+              style={{ borderRadius: 12 }}
+            />
+          </ScrollView>
         ) : (
           <View style={{ minHeight: 160, justifyContent: 'center', alignItems: 'center' }}>
             <Text style={{ color: colors.textSecondary, textAlign: 'center', paddingVertical: 24 }}>
@@ -575,7 +596,7 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
         const scoreColor = score >= 80 ? '#4CAF50' : score >= 50 ? '#FF9800' : '#F44336';
         const scoreLabel = score >= 90 ? 'Outstanding' : score >= 75 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Average' : 'Needs Improvement';
 
-        // Badges
+        // Badges — 9 total achievements
         const badges: { icon: string; label: string; earned: boolean; desc: string }[] = [
           { icon: 'search-outline', label: 'Scanner',       earned: stats.deviceCount >= 1, desc: 'Scan your first device' },
           { icon: 'grid-outline',   label: 'Power Hunter',  earned: stats.deviceCount >= 5, desc: 'Scan 5 devices' },
@@ -583,18 +604,27 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
           { icon: 'shield-outline', label: 'Vampire Slayer', earned: stats.ghostKwh < 50, desc: 'Keep ghost energy < 50 kWh' },
           { icon: 'leaf-outline',   label: 'Eco Warrior',   earned: userKwh < US_AVG_KWH * 0.5, desc: 'Use < 50% of US avg' },
           { icon: 'flash-outline',  label: 'Efficiency Pro', earned: score >= 80, desc: 'Score 80+ efficiency' },
+          { icon: 'home-outline',   label: 'Home Builder',  earned: true, desc: 'Set up your smart home' },
+          { icon: 'bar-chart-outline', label: 'Data Analyst', earned: true, desc: 'View energy dashboard' },
+          { icon: 'trending-down-outline', label: 'Cost Cutter',   earned: stats.savedDollars > 0, desc: 'Save money with actions' },
         ];
         const earnedCount = badges.filter(b => b.earned).length;
 
-        // Ranking — simulated neighborhood/leaderboard
+        // Ranking — global leaderboard with more entries
         const householdRankings = [
           { name: 'Your Home',     kwh: userKwh,                 isUser: true },
           { name: 'US Average',    kwh: US_AVG_KWH,              isUser: false },
-          { name: 'Eco Leader',    kwh: US_AVG_KWH * 0.35,       isUser: false },
+          { name: 'Top 10% US',    kwh: US_AVG_KWH * 0.3,        isUser: false },
+          { name: 'Eco Leader',    kwh: US_AVG_KWH * 0.2,        isUser: false },
           { name: 'Neighbor Avg',  kwh: US_AVG_KWH * 0.85,       isUser: false },
           { name: 'CA Average',    kwh: 6500,                    isUser: false },
+          { name: 'EU Average',    kwh: 3600,                    isUser: false },
+          { name: 'World Average', kwh: 3300,                    isUser: false },
         ].sort((a, b) => a.kwh - b.kwh);
         const userRank = householdRankings.findIndex(h => h.isUser) + 1;
+        const totalRanked = householdRankings.length;
+        // Global percentile estimate (lower kwh = better percentile)
+        const percentile = Math.round(Math.max(1, Math.min(99, (1 - userKwh / US_AVG_KWH) * 80 + 20)));
 
         return (
           <>
@@ -665,15 +695,20 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
               </View>
             </View>
 
-            {/* Energy Ranking / Leaderboard */}
+            {/* Energy Ranking / Global Leaderboard */}
             <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                 <Ionicons name="podium-outline" size={22} color="#9C27B0" />
-                <Text style={[styles.chartTitle, { color: colors.text, marginBottom: 0, marginLeft: 8 }]}>Energy Ranking</Text>
+                <Text style={[styles.chartTitle, { color: colors.text, marginBottom: 0, marginLeft: 8 }]}>Global Ranking</Text>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
-                You rank #{userRank} out of {householdRankings.length} — {userRank <= 2 ? 'Top performer!' : userRank <= 3 ? 'Above average!' : 'Room to improve'}
-              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  Rank #{userRank} of {totalRanked} — {userRank <= 2 ? 'Top performer!' : userRank <= 4 ? 'Above average!' : 'Room to improve'}
+                </Text>
+                <View style={{ backgroundColor: scoreColor + '22', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <Text style={{ color: scoreColor, fontSize: 12, fontWeight: '800' }}>Top {percentile}%</Text>
+                </View>
+              </View>
 
               {householdRankings.map((h, i) => {
                 const maxKwh = Math.max(...householdRankings.map(r => r.kwh));
@@ -766,7 +801,8 @@ const styles = StyleSheet.create({
   legendCol: { flex: 1, gap: 6 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: 14, fontWeight: '500' },
+  legendLabel: { flex: 1, fontSize: 12, fontWeight: '500' },
+  legendValue: { minWidth: 80, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   deviceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
   deviceLabel: { fontSize: 15, fontWeight: '600' },
 });

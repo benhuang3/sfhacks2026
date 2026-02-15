@@ -55,6 +55,7 @@ from agents import (
     lookup_power_profile,
     seed_category_defaults,
     get_motor_client,
+    reset_motor_client,
     _resolve_fallback,
 )
 
@@ -190,7 +191,7 @@ async def lifespan(app: FastAPI):
     yield  # ← app is running
 
     # ── shutdown ──────────────────────────────────────────────────────────
-    client.close()
+    reset_motor_client()
     logger.info("🛑  Motor client closed")
 
 
@@ -269,7 +270,8 @@ async def health_check():
     try:
         await client.admin.command("ping")
         db_status = "connected"
-    except Exception:
+    except Exception as exc:
+        logger.warning("Health check DB ping failed: %s", exc)
         db_status = "unreachable"
 
     return {
@@ -1331,6 +1333,7 @@ async def list_categories():
 class ChatRequest(_PydanticBase):
     message: str
     history: list[dict] = []  # [{role: "user"|"assistant", content: "..."}]
+    home_id: str | None = None  # optional — enriches answers with real device data
 
 class ChatResponse(_PydanticBase):
     reply: str
@@ -1341,9 +1344,36 @@ async def chat_endpoint(req: ChatRequest):
     Energy advisor chatbot powered by Gemini 2.0 Flash.
     Uses google.genai SDK directly (no langchain) for fast error handling.
     Falls back to curated responses when quota is exhausted.
+    When home_id is provided, injects real device list + energy summary.
     """
     import asyncio
     logger.info("Chat endpoint received message: %s", req.message[:50])
+
+    # ── Build device/energy context if home_id provided ─────────────
+    device_context = ""
+    if req.home_id:
+        try:
+            devices = await list_devices(req.home_id)
+            if devices:
+                lines = []
+                for d in devices:
+                    pw = d.get("power", {})
+                    watts = pw.get("active_watts_typical") or pw.get("active_watts_max") or 0
+                    room = d.get("roomId", "unknown")
+                    lines.append(f"  - {d.get('label','?')} ({d.get('category','?')}) in {room}: {watts}W")
+                device_context += "\\n\\nThe user's ACTUAL devices:\\n" + "\\n".join(lines)
+            summary = await compute_home_summary(req.home_id)
+            if summary:
+                totals = summary.get("totals", {})
+                device_context += (
+                    f"\\n\\nEnergy summary for this home:\\n"
+                    f"  Total annual kWh (typical): {totals.get('annual_kwh_typical', 'N/A')}\\n"
+                    f"  Total annual cost: ${totals.get('annual_cost_typical', 'N/A')}\\n"
+                    f"  Total annual CO₂ kg: {totals.get('annual_co2_kg_typical', 'N/A')}\\n"
+                    f"  Device count: {totals.get('device_count', len(devices) if devices else 0)}"
+                )
+        except Exception as ctx_err:
+            logger.warning("Could not load device context: %s", str(ctx_err)[:100])
     
     try:
         from agents import GOOGLE_API_KEY as _GKEY
@@ -1366,6 +1396,14 @@ async def chat_endpoint(req: ChatRequest):
             "Include specific numbers when helpful (watts, kWh, costs at $0.30/kWh). "
             "Use emoji occasionally to keep it friendly. Max 3-4 paragraphs."
         )
+        if device_context:
+            system_msg += (
+                "\n\n--- REAL HOME DATA (use this to personalize answers) ---"
+                + device_context
+                + "\n\nWhen the user asks about their devices or energy, reference THIS data — "
+                "do NOT make up device names or wattages. If they ask 'what uses the most power', "
+                "look at the actual wattages above."
+            )
 
         # Build conversation with history
         contents = []

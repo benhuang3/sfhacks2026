@@ -5,7 +5,7 @@
  * Works in Expo Go — no native dev build required.
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -23,8 +23,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Theme hook from App
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 import { API_V1_URL } from '../utils/apiConfig';
+import { listHomes } from '../services/apiClient';
 
 const BASE_URL = API_V1_URL;
 
@@ -43,16 +45,20 @@ interface ChatMessage {
 // ---------------------------------------------------------------------------
 async function sendChatMessage(
   message: string,
-  history: { role: string; content: string }[]
+  history: { role: string; content: string }[],
+  homeId?: string | null,
 ): Promise<string> {
   const url = `${API_V1_URL}/chat`;
   console.log(`[GEMINI] Chat request: "${message}" (${history.length} messages in history)`);
   const t0 = Date.now();
 
+  const body: any = { message, history };
+  if (homeId) body.home_id = homeId;
+
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify(body),
   });
 
   const elapsed = Date.now() - t0;
@@ -76,10 +82,43 @@ async function sendChatMessage(
 // ---------------------------------------------------------------------------
 export function ChatScreen() {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [homeId, setHomeId] = useState<string | null>(null);
+  const [deviceCount, setDeviceCount] = useState(0);
+  const [topCategory, setTopCategory] = useState<string | null>(null);
+
+  // Fetch first home on mount so chat can include device context
+  useEffect(() => {
+    (async () => {
+      try {
+        const uid = user?.id || user?.homeId || 'demo';
+        const homes = await listHomes(uid);
+        if (homes.length > 0) {
+          setHomeId(homes[0].id);
+          // Fetch devices to personalize suggestions
+          try {
+            const { listDevices } = await import('../services/apiClient');
+            const devs = await listDevices(homes[0].id);
+            setDeviceCount(devs.length);
+            if (devs.length > 0) {
+              // Find highest wattage device for suggestion
+              let maxW = 0;
+              let maxCat = '';
+              for (const d of devs) {
+                const w = d.power?.active_watts_typical ?? 0;
+                if (w > maxW) { maxW = w; maxCat = d.category; }
+              }
+              if (maxCat) setTopCategory(maxCat);
+            }
+          } catch { /* ok */ }
+        }
+      } catch { /* silently continue without home context */ }
+    })();
+  }, [user]);
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -111,7 +150,7 @@ export function ChatScreen() {
         content: m.content,
       }));
 
-      const reply = await sendChatMessage(text, history);
+      const reply = await sendChatMessage(text, history, homeId);
 
       const assistantMsg: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -135,7 +174,7 @@ export function ChatScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, isLoading, messages, scrollToBottom]);
+  }, [inputText, isLoading, messages, scrollToBottom, homeId]);
 
   // ── Render message bubble ────────────────────────────────────────────
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
@@ -163,13 +202,23 @@ export function ChatScreen() {
     );
   }, [colors, isDark]);
 
-  // ── Quick suggestions ────────────────────────────────────────────────
-  const suggestions = [
-    'How can I reduce my electricity bill?',
-    'What appliances use the most energy?',
-    'Is standby power a big deal?',
-    'Tips for energy-efficient cooling',
-  ];
+  // ── Quick suggestions — personalized when device data available ───
+  const suggestions = React.useMemo(() => {
+    if (deviceCount > 0 && topCategory) {
+      return [
+        'What device uses the most power in my home?',
+        `How much does my ${topCategory} cost to run per year?`,
+        'Give me a breakdown of my energy usage',
+        'Which devices should I unplug to save the most?',
+      ];
+    }
+    return [
+      'What device uses the most power in my home?',
+      'How can I reduce my electricity bill?',
+      'Give me a breakdown of my energy usage',
+      'Tips for energy-efficient cooling',
+    ];
+  }, [deviceCount, topCategory]);
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.bg }]}>
@@ -199,7 +248,9 @@ export function ChatScreen() {
               Your Energy Assistant
             </Text>
             <Text style={[s.emptyDesc, { color: colors.textSecondary }]}>
-              Ask anything about home energy usage, appliance efficiency, or reducing your electricity bill.
+              {deviceCount > 0
+                ? `I can see ${deviceCount} device${deviceCount !== 1 ? 's' : ''} in your home. Ask me anything about your energy usage!`
+                : 'Ask anything about home energy usage, appliance efficiency, or reducing your electricity bill.'}
             </Text>
 
             {/* Quick suggestions */}
