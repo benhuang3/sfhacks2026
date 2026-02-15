@@ -16,7 +16,11 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "SmartGrid Home needs camera access to scan and identify your appliances",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        }
       },
       "bundleIdentifier": "com.anonymous.smartgrid-home"
     },

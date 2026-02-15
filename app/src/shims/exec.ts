@@ -1,9 +1,15 @@
-export const SSDLITE_320_MOBILENET_V3_LARGE = 'ssdlite_320_mobilenet_v3_large';
-export type RnExecutorchError = Error | null;
+/**
+ * ExecuTorch shim — conditionally imports the real react-native-executorch
+ * package when available (dev client build), otherwise falls back to stubs
+ * so the app can still run in Expo Go.
+ */
 
-export function useObjectDetection(_: { model: { modelSource: string } }) {
-  // Simple stub: pretend detector is ready with no models downloaded and returns no detections.
-  const detector = {
+// ---------------------------------------------------------------------------
+// Stub implementations (used when native module is unavailable)
+// ---------------------------------------------------------------------------
+
+function stubUseObjectDetection(_: { model: { modelSource: any } }) {
+  return {
     isReady: true,
     isGenerating: false,
     error: null as RnExecutorchError,
@@ -16,12 +22,9 @@ export function useObjectDetection(_: { model: { modelSource: string } }) {
       }>;
     },
   };
-
-  return detector;
 }
 
-export const OCR_ENGLISH = 'eng';
-export function useOCR(_: { model: string }) {
+function stubUseOCR(_: { model: any }) {
   return {
     isReady: true,
     forward: async (_imageUri: string) => {
@@ -29,3 +32,27 @@ export function useOCR(_: { model: string }) {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Conditional real import
+// ---------------------------------------------------------------------------
+
+let realModule: any = null;
+try {
+  realModule = require('react-native-executorch');
+  console.log('[exec shim] react-native-executorch loaded successfully');
+} catch (e) {
+  console.warn('[exec shim] react-native-executorch not available, using stubs. Error:', e);
+}
+
+export const useObjectDetection =
+  realModule?.useObjectDetection ?? stubUseObjectDetection;
+
+export const SSDLITE_320_MOBILENET_V3_LARGE =
+  realModule?.SSDLITE_320_MOBILENET_V3_LARGE ?? { modelSource: '' };
+
+export type RnExecutorchError = Error | null;
+
+export const OCR_ENGLISH = realModule?.OCR_ENGLISH ?? 'eng';
+
+export const useOCR = realModule?.useOCR ?? stubUseOCR;

@@ -5,16 +5,10 @@
  * physical device, or localhost for emulators.
  */
 
-import { Platform } from 'react-native';
+import { API_V1_URL } from '../utils/apiConfig';
+import { log } from '../utils/logger';
 
-// Web can use localhost; physical devices need LAN IP
-const DEV_HOST = Platform.select({
-  web: 'localhost',
-  android: '10.0.2.2',
-  default: '10.142.12.209',  // LAN IP for physical devices
-});
-
-const BASE_URL = `http://${DEV_HOST}:8000/api/v1`;
+const BASE_URL = API_V1_URL;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +43,7 @@ export interface ScanInsertResponse {
 // ---------------------------------------------------------------------------
 
 async function post<T>(path: string, body: unknown): Promise<T> {
+  log.api(`POST ${path}`, { url: `${BASE_URL}${path}` });
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -58,9 +53,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   const data = await res.json();
 
   if (!res.ok || !data.success) {
+    log.error('api', `POST ${path} failed (${res.status})`, new Error(data.error || data.detail?.error));
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
 
+  log.api(`POST ${path} -> ${res.status}`);
   return data.data as T;
 }
 
@@ -116,8 +113,10 @@ export async function saveScan(params: {
  * Health check — verify server is reachable.
  */
 export async function checkHealth(): Promise<{ status: string; database: string }> {
+  log.api('GET /health');
   const res = await fetch(`${BASE_URL}/health`);
   const data = await res.json();
+  log.api(`GET /health -> ${res.status}`, data.data);
   return data.data;
 }
 
@@ -126,20 +125,26 @@ export async function checkHealth(): Promise<{ status: string; database: string 
 // ---------------------------------------------------------------------------
 
 async function get<T>(path: string): Promise<T> {
+  log.api(`GET ${path}`);
   const res = await fetch(`${BASE_URL}${path}`);
   const data = await res.json();
   if (!res.ok || !data.success) {
+    log.error('api', `GET ${path} failed (${res.status})`, new Error(data.error || data.detail?.error));
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
+  log.api(`GET ${path} -> ${res.status}`);
   return data.data as T;
 }
 
 async function del<T>(path: string): Promise<T> {
+  log.api(`DELETE ${path}`);
   const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
   const data = await res.json();
   if (!res.ok || !data.success) {
+    log.error('api', `DELETE ${path} failed (${res.status})`, new Error(data.error || data.detail?.error));
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
+  log.api(`DELETE ${path} -> ${res.status}`);
   return data.data as T;
 }
 

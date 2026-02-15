@@ -27,11 +27,13 @@ import {
   USAGE_HOUR_OPTIONS,
   getCategoryIcon,
 } from '../utils/energyConstants';
+import { log } from '../utils/logger';
 
 interface UploadScanScreenProps {
   onBack: () => void;
   onScanComplete?: (result: ScanResultData, imageUri?: string) => void;
   onViewDashboard?: () => void;
+  onOpenCamera?: () => void;
 }
 
 interface DetectedAppliance {
@@ -76,7 +78,7 @@ const SCAN_STEPS = [
   { key: 'complete', label: 'Analysis complete!', icon: '✅' },
 ];
 
-export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: UploadScanScreenProps) {
+export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard, onOpenCamera }: UploadScanScreenProps) {
   const { user } = useAuth();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -146,6 +148,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
   // Cross-platform image picker
   const handlePickImage = useCallback(async () => {
+    log.scan('Pick image pressed');
     try {
       if (Platform.OS === 'web') {
         // Web: use file input
@@ -189,12 +192,14 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
         }
       }
     } catch (err) {
+      log.error('scan', 'Failed to pick image', err);
       setError('Failed to pick image. Please try again.');
     }
   }, [imageUri]);
 
   // Launch camera directly (native only)
   const handleTakePhoto = useCallback(async () => {
+    log.scan('Take photo pressed');
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -214,6 +219,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
         setAddedToHome(false);
       }
     } catch (err) {
+      log.error('scan', 'Failed to take photo', err);
       setError('Failed to take photo. Please try again.');
     }
   }, []);
@@ -222,6 +228,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
   const handleAddToHome = useCallback(async () => {
     if (!result || !selectedHomeId) return;
     setAddingToHome(true);
+    log.scan('Add to home pressed', { homeId: selectedHomeId, room: selectedRoom });
     try {
       const appliance = result.detected_appliance;
       const power = result.power_profile?.profile;
@@ -243,7 +250,9 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       });
       setAddedToHome(true);
       setShowAddToHome(false);
+      log.scan('Device added to home', { homeId: selectedHomeId, category: appliance.category });
     } catch (err) {
+      log.error('scan', 'Failed to add device to home', err);
       setError(err instanceof Error ? err.message : 'Failed to add device');
     }
     setAddingToHome(false);
@@ -253,7 +262,8 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
   const handleUpload = useCallback(async () => {
     if (!imageUri && !imageFile) return;
     setError(null);
-    
+    log.scan('Analyze power pressed — uploading image');
+
     setScanStep('uploading');
     
     try {
@@ -271,9 +281,11 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       }
       setResult(scanData);
       setScanStep('complete');
+      log.scan('Scan complete', { category: scanData.detected_appliance.category, confidence: scanData.detected_appliance.confidence });
       onScanComplete?.(scanData, imageUri ?? undefined);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Upload failed';
+      log.error('scan', 'Upload/scan failed', err);
       setError(msg);
       setScanStep('error');
     }
@@ -362,6 +374,11 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
             {Platform.OS !== 'web' && (
               <TouchableOpacity style={[styles.primaryBtn, { marginTop: 12 }]} onPress={handleTakePhoto}>
                 <Text style={styles.primaryBtnText}>📸 Take Photo</Text>
+              </TouchableOpacity>
+            )}
+            {onOpenCamera && (
+              <TouchableOpacity style={[styles.cameraScanBtn, { marginTop: 12 }]} onPress={onOpenCamera}>
+                <Text style={styles.cameraScanBtnText}>🎥 Scan with Camera</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -812,6 +829,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  cameraScanBtn: {
+    paddingVertical: 16,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    alignItems: 'center',
+  },
+  cameraScanBtnText: { color: '#4CAF50', fontSize: 15, fontWeight: '700' },
 
   // Error
   errorBox: {

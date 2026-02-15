@@ -22,6 +22,7 @@ import {
   type DeviceBreakdown,
 } from '../services/apiClient';
 import { RATE_PER_KWH, CO2_PER_KWH, getCategoryIcon, getCategoryColor } from '../utils/energyConstants';
+import { log } from '../utils/logger';
 
 interface HomeSummaryScreenProps {
   homeId: string;
@@ -39,16 +40,18 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
   const [saving, setSaving] = useState(false);
 
   const loadSummary = useCallback(async () => {
+    log.home('Loading summary', { homeId });
     try {
       setLoading(true);
       const data = await getHomeSummary(homeId);
       setSummary(data);
+      log.home('Summary loaded', { devices: data.totals.device_count, annualCost: data.totals.annual_cost });
       // Set form defaults from assumptions
       setRateInput(String(data.assumptions.rate_per_kwh));
       setCo2Input(String(data.assumptions.kg_co2_per_kwh));
       setProfileInput(data.assumptions.profile);
     } catch (err) {
-      console.warn('Failed to load summary:', err);
+      log.error('home', 'Failed to load summary', err);
     } finally {
       setLoading(false);
     }
@@ -57,6 +60,7 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
   const handleSaveAssumptions = async () => {
+    log.home('Save assumptions pressed', { rate: rateInput, co2: co2Input, profile: profileInput });
     try {
       setSaving(true);
       await setAssumptions(homeId, {
@@ -64,9 +68,11 @@ export function HomeSummaryScreen({ homeId, onBack, onViewActions }: HomeSummary
         kg_co2_per_kwh: parseFloat(co2Input) || CO2_PER_KWH,
         profile: profileInput as 'light' | 'typical' | 'heavy',
       });
+      log.home('Assumptions saved');
       setShowSettings(false);
       await loadSummary();
     } catch (err: unknown) {
+      log.error('home', 'Save assumptions failed', err);
       showAlert('Error', err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);

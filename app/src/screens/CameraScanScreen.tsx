@@ -26,6 +26,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadScanImage } from '../services/apiService';
+import { log } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +58,7 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
 
   // ── Capture photo ──────────────────────────────────────────────────────
   const handleCapture = useCallback(async () => {
+    log.scan('Capture button pressed');
     if (!cameraRef.current) return;
 
     let uri: string | null = null;
@@ -99,16 +101,19 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
     }
 
     if (uri) {
+      log.scan('Photo captured successfully');
       setPhotoUri(uri);
       setPhase('preview');
       setError(null);
     } else {
+      log.error('scan', 'Failed to capture photo — no URI returned');
       setError('Failed to capture photo. Please try again.');
     }
   }, []);
 
   // ── Retake ─────────────────────────────────────────────────────────────
   const handleRetake = useCallback(() => {
+    log.scan('Retake pressed');
     setPhotoUri(null);
     setPhase('camera');
     setError(null);
@@ -122,9 +127,10 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
     setPhase('uploading');
     setError(null);
 
+    log.scan('Confirm & upload pressed');
     try {
       const data = await uploadScanImage(photoUri);
-      console.log('✅ Scan result:', JSON.stringify(data, null, 2));
+      log.scan('Scan result received', data);
       setResult(data);
       onResult?.(data);
       if (Platform.OS === 'web') {
@@ -135,7 +141,7 @@ export function CameraScanScreen({ onBack, onResult }: CameraScanScreenProps) {
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Upload failed. Please try again.';
-      console.error('❌ Upload error:', message);
+      log.error('scan', 'Upload failed', err);
       setError(message);
     } finally {
       setPhase('preview');
