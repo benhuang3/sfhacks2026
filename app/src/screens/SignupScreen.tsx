@@ -8,6 +8,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { log } from '../utils/logger';
 
 interface Props {
   onGoLogin: () => void;
@@ -28,9 +29,11 @@ export function SignupScreen({ onGoLogin }: Props) {
     if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setError('');
     setLoading(true);
+    log.auth('Signup button pressed', { email, name });
     try {
       await signup(email, password, name);
     } catch (e: unknown) {
+      log.error('auth', 'Signup failed', e);
       setError(e instanceof Error ? e.message : 'Signup failed');
     }
     setLoading(false);

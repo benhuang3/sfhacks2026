@@ -7,6 +7,7 @@
 
 import axios, { AxiosError } from 'axios';
 import { Platform } from 'react-native';
+import { log } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -17,7 +18,7 @@ const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
 
 const API_BASE_URL = TUNNEL_URL;
 
-console.log('[apiService] API_BASE_URL =', API_BASE_URL);
+log.config('apiService API_BASE_URL', { url: API_BASE_URL });
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -68,11 +69,13 @@ export async function uploadScanImage(image: string | File | Blob): Promise<Reco
   }
 
   try {
+    log.api('POST /scan (multipart image upload)');
     const response = await api.post('/scan', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
+    log.api('POST /scan -> success', response.data);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -81,6 +84,7 @@ export async function uploadScanImage(image: string | File | Blob): Promise<Reco
         axiosErr.response?.data?.detail ??
         axiosErr.response?.data?.error ??
         axiosErr.message;
+      log.error('api', `POST /scan failed (${axiosErr.response?.status ?? 'network'})`, axiosErr);
       throw new Error(`Scan failed (${axiosErr.response?.status ?? 'network'}): ${serverMessage}`);
     }
     throw error;
@@ -99,6 +103,7 @@ interface PowerProfileRequest {
 }
 
 export async function fetchPowerProfile(device: PowerProfileRequest) {
+  log.api('POST /api/v1/power-profile', { brand: device.brand, model: device.model, name: device.name });
   try {
     const response = await api.post('/api/v1/power-profile', {
       brand: device.brand,
@@ -106,10 +111,12 @@ export async function fetchPowerProfile(device: PowerProfileRequest) {
       name: device.name,
       region: device.region ?? 'US',
     });
+    log.api('POST /api/v1/power-profile -> success');
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosErr = error as AxiosError<{ detail?: string }>;
+      log.error('api', `Power profile lookup failed (${axiosErr.response?.status ?? 'network'})`, axiosErr);
       throw new Error(
         `Power profile lookup failed: ${axiosErr.response?.data?.detail ?? axiosErr.message}`
       );
@@ -123,6 +130,8 @@ export async function fetchPowerProfile(device: PowerProfileRequest) {
 // ---------------------------------------------------------------------------
 
 export async function checkHealth(): Promise<{ status: string; database: string; models_loaded?: boolean }> {
+  log.api('GET /api/v1/health');
   const response = await api.get('/api/v1/health');
+  log.api('GET /api/v1/health -> success', response.data?.data);
   return response.data?.data;
 }

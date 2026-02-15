@@ -20,6 +20,7 @@ import {
   type ActionProposal,
   type ActionRecord,
 } from '../services/apiClient';
+import { log } from '../utils/logger';
 
 interface ActionsScreenProps {
   homeId: string;
@@ -61,24 +62,28 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadProposals = useCallback(async () => {
+    log.action('Loading AI proposals', { homeId });
     try {
       setLoading(true);
       const data = await proposeActions(homeId, { top_n: 8 });
       setProposals(data.proposals || []);
+      log.action(`Loaded ${data.proposals?.length ?? 0} proposal(s)`);
     } catch (err) {
-      console.warn('Failed to load proposals:', err);
+      log.error('action', 'Failed to load proposals', err);
     } finally {
       setLoading(false);
     }
   }, [homeId]);
 
   const loadHistory = useCallback(async () => {
+    log.action('Loading action history', { homeId });
     try {
       setLoading(true);
       const data = await listActions(homeId);
       setHistory(data || []);
+      log.action(`Loaded ${data?.length ?? 0} action record(s)`);
     } catch (err) {
-      console.warn('Failed to load history:', err);
+      log.error('action', 'Failed to load history', err);
     } finally {
       setLoading(false);
     }
@@ -121,11 +126,13 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
       : `Execute ${selectedIds.size} selected action(s)?`;
 
     showConfirm('Confirm Execution', message, async () => {
+      log.action('Execute actions confirmed', { count: selectedIds.size, ids: Array.from(selectedIds) });
       try {
         setExecuting(true);
         const result = await executeActions(homeId, Array.from(selectedIds));
         const succeeded = result.execution_results.filter(r => r.status === 'executed').length;
         const failed = result.execution_results.filter(r => r.status === 'failed').length;
+        log.action('Execution complete', { succeeded, failed });
 
         showAlert(
           'Execution Complete',
@@ -134,6 +141,7 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
         setSelectedIds(new Set());
         setTab('history');
       } catch (err: unknown) {
+        log.error('action', 'Execute actions failed', err);
         showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Execution failed');
       } finally {
         setExecuting(false);
@@ -142,12 +150,15 @@ export function ActionsScreen({ homeId, onBack }: ActionsScreenProps) {
   };
 
   const handleRevert = async (actionId: string) => {
+    log.action('Revert pressed', { actionId });
     showConfirm('Revert Action', 'Undo this action?', async () => {
       try {
         await revertAction(homeId, actionId);
+        log.action('Action reverted', { actionId });
         showAlert('Reverted', 'Action has been reverted.');
         loadHistory();
       } catch (err: unknown) {
+        log.error('action', 'Revert failed', err);
         showAlert('Error', err instanceof Error ? err.message : 'Operation failed');
       }
     });

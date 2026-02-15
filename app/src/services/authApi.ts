@@ -2,12 +2,14 @@
  * Auth API — calls the FastAPI auth endpoints
  */
 
+import { log } from '../utils/logger';
+
 // Cloudflare tunnel URL — works from any device (phone, web, emulator)
 const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
-console.log('[authApi] BASE_URL =', BASE_URL);
+log.config('authApi BASE_URL', { url: BASE_URL });
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +43,7 @@ async function authPost<T>(path: string, body: unknown, token?: string): Promise
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
+  log.api(`POST ${path}`, { url: `${BASE_URL}${path}` });
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
@@ -61,13 +64,16 @@ async function authPost<T>(path: string, body: unknown, token?: string): Promise
   }
 
   if (!res.ok) {
+    log.error('api', `POST ${path} failed (${res.status})`, new Error(data?.detail || data?.error));
     throw new Error(data?.detail || data?.error || `Auth error ${res.status}`);
   }
 
+  log.api(`POST ${path} -> ${res.status}`);
   return (data.data ?? data) as T;
 }
 
 async function authGet<T>(path: string, token: string): Promise<T> {
+  log.api(`GET ${path}`);
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
@@ -85,9 +91,11 @@ async function authGet<T>(path: string, token: string): Promise<T> {
   }
 
   if (!res.ok) {
+    log.error('api', `GET ${path} failed (${res.status})`, new Error(data?.detail || data?.error));
     throw new Error(data?.detail || data?.error || `Auth error ${res.status}`);
   }
 
+  log.api(`GET ${path} -> ${res.status}`);
   return (data.data ?? data) as T;
 }
 
