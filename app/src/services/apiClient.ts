@@ -6,7 +6,7 @@
  */
 
 // Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
+const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
 
 const BASE_URL = `${TUNNEL_URL}/api/v1`;
 

@@ -37,10 +37,10 @@ interface House3DViewerProps {
 export function House3DViewer({
   rooms = [
     { roomId: 'living-room', name: 'Living Room' },
-    { roomId: 'kitchen', name: 'Kitchen' },
     { roomId: 'bedroom', name: 'Bedroom' },
-    { roomId: 'bathroom', name: 'Bathroom' },
     { roomId: 'office', name: 'Office' },
+    { roomId: 'dining-room', name: 'Dining Room' },
+    { roomId: 'kitchen', name: 'Kitchen' },
   ],
   devices = [],
   isDark = true,
@@ -207,345 +207,472 @@ export function House3DViewer({
   const WALL_H = 3.0;
   const WALL_T = 0.15;
 
-  // 5-room floor plan:
-  //  ┌─────────────┬──────────┐
-  //  │ Living Room │ Kitchen  │
-  //  │  (6x5)      │  (5x5)   │
-  //  ├───────┬─────┼──────────┤
-  //  │ Bed   │Bath │  Office  │
-  //  │(4x4.5)│(3x4.5) (4x4.5)│
-  //  └───────┴─────┴──────────┘
-  const LR_W = 6, LR_D = 5;     // living room
-  const KI_W = 5, KI_D = 5;     // kitchen
-  const BR_W = 4, BR_D = 4.5;   // bedroom
-  const BA_W = 3, BA_D = 4.5;   // bathroom
-  const OF_W = 4, OF_D = 4.5;   // office
-  const TOTAL_W = LR_W + KI_W;  // 11
-  const TOTAL_D = LR_D + BR_D;  // 9.5
+  // 5-room floor plan (matches architectural layout image):
+  //  ┌──────────┬──────────────┬──────────┐
+  //  │ Bedroom  │   Kitchen    │ Bathroom │  top row (depth 4.5)
+  //  │ (4×4.5)  │   (5×4.5)    │ (3×4.5)  │
+  //  ├──────────┼──────────────┴──────────┤
+  //  │  Living  │      Dining Room       │  bottom row (depth 5)
+  //  │  (4×5)   │        (8×5)           │
+  //  └──────────┴────────────────────────┘
+  //  Total: 12 wide × 9.5 deep
+  const BR_W = 4, BR_D = 4.5;    // bedroom (top-left)
+  const KI_W = 5, KI_D = 4.5;    // kitchen (top-center)
+  const BA_W = 3, BA_D = 4.5;    // bathroom (top-right)
+  const LR_W = 4, LR_D = 5;     // living room (bottom-left)
+  const DN_W = 8, DN_D = 5;     // dining room (bottom-right)
+  const TOTAL_W = BR_W + KI_W + BA_W;  // 12
+  const TOTAL_D = BR_D + LR_D;         // 9.5
 
-  // Grid: each room has its center position + actual size
+  var HW = TOTAL_W / 2;  // 6
+  var HD = TOTAL_D / 2;  // 4.75
   const GRID = [
-    { col: 0, row: 0, x: -TOTAL_W/2 + LR_W/2, z: -TOTAL_D/2 + LR_D/2, w: LR_W, d: LR_D },    // living room
-    { col: 1, row: 0, x: -TOTAL_W/2 + LR_W + KI_W/2, z: -TOTAL_D/2 + KI_D/2, w: KI_W, d: KI_D }, // kitchen
-    { col: 0, row: 1, x: -TOTAL_W/2 + BR_W/2, z: -TOTAL_D/2 + LR_D + BR_D/2, w: BR_W, d: BR_D }, // bedroom
-    { col: 1, row: 1, x: -TOTAL_W/2 + BR_W + BA_W/2, z: -TOTAL_D/2 + LR_D + BR_D/2, w: BA_W, d: BA_D }, // bathroom
-    { col: 2, row: 1, x: -TOTAL_W/2 + BR_W + BA_W + OF_W/2, z: -TOTAL_D/2 + LR_D + BR_D/2, w: OF_W, d: OF_D }, // office
+    // Top row (depth 4.5)
+    { col: 0, row: 0, x: -HW + BR_W/2, z: -HD + BR_D/2, w: BR_W, d: BR_D },                       // bedroom
+    { col: 1, row: 0, x: -HW + BR_W + KI_W/2, z: -HD + KI_D/2, w: KI_W, d: KI_D },                // kitchen
+    { col: 2, row: 0, x: -HW + BR_W + KI_W + BA_W/2, z: -HD + BA_D/2, w: BA_W, d: BA_D },          // bathroom
+    // Bottom row (depth 5)
+    { col: 0, row: 1, x: -HW + LR_W/2, z: -HD + BR_D + LR_D/2, w: LR_W, d: LR_D },                // living room
+    { col: 1, row: 1, x: -HW + LR_W + DN_W/2, z: -HD + BR_D + DN_D/2, w: DN_W, d: DN_D },          // dining room
   ];
 
-  // Determine room type from roomId
   function roomType(id) {
     const l = id.toLowerCase();
     if (l.includes('living')) return 'living';
     if (l.includes('kitchen')) return 'kitchen';
     if (l.includes('bed'))    return 'bedroom';
     if (l.includes('bath'))   return 'bathroom';
+    if (l.includes('dining')) return 'dining';
     if (l.includes('office') || l.includes('study')) return 'office';
     if (l.includes('garage')) return 'garage';
     if (l.includes('laundry')) return 'laundry';
-    if (l.includes('dining')) return 'dining';
     return 'living';
   }
 
   // ================================================================
   // Furniture builders — coordinates stay within each room's bounds
-  // Living (6×5 → ±2.8x, ±2.3z), Kitchen (5×5 → ±2.3x, ±2.3z)
-  // Bedroom (4×4.5 → ±1.8x, ±2.0z), Bathroom (3×4.5 → ±1.3x, ±2.0z)
-  // Office (4×4.5 → ±1.8x, ±2.0z)
+  // Bedroom (4×4.5 → ±1.8x, ±2.05z), Kitchen (5×4.5 → ±2.3x, ±2.05z)
+  // Bathroom (3×4.5 → ±1.3x, ±2.05z), Living (4×5 → ±1.8x, ±2.3z)
+  // Dining (8×5 → ±3.8x, ±2.3z)
   // NO electronics — only furniture and decorations
   // ================================================================
 
-  function buildLivingRoom(g) {
-    // ---- L-shaped sofa along back wall ----
-    box(2.6, 0.35, 0.85, M.leather, -0.2, 0.18, -1.7, g);   // seat
-    box(2.6, 0.45, 0.12, M.leather, -0.2, 0.52, -2.08, g);   // backrest
-    box(0.12, 0.38, 0.85, M.leather, -1.48, 0.36, -1.7, g);  // left arm
-    // L-extension right
-    box(0.85, 0.35, 0.85, M.leather, 1.6, 0.18, -1.0, g);
-    box(0.12, 0.45, 0.85, M.leather, 2.0, 0.52, -1.0, g);
-    // Cushions
-    box(0.75, 0.1, 0.65, M.cushion, -0.85, 0.4, -1.65, g);
-    box(0.75, 0.1, 0.65, M.cushion, 0.0, 0.4, -1.65, g);
-    box(0.65, 0.1, 0.65, M.cushion, 1.6, 0.4, -1.0, g);
-    // Throw pillows
-    box(0.25, 0.2, 0.08, new THREE.MeshStandardMaterial({ color: 0xCC6644, roughness: 0.85 }), -1.2, 0.48, -1.95, g);
-    box(0.25, 0.2, 0.08, M.cushion, 1.85, 0.48, -0.6, g);
+  function buildBedroom(g) {
+    // === NEW BED MODEL (detailed wooden frame with headboard carving) ===
+    // Bed frame base with carved legs
+    box(1.5, 0.12, 1.9, M.darkWood, -0.4, 0.06, -1.0, g);
+    // Four decorative corner posts
+    box(0.08, 0.35, 0.08, M.darkWood, -1.1, 0.24, -1.9, g);
+    box(0.08, 0.35, 0.08, M.darkWood, 0.3, 0.24, -1.9, g);
+    box(0.06, 0.25, 0.06, M.darkWood, -1.1, 0.18, -0.08, g);
+    box(0.06, 0.25, 0.06, M.darkWood, 0.3, 0.18, -0.08, g);
+    // Headboard with panels
+    box(1.5, 0.7, 0.06, M.darkWood, -0.4, 0.48, -1.93, g);
+    box(0.55, 0.45, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6 }), -0.7, 0.52, -1.91, g);
+    box(0.55, 0.45, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6 }), -0.1, 0.52, -1.91, g);
+    // Footboard
+    box(1.5, 0.28, 0.06, M.darkWood, -0.4, 0.26, -0.05, g);
+    // Mattress with quilted texture
+    box(1.35, 0.2, 1.75, M.mattress, -0.4, 0.23, -0.98, g);
+    // Pillows (rounded)
+    var pillow1 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), M.pillow);
+    pillow1.position.set(-0.7, 0.42, -1.6); pillow1.scale.set(1.1, 0.5, 0.7); g.add(pillow1);
+    var pillow2 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), M.pillow);
+    pillow2.position.set(-0.1, 0.42, -1.6); pillow2.scale.set(1.1, 0.5, 0.7); g.add(pillow2);
+    // Blanket folded
+    box(1.25, 0.06, 0.9, new THREE.MeshStandardMaterial({ color: 0x4A6FA5, roughness: 0.9 }), -0.4, 0.38, -0.5, g);
 
-    // ---- Coffee table ----
-    box(1.2, 0.04, 0.6, new THREE.MeshStandardMaterial({ color: 0x88BBDD, transparent: true, opacity: 0.3, roughness: 0.05 }), 0, 0.42, -0.3, g);
-    box(1.1, 0.04, 0.5, M.wood, 0, 0.38, -0.3, g);
-    cyl(0.04, 0.04, 0.36, 8, M.metal, -0.45, 0.19, -0.5, g);
-    cyl(0.04, 0.04, 0.36, 8, M.metal, 0.45, 0.19, -0.5, g);
-    cyl(0.04, 0.04, 0.36, 8, M.metal, -0.45, 0.19, -0.1, g);
-    cyl(0.04, 0.04, 0.36, 8, M.metal, 0.45, 0.19, -0.1, g);
-    // Magazine
-    box(0.18, 0.01, 0.24, new THREE.MeshStandardMaterial({ color: 0xDD5533, roughness: 0.8 }), 0.25, 0.44, -0.25, g);
+    // === NEW STUDY TABLE MODEL (L-shaped desk with drawers) ===
+    // Main desktop
+    box(0.55, 0.03, 1.0, new THREE.MeshStandardMaterial({ color: 0xD4A574, roughness: 0.4 }), -1.52, 0.74, 0.5, g);
+    // Drawer unit under desk
+    box(0.35, 0.35, 0.45, M.wood, -1.62, 0.4, 0.2, g);
+    // Drawer fronts
+    box(0.32, 0.1, 0.02, new THREE.MeshStandardMaterial({ color: 0xC19A6B, roughness: 0.5 }), -1.62, 0.52, -0.03, g);
+    box(0.32, 0.1, 0.02, new THREE.MeshStandardMaterial({ color: 0xC19A6B, roughness: 0.5 }), -1.62, 0.38, -0.03, g);
+    box(0.32, 0.1, 0.02, new THREE.MeshStandardMaterial({ color: 0xC19A6B, roughness: 0.5 }), -1.62, 0.24, -0.03, g);
+    // Drawer handles
+    cyl(0.015, 0.015, 0.06, 6, M.metal, -1.62, 0.52, -0.06, g);
+    cyl(0.015, 0.015, 0.06, 6, M.metal, -1.62, 0.38, -0.06, g);
+    cyl(0.015, 0.015, 0.06, 6, M.metal, -1.62, 0.24, -0.06, g);
+    // Table legs (tapered)
+    box(0.04, 0.56, 0.04, M.wood, -1.75, 0.28, 0.95, g);
+    box(0.04, 0.56, 0.04, M.wood, -1.3, 0.28, 0.95, g);
+    // Desktop items (lamp, books)
+    cyl(0.06, 0.08, 0.02, 12, M.metal, -1.68, 0.77, 0.8, g);
+    cyl(0.02, 0.02, 0.18, 8, M.metal, -1.68, 0.87, 0.8, g);
+    cyl(0.08, 0.04, 0.08, 8, new THREE.MeshStandardMaterial({ color: 0xFFEB3B, roughness: 0.7 }), -1.68, 1.0, 0.8, g);
 
-    // ---- TV stand (empty — TV goes here when added) ----
-    box(1.4, 0.42, 0.35, M.darkWood, 0, 0.21, 2.0, g);
-    box(0.6, 0.02, 0.28, M.wood, -0.3, 0.16, 2.0, g);
-    box(0.6, 0.02, 0.28, M.wood, 0.3, 0.16, 2.0, g);
-    box(0.1, 0.02, 0.02, M.metal, -0.3, 0.35, 2.18, g);
-    box(0.1, 0.02, 0.02, M.metal, 0.3, 0.35, 2.18, g);
+    // === NEW CHAIR MODEL (ergonomic office chair) ===
+    // Seat cushion (curved)
+    var seat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.18, 0.06, 16), M.leather);
+    seat.position.set(-1.05, 0.48, 0.5); seat.scale.set(1, 1, 1.1); g.add(seat);
+    // Backrest (curved)
+    box(0.38, 0.35, 0.04, M.leather, -1.05, 0.72, 0.72, g);
+    // Armrests
+    box(0.04, 0.04, 0.2, M.darkWood, -1.22, 0.56, 0.55, g);
+    box(0.04, 0.04, 0.2, M.darkWood, -0.88, 0.56, 0.55, g);
+    // Central column
+    cyl(0.03, 0.03, 0.3, 8, M.metal, -1.05, 0.3, 0.5, g);
+    // 5-star base
+    for (var angle = 0; angle < 5; angle++) {
+      var ax = -1.05 + Math.cos(angle * 1.257) * 0.15;
+      var az = 0.5 + Math.sin(angle * 1.257) * 0.15;
+      box(0.03, 0.02, 0.18, M.metal, ax, 0.1, az, g);
+      cyl(0.02, 0.02, 0.04, 8, new THREE.MeshStandardMaterial({ color: 0x333333 }), ax + (ax + 1.05) * 0.3, 0.03, az + (az - 0.5) * 0.3, g);
+    }
 
-    // ---- Area rug ----
-    box(2.4, 0.015, 1.8, M.rug, 0, 0.008, -0.4, g);
-    box(2.0, 0.016, 0.06, new THREE.MeshStandardMaterial({ color: 0xAA6633, roughness: 1.0 }), 0, 0.017, -0.7, g);
-
-    // ---- Side table ----
-    box(0.4, 0.5, 0.35, M.darkWood, -2.1, 0.25, -1.7, g);
-    // Vase
-    cyl(0.05, 0.04, 0.16, 8, new THREE.MeshStandardMaterial({ color: 0x3366AA, roughness: 0.3 }), -2.1, 0.58, -1.7, g);
-
-    // ---- Bookshelf ----
-    box(0.8, 1.6, 0.28, M.darkWood, -2.4, 0.8, 0.3, g);
-    box(0.7, 0.03, 0.22, M.wood, -2.4, 0.35, 0.3, g);
-    box(0.7, 0.03, 0.22, M.wood, -2.4, 0.75, 0.3, g);
-    box(0.7, 0.03, 0.22, M.wood, -2.4, 1.15, 0.3, g);
-    var bookC = [0xE74C3C, 0x3498DB, 0x2ECC71, 0xF39C12, 0x9B59B6];
-    for (var bi = 0; bi < 5; bi++) box(0.06, 0.28, 0.16, new THREE.MeshStandardMaterial({ color: bookC[bi], roughness: 0.7 }), -2.65 + bi * 0.13, 0.52, 0.3, g);
-    for (var bi2 = 0; bi2 < 4; bi2++) box(0.06, 0.22, 0.16, new THREE.MeshStandardMaterial({ color: bookC[bi2], roughness: 0.7 }), -2.6 + bi2 * 0.13, 0.9, 0.3, g);
-
-    // ---- Plant (corner) ----
-    cyl(0.18, 0.13, 0.3, 8, M.pot, 2.2, 0.15, 1.7, g);
-    cyl(0.16, 0.16, 0.02, 8, new THREE.MeshStandardMaterial({ color: 0x3E2723, roughness: 1.0 }), 2.2, 0.31, 1.7, g);
-    var lf1 = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), M.plant); lf1.position.set(2.2, 0.6, 1.7); lf1.scale.y = 1.3; g.add(lf1);
-    var lf2 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), M.plant); lf2.position.set(2.05, 0.75, 1.55); g.add(lf2);
-
-    // ---- Wall art ----
-    box(0.9, 0.6, 0.03, M.darkWood, 0, 2.0, -2.25, g);
-    box(0.8, 0.5, 0.02, new THREE.MeshStandardMaterial({ color: 0x5588AA, roughness: 0.6 }), 0, 2.0, -2.23, g);
+    // === NEW FURNITURE/DRESSER MODEL (modern chest with mirror cabinet) ===
+    // Main chest body
+    box(0.9, 0.85, 0.42, M.wood, 0.5, 0.43, 0.5, g);
+    // Four drawers with decorative fronts
+    for (var dy = 0; dy < 4; dy++) {
+      var drawY = 0.15 + dy * 0.2;
+      box(0.8, 0.15, 0.02, new THREE.MeshStandardMaterial({ color: 0xBDA17C, roughness: 0.5 }), 0.5, drawY, 0.72, g);
+      // Two handles per drawer
+      cyl(0.012, 0.012, 0.04, 6, M.metal, 0.35, drawY, 0.75, g);
+      cyl(0.012, 0.012, 0.04, 6, M.metal, 0.65, drawY, 0.75, g);
+    }
+    // Decorative top trim
+    box(0.95, 0.03, 0.45, M.darkWood, 0.5, 0.88, 0.5, g);
   }
 
   function buildKitchen(g) {
-    // ---- Counter along back wall ----
-    box(3.8, 0.85, 0.55, M.darkWood, 0, 0.43, -1.9, g);
-    box(3.8, 0.05, 0.6, M.counter, 0, 0.88, -1.9, g);
-    // Upper cabinets
-    box(1.1, 0.65, 0.3, M.darkWood, -1.2, 2.0, -2.05, g);
-    box(1.1, 0.65, 0.3, M.darkWood, 0.3, 2.0, -2.05, g);
-    box(0.9, 0.65, 0.3, M.darkWood, 1.5, 2.0, -2.05, g);
-    // Cabinet handles
-    for (var ch of [-1.2, 0.3, 1.5]) box(0.08, 0.02, 0.02, M.metal, ch, 1.78, -1.89, g);
-    for (var ch2 of [-1.4, -0.4, 0.4, 1.4]) box(0.08, 0.02, 0.02, M.metal, ch2, 0.43, -1.6, g);
-
-    // ---- Right wall counter ----
-    box(0.55, 0.85, 2.2, M.darkWood, 1.85, 0.43, 0.3, g);
-    box(0.6, 0.05, 2.2, M.counter, 1.85, 0.88, 0.3, g);
-
-    // ---- Sink ----
-    box(0.5, 0.04, 0.4, M.metal, 0.4, 0.91, -1.85, g);
-    box(0.4, 0.12, 0.3, new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.6 }), 0.4, 0.84, -1.85, g);
-    cyl(0.018, 0.018, 0.28, 8, M.metal, 0.4, 1.08, -2.08, g);
-    box(0.018, 0.018, 0.12, M.metal, 0.4, 1.2, -2.0, g);
-
-    // ---- Island ----
-    box(1.8, 0.82, 0.75, M.wood, -0.2, 0.41, 0.6, g);
-    box(1.8, 0.05, 0.8, M.counter, -0.2, 0.86, 0.6, g);
-
-    // ---- 2 Stools ----
-    for (var sx of [-0.6, 0.2]) {
-      cyl(0.14, 0.14, 0.04, 12, M.leather, sx, 0.62, 1.25, g);
-      cyl(0.03, 0.03, 0.58, 8, M.metal, sx, 0.32, 1.25, g);
-      cyl(0.12, 0.14, 0.02, 12, M.metal, sx, 0.02, 1.25, g);
+    // === NEW SINK COUNTER MODEL (modern farmhouse style with double sink) ===
+    // Counter cabinet base with panel doors
+    box(3.9, 0.8, 0.58, new THREE.MeshStandardMaterial({ color: 0xFAF0E6, roughness: 0.6 }), 0, 0.4, -1.72, g);
+    // Cabinet door panels
+    for (var dx = -1.5; dx <= 1.5; dx += 0.75) {
+      box(0.6, 0.6, 0.02, new THREE.MeshStandardMaterial({ color: 0xF5F5DC, roughness: 0.5 }), dx, 0.4, -1.42, g);
+      cyl(0.015, 0.015, 0.04, 6, M.metal, dx + 0.22, 0.4, -1.4, g);
     }
+    // Granite countertop with lip
+    box(4.0, 0.06, 0.65, new THREE.MeshStandardMaterial({ color: 0x2F4F4F, roughness: 0.3, metalness: 0.1 }), 0, 0.83, -1.7, g);
+    box(4.0, 0.04, 0.03, new THREE.MeshStandardMaterial({ color: 0x2F4F4F, roughness: 0.3 }), 0, 0.81, -1.38, g);
+    // Double farmhouse sink (apron front)
+    box(0.65, 0.2, 0.45, M.ceramic, 1.0, 0.76, -1.68, g);
+    box(0.28, 0.15, 0.38, new THREE.MeshStandardMaterial({ color: 0xDDDDDD, roughness: 0.2 }), 0.85, 0.71, -1.68, g);
+    box(0.28, 0.15, 0.38, new THREE.MeshStandardMaterial({ color: 0xDDDDDD, roughness: 0.2 }), 1.15, 0.71, -1.68, g);
+    // Modern gooseneck faucet
+    cyl(0.02, 0.02, 0.25, 8, M.metal, 1.0, 0.98, -1.92, g);
+    var faucetArch = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 8, 12, Math.PI), M.metal);
+    faucetArch.position.set(1.0, 1.1, -1.84); faucetArch.rotation.x = Math.PI / 2; g.add(faucetArch);
+    cyl(0.012, 0.012, 0.08, 6, M.metal, 1.0, 1.06, -1.76, g);
+    // Faucet handles
+    cyl(0.025, 0.02, 0.04, 8, M.metal, 0.85, 0.9, -1.92, g);
+    cyl(0.025, 0.02, 0.04, 8, M.metal, 1.15, 0.9, -1.92, g);
 
-    // ---- Fruit bowl ----
-    cyl(0.12, 0.09, 0.06, 12, M.ceramic, -0.2, 0.92, 0.6, g);
-    var ap = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshStandardMaterial({ color: 0xCC2222, roughness: 0.5 }));
-    ap.position.set(-0.22, 0.97, 0.58); g.add(ap);
-    var or2 = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshStandardMaterial({ color: 0xFF8800, roughness: 0.5 }));
-    or2.position.set(-0.16, 0.97, 0.62); g.add(or2);
-
-    // ---- Cutting board on counter ----
-    box(0.3, 0.02, 0.18, new THREE.MeshStandardMaterial({ color: 0xD2B48C, roughness: 0.7 }), -1.1, 0.92, -1.85, g);
-
-    // ---- Backsplash tiles ----
-    for (var tx = -1.6; tx <= 1.6; tx += 0.3) {
-      for (var ty = 1.05; ty <= 1.55; ty += 0.25) {
-        box(0.22, 0.18, 0.01, M.tile, tx, ty, -2.15, g);
+    // === NEW COOKING COUNTER MODEL (professional range with hood) ===
+    // Lower cabinet in contrasting color
+    box(3.9, 0.8, 0.58, new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.5 }), 0, 0.4, -0.72, g);
+    // Dark countertop
+    box(4.0, 0.06, 0.65, new THREE.MeshStandardMaterial({ color: 0x1C1C1C, roughness: 0.25, metalness: 0.2 }), 0, 0.83, -0.7, g);
+    // Professional gas range
+    box(0.8, 0.12, 0.55, new THREE.MeshStandardMaterial({ color: 0x303030, roughness: 0.4, metalness: 0.3 }), -0.5, 0.92, -0.72, g);
+    // Control panel
+    box(0.75, 0.08, 0.03, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3 }), -0.5, 0.88, -0.47, g);
+    // Control knobs
+    for (var kx = -0.72; kx <= -0.28; kx += 0.22) {
+      cyl(0.025, 0.025, 0.02, 12, M.metal, kx, 0.88, -0.44, g);
+    }
+    // Six burner grates with flames
+    for (var brow = 0; brow < 2; brow++) {
+      for (var bcol = 0; bcol < 3; bcol++) {
+        var gbx = -0.72 + bcol * 0.22;
+        var gbz = -0.85 + brow * 0.25;
+        // Grate
+        box(0.16, 0.02, 0.16, new THREE.MeshStandardMaterial({ color: 0x1A1A1A, roughness: 0.8 }), gbx, 1.0, gbz, g);
+        // Burner ring
+        cyl(0.06, 0.06, 0.015, 16, new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.5 }), gbx, 0.98, gbz, g);
       }
     }
-
-    // ---- Hanging pot rack ----
-    box(1.0, 0.03, 0.03, M.metal, 0, 2.5, 0, g);
-    cyl(0.01, 0.01, 0.2, 6, M.metal, -0.3, 2.4, 0, g);
-    cyl(0.01, 0.01, 0.2, 6, M.metal, 0.3, 2.4, 0, g);
-    cyl(0.08, 0.06, 0.05, 10, new THREE.MeshStandardMaterial({ color: 0x8B4513, metalness: 0.3 }), -0.15, 2.28, 0, g);
-    cyl(0.07, 0.05, 0.04, 10, M.metal, 0.15, 2.26, 0, g);
-  }
-
-  function buildBedroom(g) {
-    // Room is 4×4.5 → safe ±1.8x, ±2.0z
-
-    // ---- Bed (centered, against back wall) ----
-    box(1.6, 0.22, 2.0, M.darkWood, 0, 0.11, 0.0, g);
-    // Headboard
-    box(1.7, 0.9, 0.08, M.darkWood, 0, 0.7, 0.96, g);
-    box(0.7, 0.6, 0.03, new THREE.MeshStandardMaterial({ color: 0x6B4226, roughness: 0.5 }), -0.4, 0.6, 1.01, g);
-    box(0.7, 0.6, 0.03, new THREE.MeshStandardMaterial({ color: 0x6B4226, roughness: 0.5 }), 0.4, 0.6, 1.01, g);
-    // Footboard
-    box(1.6, 0.25, 0.06, M.darkWood, 0, 0.35, -0.98, g);
-    // Mattress
-    box(1.5, 0.18, 1.85, M.mattress, 0, 0.32, 0.0, g);
-    // Pillows
-    box(0.45, 0.1, 0.3, M.pillow, -0.35, 0.48, 0.6, g);
-    box(0.45, 0.1, 0.3, M.pillow, 0.35, 0.48, 0.6, g);
-    // Duvet
-    box(1.4, 0.05, 1.2, new THREE.MeshStandardMaterial({ color: 0x6688BB, roughness: 0.9 }), 0, 0.44, -0.2, g);
-    // Folded blanket
-    box(1.2, 0.06, 0.35, new THREE.MeshStandardMaterial({ color: 0x8899AA, roughness: 0.85 }), 0, 0.47, -0.7, g);
-
-    // ---- Nightstands ----
-    box(0.4, 0.48, 0.35, M.darkWood, -1.2, 0.24, 0.5, g);
-    box(0.4, 0.48, 0.35, M.darkWood, 1.2, 0.24, 0.5, g);
-    box(0.06, 0.02, 0.02, M.metal, -1.2, 0.32, 0.69, g);
-    box(0.06, 0.02, 0.02, M.metal, 1.2, 0.32, 0.69, g);
-    // Alarm clock
-    box(0.08, 0.06, 0.04, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }), -1.2, 0.52, 0.5, g);
-
-    // ---- Dresser (smaller, fits in room) ----
-    box(0.9, 0.75, 0.4, M.wood, 1.4, 0.38, -1.6, g);
-    for (var dy of [0.2, 0.42, 0.62]) box(0.08, 0.02, 0.02, M.metal, 1.4, dy, -1.38, g);
-    // Mirror above
-    box(0.6, 0.8, 0.03, new THREE.MeshStandardMaterial({ color: 0xAABBCC, metalness: 0.8, roughness: 0.05 }), 1.4, 1.4, -1.88, g);
-    box(0.65, 0.85, 0.02, M.darkWood, 1.4, 1.4, -1.9, g);
-
-    // ---- Wardrobe (trimmed to fit) ----
-    box(1.0, 2.0, 0.5, M.darkWood, -1.3, 1.0, -1.6, g);
-    box(0.01, 1.7, 0.02, M.metal, -1.3, 1.0, -1.33, g);
-    box(0.03, 0.12, 0.03, M.metal, -1.05, 1.05, -1.33, g);
-    box(0.03, 0.12, 0.03, M.metal, -1.55, 1.05, -1.33, g);
-
-    // ---- Area rug ----
-    box(1.0, 0.015, 0.7, M.rug, 0, 0.008, -1.5, g);
-
-    // ---- Small desk (for laptop when added) ----
-    box(0.75, 0.04, 0.4, M.wood, -1.3, 0.7, 1.65, g);
-    box(0.04, 0.68, 0.35, M.wood, -1.65, 0.35, 1.65, g);
-    box(0.04, 0.68, 0.35, M.wood, -0.95, 0.35, 1.65, g);
-    // Small chair
-    box(0.35, 0.04, 0.32, M.leather, -1.3, 0.42, 1.25, g);
-    cyl(0.025, 0.025, 0.4, 8, M.metal, -1.3, 0.22, 1.25, g);
-    cyl(0.12, 0.12, 0.02, 10, M.metal, -1.3, 0.01, 1.25, g);
+    // Oven door with window
+    box(0.7, 0.5, 0.02, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 }), -0.5, 0.35, -0.43, g);
+    box(0.5, 0.25, 0.01, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.1, metalness: 0.3 }), -0.5, 0.38, -0.42, g);
+    box(0.55, 0.03, 0.03, M.metal, -0.5, 0.55, -0.42, g);
   }
 
   function buildBathroom(g) {
-    // Room is 3×4.5 → safe ±1.3x, ±2.0z. Compact layout.
+    // Tile floor pattern (checkerboard)
+    for (var tx = -1; tx <= 1; tx += 0.4) {
+      for (var tz = -1.5; tz <= 1.5; tz += 0.4) {
+        var tileColor = ((Math.floor(tx * 2.5) + Math.floor(tz * 2.5)) % 2 === 0) ? 0xEEEEEE : 0xCCCCCC;
+        box(0.38, 0.015, 0.38, new THREE.MeshStandardMaterial({ color: tileColor, roughness: 0.3 }), tx, 0.008, tz, g);
+      }
+    }
 
-    // ---- Tile floor ----
-    box(2.4, 0.02, 4.0, M.tile, 0, 0.01, 0, g);
+    // === NEW BATHTUB MODEL (freestanding clawfoot tub) ===
+    // Tub body (curved elliptical)
+    var tubOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.3, 0.5, 20), M.ceramic);
+    tubOuter.position.set(0.5, 0.35, -1.2); tubOuter.scale.set(0.9, 1, 1.9); g.add(tubOuter);
+    // Inner basin
+    var tubInner = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.45, 20), new THREE.MeshStandardMaterial({ color: 0xF8F8FF, roughness: 0.1 }));
+    tubInner.position.set(0.5, 0.38, -1.2); tubInner.scale.set(0.85, 1, 1.85); g.add(tubInner);
+    // Decorative rim
+    var tubRim = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.03, 8, 24), M.ceramic);
+    tubRim.position.set(0.5, 0.58, -1.2); tubRim.rotation.x = Math.PI / 2; tubRim.scale.set(0.9, 1.9, 1); g.add(tubRim);
+    // Clawfoot legs (4 decorative)
+    for (var lx of [0.25, 0.75]) {
+      for (var lz of [-1.65, -0.75]) {
+        cyl(0.04, 0.06, 0.12, 8, new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.7 }), lx, 0.06, lz, g);
+        var claw = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), M.metal);
+        claw.position.set(lx, 0.02, lz); claw.scale.y = 0.6; g.add(claw);
+      }
+    }
+    // Classic faucet with handles
+    cyl(0.025, 0.025, 0.22, 8, M.metal, 0.5, 0.7, -1.78, g);
+    box(0.12, 0.03, 0.03, M.metal, 0.5, 0.8, -1.78, g);
+    cyl(0.02, 0.02, 0.08, 8, M.metal, 0.5, 0.76, -1.68, g);
+    // Handles
+    cyl(0.03, 0.025, 0.03, 8, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.2 }), 0.38, 0.82, -1.78, g);
+    cyl(0.03, 0.025, 0.03, 8, new THREE.MeshStandardMaterial({ color: 0xFF4444, roughness: 0.2 }), 0.62, 0.82, -1.78, g);
+    // Water
+    var water = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.23, 0.02, 20), new THREE.MeshStandardMaterial({ color: 0x88CCEE, transparent: true, opacity: 0.4, roughness: 0.05 }));
+    water.position.set(0.5, 0.52, -1.2); water.scale.set(0.85, 1, 1.8); g.add(water);
 
-    // ---- Bathtub (along left wall) ----
-    box(0.65, 0.5, 1.5, M.ceramic, -0.8, 0.25, -1.0, g);
-    box(0.5, 0.4, 1.3, new THREE.MeshStandardMaterial({ color: 0xEEEEEE, roughness: 0.15 }), -0.8, 0.28, -1.0, g);
-    box(0.45, 0.02, 1.25, new THREE.MeshStandardMaterial({ color: 0x4488CC, transparent: true, opacity: 0.35, roughness: 0.05 }), -0.8, 0.45, -1.0, g);
-    // Faucet
-    cyl(0.02, 0.02, 0.25, 8, M.metal, -0.8, 0.62, -1.7, g);
-    box(0.015, 0.015, 0.08, M.metal, -0.8, 0.73, -1.65, g);
+    // === NEW TOILET MODEL (modern one-piece) ===
+    // Base
+    var toiletBase = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.25, 16), M.ceramic);
+    toiletBase.position.set(-0.5, 0.13, 0.2); toiletBase.scale.set(0.9, 1, 1.2); g.add(toiletBase);
+    // Bowl (elongated oval)
+    var bowl = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), M.ceramic);
+    bowl.position.set(-0.5, 0.28, 0.12); bowl.scale.set(1, 0.5, 1.4); g.add(bowl);
+    // Seat
+    var seatRing = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.025, 8, 20), M.white);
+    seatRing.position.set(-0.5, 0.32, 0.1); seatRing.rotation.x = Math.PI / 2; seatRing.scale.set(1, 1.3, 1); g.add(seatRing);
+    // Lid
+    var lid = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.02, 20), M.white);
+    lid.position.set(-0.5, 0.34, 0.1); lid.scale.set(1, 1, 1.3); g.add(lid);
+    // Tank
+    box(0.28, 0.32, 0.14, M.ceramic, -0.5, 0.42, 0.38, g);
+    box(0.26, 0.28, 0.02, new THREE.MeshStandardMaterial({ color: 0xF5F5F5, roughness: 0.15 }), -0.5, 0.44, 0.3, g);
+    // Tank lid
+    box(0.3, 0.03, 0.16, M.ceramic, -0.5, 0.6, 0.38, g);
+    // Flush button
+    cyl(0.03, 0.03, 0.02, 12, M.metal, -0.5, 0.63, 0.38, g);
 
-    // ---- Shower (back-left corner) ----
-    box(0.8, 0.06, 0.8, M.tile, -0.7, 0.03, 1.4, g);
-    var glassMat = new THREE.MeshStandardMaterial({ color: 0xAADDFF, transparent: true, opacity: 0.15, roughness: 0.05, metalness: 0.1 });
-    box(0.8, 2.1, 0.02, glassMat, -0.7, 1.1, 1.02, g);
-    box(0.02, 2.1, 0.8, glassMat, -0.28, 1.1, 1.4, g);
-    // Shower head + pipe
-    cyl(0.06, 0.08, 0.02, 10, M.metal, -0.7, 2.2, 1.75, g);
-    cyl(0.012, 0.012, 0.4, 8, M.metal, -0.7, 2.0, 1.8, g);
+    // === NEW SINK MODEL (pedestal basin) ===
+    // Pedestal column
+    cyl(0.08, 0.12, 0.55, 12, M.ceramic, 0.6, 0.28, 1.4, g);
+    // Basin (rounded rectangular)
+    box(0.48, 0.12, 0.38, M.ceramic, 0.6, 0.58, 1.4, g);
+    // Basin hollow
+    var basinHollow = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.1, 16), new THREE.MeshStandardMaterial({ color: 0xF5F5F5, roughness: 0.1 }));
+    basinHollow.position.set(0.6, 0.56, 1.38); basinHollow.scale.set(1.4, 1, 1.1); g.add(basinHollow);
+    // Rim decoration
+    box(0.52, 0.02, 0.42, new THREE.MeshStandardMaterial({ color: 0xFFFAF0, roughness: 0.2 }), 0.6, 0.65, 1.4, g);
+    // Modern waterfall faucet
+    box(0.08, 0.16, 0.04, M.metal, 0.6, 0.76, 1.58, g);
+    box(0.06, 0.02, 0.1, M.metal, 0.6, 0.83, 1.52, g);
+    // Single lever handle
+    box(0.04, 0.04, 0.08, M.metal, 0.6, 0.88, 1.56, g);
 
-    // ---- Toilet (right side) ----
-    box(0.35, 0.28, 0.45, M.ceramic, 0.7, 0.14, -0.8, g);
-    cyl(0.17, 0.15, 0.1, 12, M.ceramic, 0.7, 0.3, -0.9, g);
-    box(0.3, 0.38, 0.15, M.ceramic, 0.7, 0.47, -0.55, g);
-    box(0.28, 0.03, 0.25, M.ceramic, 0.7, 0.3, -0.85, g);
-    cyl(0.012, 0.012, 0.06, 6, M.metal, 0.83, 0.64, -0.55, g);
+    // === NEW MIRROR MODEL (LED backlit medicine cabinet) ===
+    // Cabinet frame
+    box(0.55, 0.7, 0.1, new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.4 }), 0.6, 1.25, 1.74, g);
+    // Mirror surface
+    box(0.5, 0.65, 0.02, new THREE.MeshStandardMaterial({ color: 0xE8E8E8, metalness: 0.95, roughness: 0.02 }), 0.6, 1.25, 1.68, g);
+    // LED strips (glowing)
+    box(0.02, 0.62, 0.02, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xCCCCCC, emissiveIntensity: 0.5 }), 0.34, 1.25, 1.68, g);
+    box(0.02, 0.62, 0.02, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xCCCCCC, emissiveIntensity: 0.5 }), 0.86, 1.25, 1.68, g);
+    box(0.48, 0.02, 0.02, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xCCCCCC, emissiveIntensity: 0.5 }), 0.6, 0.92, 1.68, g);
+    box(0.48, 0.02, 0.02, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, emissive: 0xCCCCCC, emissiveIntensity: 0.5 }), 0.6, 1.58, 1.68, g);
 
-    // ---- Sink vanity (right, near front wall) ----
-    box(0.7, 0.7, 0.4, M.white, 0.6, 0.35, 1.6, g);
-    box(0.7, 0.04, 0.42, M.counter, 0.6, 0.72, 1.6, g);
-    cyl(0.14, 0.12, 0.06, 14, M.ceramic, 0.6, 0.72, 1.55, g);
-    cyl(0.012, 0.012, 0.18, 8, M.metal, 0.6, 0.86, 1.75, g);
-    box(0.012, 0.012, 0.08, M.metal, 0.6, 0.96, 1.7, g);
-    // Mirror
-    box(0.5, 0.7, 0.03, new THREE.MeshStandardMaterial({ color: 0xBBCCDD, metalness: 0.85, roughness: 0.03 }), 0.6, 1.5, 1.88, g);
-    box(0.55, 0.75, 0.02, M.metal, 0.6, 1.5, 1.89, g);
-
-    // ---- Towel rack (left wall) ----
-    box(0.45, 0.02, 0.04, M.metal, -1.1, 1.15, 0.2, g);
-    box(0.45, 0.02, 0.04, M.metal, -1.1, 0.95, 0.2, g);
-    // Towels
-    box(0.38, 0.16, 0.03, new THREE.MeshStandardMaterial({ color: 0x4488FF, roughness: 0.9 }), -1.1, 1.0, 0.22, g);
-    box(0.35, 0.14, 0.03, new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.9 }), -1.1, 1.15, 0.22, g);
-
-    // ---- Bath mat ----
-    box(0.5, 0.015, 0.35, new THREE.MeshStandardMaterial({ color: 0x66BB66, roughness: 1.0 }), -0.4, 0.02, -0.2, g);
-
-    // ---- Toilet paper holder ----
-    box(0.08, 0.02, 0.04, M.metal, 0.95, 0.5, -1.0, g);
-    cyl(0.03, 0.03, 0.08, 8, M.white, 0.95, 0.5, -1.06, g);
-
-    // ---- Soap dispenser ----
-    cyl(0.02, 0.025, 0.07, 8, M.white, 0.4, 0.79, 1.55, g);
-    cyl(0.007, 0.007, 0.03, 6, M.metal, 0.4, 0.83, 1.55, g);
+    // Towel rack (decorative ladder style)
+    for (var ry = 0.6; ry <= 1.4; ry += 0.2) {
+      box(0.03, 0.03, 0.35, M.metal, 1.1, ry, 0.0, g);
+    }
+    box(0.03, 0.9, 0.03, M.metal, 1.1, 1.0, -0.16, g);
+    box(0.03, 0.9, 0.03, M.metal, 1.1, 1.0, 0.16, g);
+    // Towel hanging
+    box(0.02, 0.25, 0.3, new THREE.MeshStandardMaterial({ color: 0x87CEEB, roughness: 0.9 }), 1.12, 1.08, 0.0, g);
   }
 
-  function buildOffice(g) {
-    // Room is 4×4.5 → safe ±1.8x, ±2.0z
+  function buildLivingRoom(g) {
+    // === NEW TV DESK MODEL (modern entertainment center) ===
+    // Main cabinet body
+    box(1.1, 0.35, 0.38, new THREE.MeshStandardMaterial({ color: 0x3C3C3C, roughness: 0.5 }), -0.8, 0.18, -2.0, g);
+    // Open shelf compartments
+    box(0.32, 0.28, 0.02, new THREE.MeshStandardMaterial({ color: 0x2A2A2A, roughness: 0.4 }), -1.1, 0.18, -1.8, g);
+    box(0.32, 0.28, 0.02, new THREE.MeshStandardMaterial({ color: 0x2A2A2A, roughness: 0.4 }), -0.5, 0.18, -1.8, g);
+    // Cabinet doors with push-open
+    box(0.5, 0.3, 0.02, new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.3 }), -0.8, 0.18, -1.8, g);
+    // Legs
+    box(0.04, 0.08, 0.04, M.metal, -1.3, 0.04, -2.15, g);
+    box(0.04, 0.08, 0.04, M.metal, -0.3, 0.04, -2.15, g);
+    box(0.04, 0.08, 0.04, M.metal, -1.3, 0.04, -1.85, g);
+    box(0.04, 0.08, 0.04, M.metal, -0.3, 0.04, -1.85, g);
+    // Decorative LED strip
+    box(1.05, 0.015, 0.015, new THREE.MeshStandardMaterial({ color: 0x00FFFF, emissive: 0x00AAAA, emissiveIntensity: 0.6 }), -0.8, 0.36, -1.82, g);
 
-    // ---- Desk (against back wall) ----
-    box(1.8, 0.05, 0.7, M.wood, 0, 0.73, -1.5, g);
-    box(0.05, 0.7, 0.05, M.metal, -0.85, 0.37, -1.8, g);
-    box(0.05, 0.7, 0.05, M.metal, 0.85, 0.37, -1.8, g);
-    box(0.05, 0.7, 0.05, M.metal, -0.85, 0.37, -1.15, g);
-    box(0.05, 0.7, 0.05, M.metal, 0.85, 0.37, -1.15, g);
-    // Cable tray
-    box(1.2, 0.03, 0.12, M.metal, 0, 0.62, -1.55, g);
-    // Drawer unit
-    box(0.4, 0.5, 0.45, M.darkWood, 1.35, 0.25, -1.5, g);
-    box(0.06, 0.02, 0.02, M.metal, 1.35, 0.18, -1.26, g);
-    box(0.06, 0.02, 0.02, M.metal, 1.35, 0.35, -1.26, g);
-
-    // ---- Office chair ----
-    cyl(0.2, 0.2, 0.05, 14, M.leather, 0, 0.48, -0.5, g);
-    box(0.38, 0.5, 0.05, M.leather, 0, 0.8, -0.72, g);
-    cyl(0.19, 0.19, 0.05, 14, M.leather, 0, 1.06, -0.72, g);
-    cyl(0.03, 0.03, 0.25, 8, M.metal, 0, 0.33, -0.5, g);
-    for (var a = 0; a < 5; a++) {
-      var an = (a / 5) * Math.PI * 2;
-      var cx2 = Math.cos(an) * 0.22;
-      var cz2 = Math.sin(an) * 0.22 - 0.5;
-      box(0.03, 0.03, 0.22, M.metal, cx2, 0.03, cz2, g);
+    // === NEW LAMP TABLE MODEL (mid-century modern) ===
+    // Round top
+    var lampTop = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 20), new THREE.MeshStandardMaterial({ color: 0xDEB887, roughness: 0.4 }));
+    lampTop.position.set(-1.4, 0.45, 0.3); g.add(lampTop);
+    // Tripod legs
+    for (var la = 0; la < 3; la++) {
+      var lax = -1.4 + Math.cos(la * 2.094) * 0.12;
+      var laz = 0.3 + Math.sin(la * 2.094) * 0.12;
+      box(0.025, 0.43, 0.025, new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.5 }), lax, 0.22, laz, g);
     }
-    // Armrests
-    box(0.05, 0.03, 0.2, M.metal, -0.22, 0.62, -0.6, g);
-    box(0.05, 0.03, 0.2, M.metal, 0.22, 0.62, -0.6, g);
+    // Designer lamp
+    cyl(0.02, 0.02, 0.25, 8, M.metal, -1.4, 0.6, 0.3, g);
+    // Drum shade
+    cyl(0.12, 0.12, 0.15, 16, new THREE.MeshStandardMaterial({ color: 0xFFF8DC, roughness: 0.8, transparent: true, opacity: 0.9 }), -1.4, 0.82, 0.3, g);
+    // Light glow inside
+    var glow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), new THREE.MeshStandardMaterial({ color: 0xFFFFCC, emissive: 0xFFFF88, emissiveIntensity: 0.8 }));
+    glow.position.set(-1.4, 0.78, 0.3); g.add(glow);
 
-    // ---- Bookshelf ----
-    box(0.8, 2.0, 0.3, M.darkWood, -1.4, 1.0, 1.4, g);
-    for (var sy of [0.35, 0.75, 1.15, 1.55]) box(0.7, 0.03, 0.25, M.wood, -1.4, sy, 1.4, g);
-    var obc = [0xE74C3C, 0x2980B9, 0x27AE60, 0xF1C40F, 0x8E44AD];
-    for (var obi = 0; obi < 4; obi++) box(0.06, 0.22, 0.18, new THREE.MeshStandardMaterial({ color: obc[obi], roughness: 0.7 }), -1.6 + obi * 0.12, 0.5, 1.4, g);
-    for (var obi2 = 0; obi2 < 3; obi2++) box(0.06, 0.2, 0.18, new THREE.MeshStandardMaterial({ color: obc[obi2 + 1], roughness: 0.7 }), -1.55 + obi2 * 0.12, 0.9, 1.4, g);
-    // Globe on shelf
-    var globe = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: 0x4488AA, roughness: 0.4 }));
-    globe.position.set(-1.2, 1.22, 1.4); g.add(globe);
+    // === NEW MAIN TABLE MODEL (glass coffee table) ===
+    // Tempered glass top
+    var glassTop = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.02, 24), new THREE.MeshStandardMaterial({ color: 0xE0FFFF, transparent: true, opacity: 0.5, roughness: 0.05, metalness: 0.1 }));
+    glassTop.position.set(0, 0.42, 0.4); glassTop.scale.set(1.3, 1, 0.9); g.add(glassTop);
+    // Chrome X-base
+    box(0.8, 0.02, 0.02, M.metal, 0, 0.2, 0.4, g);
+    box(0.02, 0.02, 0.55, M.metal, 0, 0.2, 0.4, g);
+    // Center column
+    cyl(0.04, 0.04, 0.22, 8, M.metal, 0, 0.32, 0.4, g);
+    // Decorative base ring
+    var baseRing = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.02, 8, 24), M.metal);
+    baseRing.position.set(0, 0.02, 0.4); baseRing.rotation.x = Math.PI / 2; baseRing.scale.set(1.5, 1, 1); g.add(baseRing);
 
-    // ---- Plant ----
-    cyl(0.12, 0.09, 0.2, 8, M.pot, 1.4, 0.1, 1.5, g);
-    var opl = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), M.plant); opl.position.set(1.4, 0.38, 1.5); opl.scale.y = 1.3; g.add(opl);
+    // === NEW SOFA MODEL (L-shaped sectional) ===
+    // Main seat
+    box(1.6, 0.28, 0.7, new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }), 0, 0.14, 2.0, g);
+    // Back cushions (tufted)
+    box(1.6, 0.38, 0.15, new THREE.MeshStandardMaterial({ color: 0x3A3A3A, roughness: 0.9 }), 0, 0.42, 2.28, g);
+    // Tufting buttons
+    for (var bx = -0.6; bx <= 0.6; bx += 0.3) {
+      for (var by = 0.32; by <= 0.52; by += 0.15) {
+        cyl(0.015, 0.015, 0.02, 8, new THREE.MeshStandardMaterial({ color: 0x2A2A2A }), bx, by, 2.2, g);
+      }
+    }
+    // Arms (rounded)
+    var armL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 12), new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }));
+    armL.position.set(-0.85, 0.35, 2.0); armL.rotation.x = Math.PI / 2; g.add(armL);
+    var armR = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 12), new THREE.MeshStandardMaterial({ color: 0x4A4A4A, roughness: 0.85 }));
+    armR.position.set(0.85, 0.35, 2.0); armR.rotation.x = Math.PI / 2; g.add(armR);
+    // Seat cushions
+    box(0.7, 0.1, 0.55, M.cushion, -0.4, 0.33, 1.95, g);
+    box(0.7, 0.1, 0.55, M.cushion, 0.4, 0.33, 1.95, g);
+    // Throw pillows
+    var pill1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0xB8860B, roughness: 0.9 }));
+    pill1.position.set(-0.55, 0.45, 2.15); pill1.scale.set(1, 0.7, 0.7); g.add(pill1);
+    var pill2 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0x708090, roughness: 0.9 }));
+    pill2.position.set(0.55, 0.45, 2.15); pill2.scale.set(1, 0.7, 0.7); g.add(pill2);
 
-    // ---- Area rug ----
-    box(2.0, 0.015, 1.4, M.rug, 0, 0.008, -0.7, g);
+    // === NEW PLANT MODEL (fiddle leaf fig in decorative pot) ===
+    // Ceramic pot with pattern
+    cyl(0.1, 0.14, 0.22, 12, new THREE.MeshStandardMaterial({ color: 0xE07020, roughness: 0.7 }), -1.4, 0.11, 2.0, g);
+    // Pot rim
+    cyl(0.15, 0.14, 0.03, 12, new THREE.MeshStandardMaterial({ color: 0xD06010, roughness: 0.6 }), -1.4, 0.23, 2.0, g);
+    // Soil
+    cyl(0.12, 0.12, 0.02, 12, new THREE.MeshStandardMaterial({ color: 0x3E2723, roughness: 1 }), -1.4, 0.21, 2.0, g);
+    // Trunk
+    cyl(0.025, 0.02, 0.35, 6, new THREE.MeshStandardMaterial({ color: 0x4E3629, roughness: 0.8 }), -1.4, 0.4, 2.0, g);
+    // Leaves (multiple spheres arranged)
+    for (var li = 0; li < 5; li++) {
+      var leaf = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), M.plant);
+      var langle = li * 1.257;
+      leaf.position.set(-1.4 + Math.cos(langle) * 0.12, 0.55 + li * 0.04, 2.0 + Math.sin(langle) * 0.12);
+      leaf.scale.set(0.8, 0.6, 0.8);
+      g.add(leaf);
+    }
+    var topLeaf = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), M.plant);
+    topLeaf.position.set(-1.4, 0.75, 2.0); topLeaf.scale.y = 0.7; g.add(topLeaf);
+  }
 
-    // ---- Wall clock ----
-    cyl(0.15, 0.15, 0.02, 16, M.white, 0, 2.1, -1.92, g);
-    cyl(0.13, 0.13, 0.01, 16, new THREE.MeshStandardMaterial({ color: 0xFFFFF0, roughness: 0.3 }), 0, 2.1, -1.91, g);
-    box(0.01, 0.08, 0.004, new THREE.MeshStandardMaterial({ color: 0x111111 }), 0, 2.14, -1.9, g);
-    box(0.01, 0.055, 0.004, new THREE.MeshStandardMaterial({ color: 0x111111 }), 0.03, 2.12, -1.9, g);
+  function buildDiningRoom(g) {
+    // === NEW DINING TABLE MODEL (rustic farmhouse with pedestal base) ===
+    // Thick wooden tabletop with live edge effect
+    var dtop = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.75, 0.06, 28), new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.6 }));
+    dtop.position.set(0, 0.78, 0); dtop.scale.set(1.8, 1, 1.15); g.add(dtop);
+    // Table edge banding
+    var edgeRing = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.025, 8, 32), new THREE.MeshStandardMaterial({ color: 0x6B3810, roughness: 0.5 }));
+    edgeRing.position.set(0, 0.78, 0); edgeRing.rotation.x = Math.PI / 2; edgeRing.scale.set(1.75, 1.12, 1); g.add(edgeRing);
+    // Dual pedestal base
+    // Left pedestal
+    box(0.12, 0.65, 0.35, M.darkWood, -0.6, 0.33, 0, g);
+    box(0.35, 0.08, 0.45, M.darkWood, -0.6, 0.04, 0, g);
+    // Decorative scroll feet
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, -0.45, 0.04, -0.18, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, -0.75, 0.04, -0.18, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, -0.45, 0.04, 0.18, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, -0.75, 0.04, 0.18, g);
+    // Right pedestal
+    box(0.12, 0.65, 0.35, M.darkWood, 0.6, 0.33, 0, g);
+    box(0.35, 0.08, 0.45, M.darkWood, 0.6, 0.04, 0, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, 0.45, 0.04, -0.18, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, 0.75, 0.04, -0.18, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, 0.45, 0.04, 0.18, g);
+    cyl(0.05, 0.03, 0.08, 8, M.darkWood, 0.75, 0.04, 0.18, g);
+    // Stretcher bar
+    box(1.0, 0.06, 0.06, M.darkWood, 0, 0.25, 0, g);
 
-    // ---- Whiteboard ----
-    box(1.0, 0.7, 0.03, M.white, -1.4, 1.8, -1.92, g);
-    box(1.05, 0.75, 0.02, M.metal, -1.4, 1.8, -1.93, g);
-    box(0.6, 0.03, 0.05, M.metal, -1.4, 1.4, -1.88, g);
+    // === NEW CHAIR MODEL (ladder back dining chairs) ===
+    function diningChair(cx, cz, rotY) {
+      // Seat (cushioned trapezoid)
+      box(0.38, 0.05, 0.36, new THREE.MeshStandardMaterial({ color: 0xD4A574, roughness: 0.5 }), cx, 0.48, cz, g);
+      box(0.34, 0.03, 0.32, new THREE.MeshStandardMaterial({ color: 0x8B0000, roughness: 0.8 }), cx, 0.52, cz, g);
+      // Front legs (turned)
+      cyl(0.025, 0.03, 0.46, 8, M.wood, cx - 0.14, 0.23, cz - 0.12 * Math.cos(rotY), g);
+      cyl(0.025, 0.03, 0.46, 8, M.wood, cx + 0.14, 0.23, cz - 0.12 * Math.cos(rotY), g);
+      // Back legs (angled)
+      cyl(0.025, 0.025, 0.9, 8, M.wood, cx - 0.14, 0.45, cz + 0.14 * Math.cos(rotY), g);
+      cyl(0.025, 0.025, 0.9, 8, M.wood, cx + 0.14, 0.45, cz + 0.14 * Math.cos(rotY), g);
+      // Ladder back slats
+      for (var sl = 0; sl < 3; sl++) {
+        box(0.28, 0.04, 0.015, M.wood, cx, 0.65 + sl * 0.12, cz + 0.16 * Math.cos(rotY), g);
+      }
+      // Top rail curved
+      box(0.32, 0.05, 0.02, M.wood, cx, 0.92, cz + 0.16 * Math.cos(rotY), g);
+      // Side stretchers
+      box(0.02, 0.02, 0.24, M.wood, cx - 0.14, 0.15, cz, g);
+      box(0.02, 0.02, 0.24, M.wood, cx + 0.14, 0.15, cz, g);
+    }
+    // North chair
+    diningChair(0, -1.3, 0);
+    // South chair
+    diningChair(0, 1.3, Math.PI);
+    // West chair
+    diningChair(-1.95, 0, Math.PI / 2);
+    // East chair
+    diningChair(1.95, 0, -Math.PI / 2);
+
+    // === NEW CUPBOARD MODEL (china cabinet with glass doors) ===
+    function chinaCabinet(cx) {
+      // Lower cabinet (solid doors)
+      box(0.9, 0.7, 0.4, M.darkWood, cx, 0.35, 1.93, g);
+      // Door panels
+      box(0.38, 0.55, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.5 }), cx - 0.22, 0.35, 1.72, g);
+      box(0.38, 0.55, 0.02, new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.5 }), cx + 0.22, 0.35, 1.72, g);
+      // Door handles
+      cyl(0.015, 0.015, 0.04, 6, M.metal, cx - 0.05, 0.35, 1.7, g);
+      cyl(0.015, 0.015, 0.04, 6, M.metal, cx + 0.05, 0.35, 1.7, g);
+      // Counter top
+      box(0.95, 0.04, 0.45, new THREE.MeshStandardMaterial({ color: 0x2F2F2F, roughness: 0.3 }), cx, 0.72, 1.93, g);
+      // Upper cabinet (glass doors)
+      box(0.9, 0.85, 0.35, M.darkWood, cx, 1.17, 1.95, g);
+      // Glass door frames
+      box(0.4, 0.75, 0.02, M.darkWood, cx - 0.22, 1.17, 1.76, g);
+      box(0.4, 0.75, 0.02, M.darkWood, cx + 0.22, 1.17, 1.76, g);
+      // Glass panels
+      box(0.32, 0.65, 0.01, new THREE.MeshStandardMaterial({ color: 0xE8F4F8, transparent: true, opacity: 0.4, roughness: 0.1 }), cx - 0.22, 1.17, 1.75, g);
+      box(0.32, 0.65, 0.01, new THREE.MeshStandardMaterial({ color: 0xE8F4F8, transparent: true, opacity: 0.4, roughness: 0.1 }), cx + 0.22, 1.17, 1.75, g);
+      // Shelves inside (visible through glass)
+      box(0.82, 0.02, 0.3, M.wood, cx, 1.0, 1.92, g);
+      box(0.82, 0.02, 0.3, M.wood, cx, 1.35, 1.92, g);
+      // Decorative crown molding
+      box(0.98, 0.06, 0.38, M.darkWood, cx, 1.62, 1.95, g);
+      // Handles
+      cyl(0.012, 0.012, 0.035, 6, M.metal, cx - 0.05, 1.17, 1.74, g);
+      cyl(0.012, 0.012, 0.035, 6, M.metal, cx + 0.05, 1.17, 1.74, g);
+      // Display items on shelves
+      cyl(0.04, 0.03, 0.08, 8, new THREE.MeshStandardMaterial({ color: 0x1E90FF, roughness: 0.3 }), cx - 0.25, 1.08, 1.9, g);
+      cyl(0.035, 0.025, 0.1, 8, new THREE.MeshStandardMaterial({ color: 0xFFD700, roughness: 0.2, metalness: 0.3 }), cx + 0.25, 1.08, 1.9, g);
+    }
+    chinaCabinet(-2.5);
+    chinaCabinet(2.5);
   }
 
   function buildGenericRoom(g) {
@@ -565,7 +692,8 @@ export function House3DViewer({
     kitchen: buildKitchen,
     bedroom: buildBedroom,
     bathroom: buildBathroom,
-    office: buildOffice,
+    dining: buildDiningRoom,
+    office: buildGenericRoom,
   };
 
   // ================================================================
@@ -862,17 +990,17 @@ export function House3DViewer({
 
     // --- LIVING ROOM spots ---
     var livingSpots = {
-      'tv': { x: 0, z: 1.9, key: 'tv-stand' },          // on the TV stand
-      'television': { x: 0, z: 1.9, key: 'tv-stand' },
-      'gaming': { x: 0.5, z: 1.9, key: 'console' },      // next to TV
-      'console': { x: 0.5, z: 1.9, key: 'console' },
-      'lamp': { x: 2.0, z: -1.8, key: 'side-table' },    // on side table
-      'light': { x: 2.0, z: -1.8, key: 'lamp-spot' },
-      'router': { x: -2.0, z: -0.5, key: 'shelf' },      // on bookshelf
-      'fan': { x: 1.8, z: 0.5, key: 'corner-fan' },
+      'tv': { x: 0, z: -1.9, key: 'tv-stand' },
+      'television': { x: 0, z: -1.9, key: 'tv-stand' },
+      'gaming': { x: 0.5, z: -1.9, key: 'console' },
+      'console': { x: 0.5, z: -1.9, key: 'console' },
+      'lamp': { x: -1.4, z: 0, key: 'lamp-table' },
+      'light': { x: -1.4, z: 0, key: 'lamp-spot' },
+      'router': { x: 1.3, z: -1.5, key: 'shelf' },
+      'fan': { x: 1.4, z: 0.5, key: 'corner-fan' },
       'air conditioner': { x: 0, z: -2.2, key: 'wall-ac' },
-      'space heater': { x: -1.8, z: 0.5, key: 'heater' },
-      'speaker': { x: -0.5, z: 1.9, key: 'speaker' },
+      'space heater': { x: -1.4, z: 1.0, key: 'heater' },
+      'speaker': { x: -0.5, z: -1.9, key: 'speaker' },
     };
 
     // --- KITCHEN spots ---
@@ -891,18 +1019,18 @@ export function House3DViewer({
 
     // --- BEDROOM spots ---
     var bedroomSpots = {
-      'tv': { x: 0, z: -1.8, key: 'wall-tv' },           // wall-mounted
-      'television': { x: 0, z: -1.8, key: 'wall-tv' },
-      'laptop': { x: 1.8, z: 1.5, key: 'desk-laptop' },  // on desk
-      'monitor': { x: 1.8, z: 1.5, key: 'desk-mon' },
-      'lamp': { x: -1.5, z: 0.4, key: 'nightstand-lamp' },
-      'light': { x: 1.5, z: 0.4, key: 'nightstand-light' },
-      'fan': { x: -1.8, z: 1.5, key: 'corner-fan' },
-      'air conditioner': { x: 0, z: -2.2, key: 'wall-ac' },
-      'space heater': { x: 1.8, z: 0, key: 'heater' },
-      'charger': { x: -1.5, z: 0.4, key: 'nightstand-charge' },
-      'phone': { x: 1.5, z: 0.4, key: 'nightstand-phone' },
-      'router': { x: 1.8, z: -1.6, key: 'dresser-router' },
+      'tv': { x: 0, z: 1.8, key: 'wall-tv' },
+      'television': { x: 0, z: 1.8, key: 'wall-tv' },
+      'laptop': { x: -1.5, z: 0.4, key: 'desk-laptop' },
+      'monitor': { x: -1.5, z: 0.4, key: 'desk-mon' },
+      'lamp': { x: 1.05, z: -1.55, key: 'nightstand-lamp' },
+      'light': { x: 1.05, z: -1.55, key: 'nightstand-light' },
+      'fan': { x: 1.5, z: 1.5, key: 'corner-fan' },
+      'air conditioner': { x: 0, z: -1.9, key: 'wall-ac' },
+      'space heater': { x: 1.5, z: 0, key: 'heater' },
+      'charger': { x: 1.05, z: -1.55, key: 'nightstand-charge' },
+      'phone': { x: 1.05, z: -1.55, key: 'nightstand-phone' },
+      'router': { x: 1.2, z: 1.5, key: 'dresser-router' },
     };
 
     // --- BATHROOM spots ---
@@ -919,14 +1047,14 @@ export function House3DViewer({
 
     // --- OFFICE spots ---
     var officeSpots = {
-      'monitor': { x: 0, z: -1.75, key: 'desk-monitor' },    // on desk
+      'monitor': { x: 0, z: -1.75, key: 'desk-monitor' },
       'laptop': { x: 0, z: -1.4, key: 'desk-laptop' },
-      'tv': { x: 1.8, z: 0, key: 'wall-tv' },
-      'television': { x: 1.8, z: 0, key: 'wall-tv' },
-      'router': { x: -1.8, z: 1.5, key: 'shelf-router' },    // on bookshelf
+      'tv': { x: 1.5, z: 0, key: 'wall-tv' },
+      'television': { x: 1.5, z: 0, key: 'wall-tv' },
+      'router': { x: -1.4, z: 1.4, key: 'shelf-router' },
       'lamp': { x: 0.8, z: -1.75, key: 'desk-lamp' },
       'light': { x: 0.8, z: -1.75, key: 'desk-lamp' },
-      'fan': { x: 1.8, z: 1.5, key: 'corner-fan' },
+      'fan': { x: 1.5, z: 1.5, key: 'corner-fan' },
       'space heater': { x: -0.8, z: 0.5, key: 'heater' },
       'charger': { x: -0.5, z: -1.4, key: 'desk-charger' },
       'phone': { x: -0.5, z: -1.4, key: 'desk-phone' },
@@ -934,7 +1062,19 @@ export function House3DViewer({
       'gaming': { x: 0.5, z: -1.75, key: 'desk-console' },
     };
 
-    var spotMaps = { living: livingSpots, kitchen: kitchenSpots, bedroom: bedroomSpots, bathroom: bathroomSpots, office: officeSpots };
+    // --- DINING ROOM spots ---
+    var diningSpots = {
+      'light': { x: 0, z: 0, key: 'chandelier' },
+      'lamp': { x: 2.5, z: -1.5, key: 'corner-lamp' },
+      'fan': { x: 0, z: 0, key: 'ceiling-fan' },
+      'speaker': { x: -2.5, z: 1.5, key: 'cupboard-speaker' },
+      'air conditioner': { x: 0, z: -2.2, key: 'wall-ac' },
+      'space heater': { x: 2.5, z: 1.5, key: 'heater' },
+      'tv': { x: 0, z: -2.0, key: 'wall-tv' },
+      'television': { x: 0, z: -2.0, key: 'wall-tv' },
+    };
+
+    var spotMaps = { living: livingSpots, kitchen: kitchenSpots, bedroom: bedroomSpots, bathroom: bathroomSpots, office: officeSpots, dining: diningSpots };
     var spots = spotMaps[rType] || livingSpots;
 
     // Try to find a matching spot for this device category
@@ -1092,75 +1232,72 @@ export function House3DViewer({
   });
 
   // ================================================================
-  // Outer Walls (NO ROOF!) — 5-room asymmetric layout
-  // Layout:
-  //  ┌──────────┬─────────┐
-  //  │ Living   │ Kitchen │      top row: LR_D = 5 high
-  //  │ (6 wide) │ (5 wide)│
-  //  ├────┬─────┼─────────┤
-  //  │Bed │Bath │ Office  │      bottom row: BR_D = 4.5 high
-  //  │(4) │(3)  │  (4)    │
-  //  └────┴─────┴─────────┘
-  //  Total: 11 wide x 9.5 deep
+  // Outer Walls (NO ROOF!) — 5-room layout
+  //  ┌──────────┬──────────────┬──────────┐
+  //  │ Bedroom  │   Kitchen    │ Bathroom │
+  //  ├──────────┼──────────────┴──────────┤
+  //  │  Living  │      Dining Room       │
+  //  └──────────┴────────────────────────┘
   // ================================================================
 
-  var HW = TOTAL_W / 2;  // 5.5
+  var HW = TOTAL_W / 2;  // 6
   var HD = TOTAL_D / 2;  // 4.75
 
   // ---- Outer walls ----
-  // Back wall (top)
-  box(TOTAL_W + WALL_T, WALL_H, WALL_T, M.wall, 0, WALL_H / 2, -HD, house);
-  // Front wall (bottom, with door gap in bedroom area)
-  var doorGapX = -HW + BR_W / 2;
-  box(BR_W / 2 - 0.6, WALL_H, WALL_T, M.wall, -HW + (BR_W / 2 - 0.6) / 2, WALL_H / 2, HD, house);
-  box(TOTAL_W - BR_W / 2 - 0.6, WALL_H, WALL_T, M.wall, -HW + BR_W / 2 + 0.6 + (TOTAL_W - BR_W / 2 - 0.6) / 2, WALL_H / 2, HD, house);
-  box(1.2, WALL_H - 2.2, WALL_T, M.wall, doorGapX, WALL_H - 0.4, HD, house);
-  // Left wall
-  box(WALL_T, WALL_H, TOTAL_D, M.wall, -HW, WALL_H / 2, 0, house);
-  // Right wall
-  box(WALL_T, WALL_H, TOTAL_D, M.wall, HW, WALL_H / 2, 0, house);
+  box(TOTAL_W + WALL_T, WALL_H, WALL_T, M.wall, 0, WALL_H / 2, -HD, house);        // Back wall
+  // Front wall (with door gap in living room)
+  var doorGapX = -HW + LR_W / 2;
+  var dHalf = 0.5;
+  box(LR_W / 2 - dHalf, WALL_H, WALL_T, M.wall, -HW + (LR_W / 2 - dHalf) / 2, WALL_H / 2, HD, house);
+  var rwStart = -HW + LR_W / 2 + dHalf;
+  var rwLen = TOTAL_W - (LR_W / 2 + dHalf);
+  box(rwLen, WALL_H, WALL_T, M.wall, rwStart + rwLen / 2, WALL_H / 2, HD, house);
+  box(1.0, WALL_H - 2.2, WALL_T, M.wall, doorGapX, WALL_H - 0.4, HD, house);       // Transom
+  box(WALL_T, WALL_H, TOTAL_D, M.wall, -HW, WALL_H / 2, 0, house);                 // Left wall
+  box(WALL_T, WALL_H, TOTAL_D, M.wall, HW, WALL_H / 2, 0, house);                  // Right wall
 
   // ---- Interior walls ----
-  var IW = WALL_T * 0.7;  // thinner interior walls
-  var rowSplitZ = -HD + LR_D;  // horizontal split between top and bottom rows
+  var IW = WALL_T * 0.7;
+  var rowSplitZ = -HD + BR_D;  // horizontal split at z = -0.25
 
-  // Horizontal wall (separating top row from bottom row, with doorway gaps)
-  // Living→Bedroom gap
-  box(BR_W - 1.2, WALL_H, IW, M.wallInner, -HW + BR_W / 2, WALL_H / 2, rowSplitZ, house);
-  // Bathroom section (no gap, solid)
-  box(BA_W, WALL_H, IW, M.wallInner, -HW + BR_W + BA_W / 2, WALL_H / 2, rowSplitZ, house);
-  // Kitchen→Office gap
-  box(OF_W - 1.2, WALL_H, IW, M.wallInner, -HW + BR_W + BA_W + OF_W / 2, WALL_H / 2, rowSplitZ, house);
+  // Horizontal wall (top row ↔ bottom row) with doorway gaps
+  // Left column (Bedroom↔Living)
+  box(BR_W / 2 - 0.5, WALL_H, IW, M.wallInner, -HW + (BR_W / 2 - 0.5) / 2, WALL_H / 2, rowSplitZ, house);
+  box(BR_W / 2 - 0.5, WALL_H, IW, M.wallInner, -HW + BR_W / 2 + 0.5 + (BR_W / 2 - 0.5) / 2, WALL_H / 2, rowSplitZ, house);
+  // Right section (Kitchen+Bathroom ↔ Dining)
+  var kitDinStart = -HW + BR_W;
+  box(KI_W / 2 - 0.5, WALL_H, IW, M.wallInner, kitDinStart + (KI_W / 2 - 0.5) / 2, WALL_H / 2, rowSplitZ, house);
+  box(KI_W / 2 + BA_W - 0.5, WALL_H, IW, M.wallInner, kitDinStart + KI_W / 2 + 0.5 + (KI_W / 2 + BA_W - 0.5) / 2, WALL_H / 2, rowSplitZ, house);
 
-  // Vertical wall: Living room | Kitchen (top row)
-  var topVertX = -HW + LR_W;
-  box(IW, WALL_H, LR_D / 2 - 0.6, M.wallInner, topVertX, WALL_H / 2, -HD + LR_D / 4 - 0.3, house);
-  box(IW, WALL_H, LR_D / 2 - 0.6, M.wallInner, topVertX, WALL_H / 2, -HD + LR_D * 3 / 4 + 0.3, house);
+  // Vertical wall: Bedroom | Kitchen (top row, with door gap)
+  var topVert1X = -HW + BR_W;
+  box(IW, WALL_H, BR_D / 2 - 0.5, M.wallInner, topVert1X, WALL_H / 2, -HD + BR_D / 4 - 0.25, house);
+  box(IW, WALL_H, BR_D / 2 - 0.5, M.wallInner, topVert1X, WALL_H / 2, -HD + BR_D * 3 / 4 + 0.25, house);
 
-  // Vertical wall: Bedroom | Bathroom (bottom row left)
-  var botVert1X = -HW + BR_W;
-  box(IW, WALL_H, BR_D / 2 - 0.5, M.wallInner, botVert1X, WALL_H / 2, rowSplitZ + BR_D / 4 - 0.25, house);
-  box(IW, WALL_H, BR_D / 2 - 0.5, M.wallInner, botVert1X, WALL_H / 2, rowSplitZ + BR_D * 3 / 4 + 0.25, house);
+  // Vertical wall: Kitchen | Bathroom (top row, with door gap)
+  var topVert2X = -HW + BR_W + KI_W;
+  box(IW, WALL_H, BA_D / 2 - 0.5, M.wallInner, topVert2X, WALL_H / 2, -HD + BA_D / 4 - 0.25, house);
+  box(IW, WALL_H, BA_D / 2 - 0.5, M.wallInner, topVert2X, WALL_H / 2, -HD + BA_D * 3 / 4 + 0.25, house);
 
-  // Vertical wall: Bathroom | Office (bottom row right)
-  var botVert2X = -HW + BR_W + BA_W;
-  box(IW, WALL_H, BR_D / 2 - 0.5, M.wallInner, botVert2X, WALL_H / 2, rowSplitZ + BR_D / 4 - 0.25, house);
-  box(IW, WALL_H, BR_D / 2 - 0.5, M.wallInner, botVert2X, WALL_H / 2, rowSplitZ + BR_D * 3 / 4 + 0.25, house);
+  // Vertical wall: Living | Dining (bottom row, with door gap)
+  var botVertX = -HW + LR_W;
+  box(IW, WALL_H, LR_D / 2 - 0.5, M.wallInner, botVertX, WALL_H / 2, rowSplitZ + LR_D / 4 - 0.25, house);
+  box(IW, WALL_H, LR_D / 2 - 0.5, M.wallInner, botVertX, WALL_H / 2, rowSplitZ + LR_D * 3 / 4 + 0.25, house);
 
   // ---- Windows ----
   var winPositions = [
-    // Back wall windows (living + kitchen)
-    { x: -HW + LR_W / 2, y: 1.8, z: -HD + 0.01, ry: 0 },
-    { x: -HW + LR_W + KI_W / 2, y: 1.8, z: -HD + 0.01, ry: 0 },
-    // Front wall windows (bedroom + office)
-    { x: -HW + BR_W / 2 + 1.2, y: 1.8, z: HD - 0.01, ry: 0 },
-    { x: HW - OF_W / 2, y: 1.8, z: HD - 0.01, ry: 0 },
-    // Left wall windows
-    { x: -HW + 0.01, y: 1.8, z: -HD + LR_D / 2, ry: Math.PI / 2 },
-    { x: -HW + 0.01, y: 1.8, z: rowSplitZ + BR_D / 2, ry: Math.PI / 2 },
-    // Right wall windows
-    { x: HW - 0.01, y: 1.8, z: -HD + KI_D / 2, ry: Math.PI / 2 },
-    { x: HW - 0.01, y: 1.8, z: rowSplitZ + OF_D / 2, ry: Math.PI / 2 },
+    // Back wall — bedroom, kitchen, bathroom
+    { x: -HW + BR_W / 2, y: 1.8, z: -HD + 0.01, ry: 0 },
+    { x: -HW + BR_W + KI_W / 2, y: 1.8, z: -HD + 0.01, ry: 0 },
+    { x: HW - BA_W / 2, y: 1.8, z: -HD + 0.01, ry: 0 },
+    // Front wall — dining room
+    { x: -HW + LR_W + DN_W / 2, y: 1.8, z: HD - 0.01, ry: 0 },
+    // Left wall — bedroom, living room
+    { x: -HW + 0.01, y: 1.8, z: -HD + BR_D / 2, ry: Math.PI / 2 },
+    { x: -HW + 0.01, y: 1.8, z: rowSplitZ + LR_D / 2, ry: Math.PI / 2 },
+    // Right wall — bathroom, dining room
+    { x: HW - 0.01, y: 1.8, z: -HD + BA_D / 2, ry: Math.PI / 2 },
+    { x: HW - 0.01, y: 1.8, z: rowSplitZ + DN_D / 2, ry: Math.PI / 2 },
   ];
   winPositions.forEach(function(wp) {
     var win = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.0), M.window);
@@ -1179,11 +1316,11 @@ export function House3DViewer({
   });
 
   // ---- Front door ----
-  var door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.15, 0.1), M.door);
+  var door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.15, 0.1), M.door);
   door.position.set(doorGapX, 1.075, HD + 0.01);
   house.add(door);
   var dh = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshStandardMaterial({ color: 0xCCCC00, metalness: 0.8, roughness: 0.2 }));
-  dh.position.set(doorGapX + 0.3, 1.1, HD + 0.08);
+  dh.position.set(doorGapX + 0.28, 1.1, HD + 0.08);
   house.add(dh);
 
   // ---- Wall top trim (no roof — just a thin cap) ----

@@ -13,7 +13,7 @@ import { Platform } from 'react-native';
 // ---------------------------------------------------------------------------
 
 // Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://ahead-simply-antenna-detection.trycloudflare.com';
+const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
 
 const API_BASE_URL = TUNNEL_URL;
 
