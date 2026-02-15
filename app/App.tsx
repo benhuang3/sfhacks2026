@@ -433,12 +433,12 @@ function LandingScreen() {
               justifyContent: 'space-between', marginBottom: 20,
             }}>
               {[
-                { icon: '🔌', label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked', color: colors.accent },
-                { icon: '⚡', label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours', color: '#FFB300' },
-                { icon: '💰', label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated', color: '#FF9800' },
-                { icon: '🌱', label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint', color: '#66BB6A' },
-                { icon: '👻', label: 'Standby Waste', value: stats ? `$${fmt(stats.standbyWaste, 2)}/yr` : '–', sub: 'ghost energy cost', color: '#AB47BC' },
-                { icon: '📊', label: 'Annual Cost', value: stats ? `$${fmt(stats.annualCost, 2)}` : '–', sub: 'total estimate', color: '#42A5F5' },
+                { icon: 'hardware-chip-outline' as const, label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked', color: colors.accent },
+                { icon: 'flash-outline' as const, label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours', color: '#FFB300' },
+                { icon: 'wallet-outline' as const, label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated', color: '#FF9800' },
+                { icon: 'leaf-outline' as const, label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint', color: '#66BB6A' },
+                { icon: 'eye-off-outline' as const, label: 'Standby Waste', value: stats ? `$${fmt(stats.standbyWaste, 2)}/yr` : '–', sub: 'ghost energy cost', color: '#AB47BC' },
+                { icon: 'bar-chart-outline' as const, label: 'Annual Cost', value: stats ? `$${fmt(stats.annualCost, 2)}` : '–', sub: 'total estimate', color: '#42A5F5' },
               ].map((c, i) => (
                 <View
                   key={i}
@@ -452,7 +452,9 @@ function LandingScreen() {
                     marginBottom: 12,
                   }}
                 >
-                  <Text style={{ fontSize: 24, marginBottom: 6 }}>{c.icon}</Text>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: c.color + '18', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
+                    <Ionicons name={c.icon} size={22} color={c.color} />
+                  </View>
                   <Text style={{ color: c.color, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
                   <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>{c.label}</Text>
                   <Text style={{ color: isDark ? '#444' : '#aaa', fontSize: 10, marginTop: 2 }}>{c.sub}</Text>

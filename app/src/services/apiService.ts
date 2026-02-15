@@ -12,9 +12,10 @@ import { Platform } from 'react-native';
 // Config
 // ---------------------------------------------------------------------------
 
-// Cloudflare tunnel URL — works from any device (phone, web, emulator)
-const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
+// Cloudflare tunnel URL — works from any network
+const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
 
+// API base — paths already include /api/v1 prefix where needed
 const API_BASE_URL = TUNNEL_URL;
 
 console.log('[apiService] API_BASE_URL =', API_BASE_URL);
