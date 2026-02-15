@@ -11,7 +11,7 @@ import {
   TextInput, Image, ActivityIndicator, Dimensions, Animated,
   Platform,
 } from 'react-native';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
 } from '../services/apiClient';

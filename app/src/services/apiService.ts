@@ -13,13 +13,7 @@ import { log } from '../utils/logger';
 // Config
 // ---------------------------------------------------------------------------
 
-// Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
-
-// API base — paths already include /api/v1 prefix where needed
-const API_BASE_URL = TUNNEL_URL;
-
-log.config('apiService API_BASE_URL', { url: API_BASE_URL });
+import { API_BASE_URL } from '../utils/apiConfig';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

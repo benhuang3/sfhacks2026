@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { showAlert, showConfirm } from '../utils/alert';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 import {
   proposeActions,
   executeActions,

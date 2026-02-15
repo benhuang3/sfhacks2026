@@ -25,7 +25,9 @@ interface ScanDataFromDetections {
 
 export function buildScanDataFromDetections(
   trackedObjects: TrackedObject[],
-  photoUri: string
+  photoUri: string,
+  /** Image dimensions for normalizing bbox to [0,1] range */
+  imageDims?: { width: number; height: number }
 ): ScanDataFromDetections {
   // Sort by confidence descending
   const sorted = [...trackedObjects].sort((a, b) => b.score - a.score);
@@ -47,11 +49,20 @@ export function buildScanDataFromDetections(
       modelAsset: `models/${obj.label.toLowerCase().replace(/ /g, '_')}.glb`,
     }));
 
+  // Normalize bbox to [0,1] range so ScanConfirmScreen can use percentage positioning.
+  // Falls back to raw pixel values if image dimensions are unavailable.
+  const normalizeBbox = (bbox: TrackedObject['bbox']): number[] => {
+    const w = imageDims?.width ?? 1;
+    const h = imageDims?.height ?? 1;
+    if (imageDims) {
+      return [bbox.x1 / w, bbox.y1 / h, bbox.x2 / w, bbox.y2 / h];
+    }
+    return [bbox.x1, bbox.y1, bbox.x2, bbox.y2];
+  };
+
   return {
     candidates,
-    bbox: top
-      ? [top.bbox.x1, top.bbox.y1, top.bbox.x2, top.bbox.y2]
-      : null,
+    bbox: top ? normalizeBbox(top.bbox) : null,
     detected_appliance: {
       brand: top?.productInfo?.brand ?? 'Unknown',
       model: top?.productInfo?.model ?? 'Unknown',

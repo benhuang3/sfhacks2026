@@ -1,16 +1,10 @@
 /**
  * API Client — calls the consolidated FastAPI backend (be/)
- *
- * Base URL should point to your dev machine's IP when testing on a
- * physical device, or localhost for emulators.
  */
 
-// Cloudflare tunnel URL — works from any network
-const TUNNEL_URL = 'https://witch-field-acquisition-operational.trycloudflare.com';
+import { API_V1_URL } from '../utils/apiConfig';
 
-const BASE_URL = `${TUNNEL_URL}/api/v1`;
-
-console.log('[apiClient] BASE_URL =', BASE_URL);
+const BASE_URL = API_V1_URL;
 
 // ---------------------------------------------------------------------------
 // Types

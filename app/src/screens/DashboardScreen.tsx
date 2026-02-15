@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import type { ScanResultData } from './UploadScanScreen';
 import { Appliance3DModel } from '../components/Appliance3DModel';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 
 interface DashboardScreenProps {
   onBack: () => void;

@@ -1,8 +1,10 @@
 /**
- * LiveScanScreen — Real-time camera preview with on-device object detection.
+ * LiveScanScreen — Real-time camera preview with on-device object detection
+ * and outline tracing via DeepLabV3 segmentation.
  *
- * Uses react-native-executorch (SSDLite320 MobileNetV3) via useScannerPipeline
- * to detect appliances at ~1-2 FPS and render bounding box overlays.
+ * SSDLite320 detects objects at ~1-2 FPS. DeepLabV3 generates contour outlines
+ * for supported classes (TV, chair, couch, dining table, bottle). Other classes
+ * fall back to bounding box rectangles.
  */
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
@@ -21,10 +23,11 @@ import { useIsFocused } from '@react-navigation/native';
 
 import { useScannerPipeline } from '../hooks/useScannerPipeline';
 import { useObjectTracker } from '../hooks/useObjectTracker';
+import { useSegmentationOverlay } from '../hooks/useSegmentationOverlay';
 import { TrackedObject } from '../utils/scannerTypes';
-import { scaleBBox } from '../utils/bboxUtils';
 import { getDisplayName } from '../utils/applianceClasses';
 import { buildScanDataFromDetections } from '../utils/detectionBridge';
+import { OutlineOverlay } from '../components/scanner/OutlineOverlay';
 import { log } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -48,9 +51,12 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   // Detection pipeline
   const pipeline = useScannerPipeline();
   const tracker = useObjectTracker(0.3, 10);
+  const segOverlay = useSegmentationOverlay();
   // Stable ref to the tracker's update fn (the tracker object itself is new each render)
   const updateWithDetectionsRef = useRef(tracker.updateWithDetections);
   updateWithDetectionsRef.current = tracker.updateWithDetections;
+  const segRequestRef = useRef(segOverlay.requestSegmentation);
+  segRequestRef.current = segOverlay.requestSegmentation;
 
   // State
   const [trackedObjects, setTrackedObjects] = useState<TrackedObject[]>([]);
@@ -58,6 +64,7 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   const [isStubMode, setIsStubMode] = useState(false);
   const [cameraLayout, setCameraLayout] = useState({ width: 1, height: 1 });
   const photoDimsRef = useRef({ width: 640, height: 480 });
+  const cameraLayoutRef = useRef({ width: 1, height: 1 });
   const isDetectingRef = useRef(false);
   const isCapturingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -66,6 +73,7 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
   // Camera layout measurement
   const onCameraLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
+    cameraLayoutRef.current = { width, height };
     setCameraLayout({ width, height });
   }, []);
 
@@ -99,6 +107,18 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
       const tracked = updateWithDetectionsRef.current(detections);
       setTrackedObjects(tracked);
 
+      // Trigger segmentation for outline tracing (non-blocking, throttled)
+      if (tracked.length > 0) {
+        segRequestRef.current(
+          photo.uri,
+          tracked,
+          photoDimsRef.current.width,
+          photoDimsRef.current.height,
+          cameraLayoutRef.current.width,
+          cameraLayoutRef.current.height
+        );
+      }
+
       // Detect stub mode: if we get many consecutive empty frames, the native
       // module is probably stubbed out (Expo Go without dev client).
       if (detections.length === 0) {
@@ -117,7 +137,11 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
 
   // Resume scanning when screen regains focus (e.g. back from ScanConfirm)
   useEffect(() => {
-    if (isFocused) setIsScanning(true);
+    if (isFocused) {
+      setIsScanning(true);
+      emptyFrameCountRef.current = 0;
+      setIsStubMode(false);
+    }
   }, [isFocused]);
 
   // Start/stop detection interval (also gated on isFocused)
@@ -174,7 +198,10 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
           ? tracker.updateWithDetections(detections)
           : trackedObjects;
 
-      const scanData = buildScanDataFromDetections(finalTracked, photo.uri);
+      const scanData = buildScanDataFromDetections(finalTracked, photo.uri, {
+        width: photo.width,
+        height: photo.height,
+      });
       log.scan('Capture complete', {
         detections: finalTracked.length,
         topLabel: scanData.detected_appliance.name,
@@ -276,46 +303,13 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
 
       {/* All overlays in a sibling view on top of the camera */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {/* Bounding box overlays */}
-        {trackedObjects
-          .filter((obj) => obj.framesSinceLastSeen <= 3)
-          .map((obj) => {
-            const scaled = scaleBBox(
-              obj.bbox,
-              photoDimsRef.current.width,
-              photoDimsRef.current.height,
-              cameraLayout.width,
-              cameraLayout.height,
-            );
-
-            const opacity = obj.framesSinceLastSeen === 0 ? 1 : 0.5;
-
-            return (
-              <View
-                key={obj.id}
-                style={[
-                  styles.bboxContainer,
-                  {
-                    left: scaled.left,
-                    top: scaled.top,
-                    width: scaled.width,
-                    height: scaled.height,
-                    opacity,
-                    borderColor: obj.identificationAttempted
-                      ? '#FFC107'
-                      : '#4CAF50',
-                  },
-                ]}
-                pointerEvents="none"
-              >
-                <View style={styles.bboxLabel}>
-                  <Text style={styles.bboxLabelText}>
-                    {getDisplayName(obj.label)} {Math.round(obj.score * 100)}%
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+        {/* Object outlines (SVG) + fallback bounding boxes */}
+        <OutlineOverlay
+          overlays={segOverlay.overlays}
+          trackedObjects={trackedObjects}
+          photoDims={photoDimsRef.current}
+          cameraLayout={cameraLayout}
+        />
 
         {/* Stub mode warning */}
         {isStubMode && (
@@ -348,6 +342,14 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
                 : 'Paused'}
             </Text>
           </View>
+          {/* Segmentation model download progress */}
+          {!segOverlay.isReady && segOverlay.downloadProgress < 1 && (
+            <View style={[styles.statusPill, { marginLeft: 8 }]}>
+              <Text style={styles.statusText}>
+                Outline: {Math.round(segOverlay.downloadProgress * 100)}%
+              </Text>
+            </View>
+          )}
         </SafeAreaView>
 
         {/* Detection chips */}
@@ -374,7 +376,10 @@ export function LiveScanScreen({ onBack, onCapture }: LiveScanScreenProps) {
           {/* Toggle scanning */}
           <TouchableOpacity
             style={styles.toggleButton}
-            onPress={() => setIsScanning((s) => !s)}
+            onPress={() => {
+              setIsScanning((s) => !s);
+              emptyFrameCountRef.current = 0;
+            }}
           >
             <Text style={styles.toggleButtonText}>
               {isScanning ? 'Pause' : 'Resume'}
@@ -575,28 +580,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#fff',
-  },
-
-  // Bounding boxes
-  bboxContainer: {
-    position: 'absolute',
-    borderWidth: 2,
-    borderRadius: 4,
-    backgroundColor: 'rgba(76, 175, 80, 0.08)',
-  },
-  bboxLabel: {
-    position: 'absolute',
-    top: -22,
-    left: -1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  bboxLabelText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
   },
 
   // Detection list
