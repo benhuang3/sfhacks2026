@@ -17,16 +17,10 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadScanImage, checkHealth } from '../services/apiService';
-import { listHomes, addDevice, Home } from '../services/apiClient';
+import { listHomes, addDevice, Home, RoomModel } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
-import {
-  RATE_PER_KWH,
-  CO2_PER_KWH,
-  TREE_ABSORBS_PER_YEAR,
-  US_AVG_APPLIANCE_KWH,
-  USAGE_HOUR_OPTIONS,
-  getCategoryIcon,
-} from '../utils/energyConstants';
+import { Appliance3DModel } from '../components/Appliance3DModel';
+import { useTheme } from '../../App';
 
 interface UploadScanScreenProps {
   onBack: () => void;
@@ -78,6 +72,7 @@ const SCAN_STEPS = [
 
 export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: UploadScanScreenProps) {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [scanStep, setScanStep] = useState<ScanStep>('idle');
@@ -266,9 +261,6 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       await new Promise(r => setTimeout(r, 200));
       
       const scanData = data?.data as ScanResultData;
-      if (!scanData?.detected_appliance) {
-        throw new Error('Server returned incomplete scan data');
-      }
       setResult(scanData);
       setScanStep('complete');
       onScanComplete?.(scanData, imageUri ?? undefined);
@@ -296,7 +288,8 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
   const power = result?.power_profile?.profile;
   const isScanning = ['uploading', 'detecting', 'analyzing'].includes(scanStep);
 
-  // Calculate costs
+  // Calculate costs — consistent $0.30/kWh rate
+  const RATE_PER_KWH = 0.30;
   const dailyKwh = power ? (power.active_watts_typical * usageHours) / 1000 : 0;
   const monthlyKwh = dailyKwh * 30;
   const monthlyCost = monthlyKwh * RATE_PER_KWH;
@@ -304,9 +297,14 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
   const yearlyCost = yearlyKwh * RATE_PER_KWH;
   const standbyYearlyCost = power ? (power.standby_watts_typical * 24 * 365 * RATE_PER_KWH) / 1000 : 0;
 
-  // Environmental impact
+  // Environmental impact calculations — kg CO₂ (consistent with backend)
+  const CO2_PER_KWH = 0.25; // kg CO₂/kWh
+  const TREE_ABSORBS_PER_YEAR = 21.77; // kg CO₂ per tree per year (EPA)
   const yearlyCO2 = yearlyKwh * CO2_PER_KWH;
   const treesNeeded = yearlyCO2 / TREE_ABSORBS_PER_YEAR;
+  
+  // Comparison with average
+  const US_AVG_APPLIANCE_KWH = 200; // avg appliance yearly kWh
   const comparedToAvg = yearlyKwh > 0 ? ((yearlyKwh / US_AVG_APPLIANCE_KWH) * 100) : 0;
 
   // Load homes when result arrives
@@ -315,21 +313,21 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       listHomes(user.id).then(h => {
         setHomes(h);
         if (h.length > 0) setSelectedHomeId(h[0].id);
-      }).catch(e => console.warn('Failed to load homes:', e));
+      }).catch(() => {});
     }
   }, [result, user]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>← Back</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Scan Appliance</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Scan Appliance</Text>
         {onViewDashboard && (
           <TouchableOpacity onPress={onViewDashboard} style={styles.headerBtn}>
-            <Text style={styles.headerBtnText}>Dashboard →</Text>
+            <Text style={[styles.headerBtnText, { color: colors.accent }]}>Dashboard →</Text>
           </TouchableOpacity>
         )}
         {!onViewDashboard && <View style={{ width: 80 }} />}
@@ -347,12 +345,12 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
         {/* Upload area */}
         {!imageUri ? (
           <View>
-            <TouchableOpacity style={styles.dropZone} onPress={handlePickImage}>
-              <View style={styles.dropIconContainer}>
+            <TouchableOpacity style={[styles.dropZone, { borderColor: colors.border, backgroundColor: colors.card }]} onPress={handlePickImage}>
+              <View style={[styles.dropIconContainer, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : 'rgba(76,175,80,0.08)' }]}>
                 <Text style={styles.dropIcon}>📷</Text>
               </View>
-              <Text style={styles.dropTitle}>Upload Appliance Photo</Text>
-              <Text style={styles.dropSubtitle}>
+              <Text style={[styles.dropTitle, { color: colors.text }]}>Upload Appliance Photo</Text>
+              <Text style={[styles.dropSubtitle, { color: colors.textSecondary }]}>
                 Take a clear photo of your appliance's front or label
               </Text>
               <View style={styles.browseButton}>
@@ -368,14 +366,14 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
         ) : (
           <View>
             {/* Image Preview */}
-            <View style={styles.previewCard}>
+            <View style={[styles.previewCard, { backgroundColor: colors.card }]}>
               <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
             </View>
 
             {/* Scanning Progress */}
             {isScanning && (
-              <Animated.View style={[styles.progressCard, { transform: [{ scale: pulseAnim }] }]}>
-                <Text style={styles.progressTitle}>✨ Analyzing...</Text>
+              <Animated.View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border, transform: [{ scale: pulseAnim }] }]}>
+                <Text style={[styles.progressTitle, { color: colors.text }]}>✨ Analyzing...</Text>
                 <View style={styles.stepsContainer}>
                   {SCAN_STEPS.map((step, idx) => {
                     const currentIdx = SCAN_STEPS.findIndex(s => s.key === scanStep);
@@ -385,20 +383,22 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                       <View key={step.key} style={styles.stepRow}>
                         <View style={[
                           styles.stepIndicator,
+                          { backgroundColor: isDark ? '#1f1f2e' : '#e0e0e0' },
                           isDone && styles.stepDone,
                           isActive && styles.stepActive,
                         ]}>
                           {isDone ? (
                             <Text style={styles.stepCheck}>✓</Text>
                           ) : isActive ? (
-                            <ActivityIndicator size="small" color="#4CAF50" />
+                            <ActivityIndicator size="small" color={colors.accent} />
                           ) : (
                             <Text style={styles.stepIcon}>{step.icon}</Text>
                           )}
                         </View>
                         <Text style={[
                           styles.stepLabel,
-                          (isDone || isActive) && styles.stepLabelActive,
+                          { color: colors.textSecondary },
+                          (isDone || isActive) && { color: colors.text },
                         ]}>
                           {step.label}
                         </Text>
@@ -412,8 +412,8 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
             {/* Action buttons */}
             {scanStep === 'idle' && (
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.secondaryBtn} onPress={handleReset}>
-                  <Text style={styles.secondaryBtnText}>Change</Text>
+                <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: isDark ? '#1f1f2e' : '#e0e0e0' }]} onPress={handleReset}>
+                  <Text style={[styles.secondaryBtnText, { color: isDark ? '#aaa' : '#555' }]}>Change</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.primaryBtn} onPress={handleUpload}>
                   <Text style={styles.primaryBtnText}>⚡ Analyze Power</Text>
@@ -444,23 +444,21 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                 </View>
                 
                 {/* Detection Result */}
-                <View style={styles.resultCard}>
+                <View style={[styles.resultCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={styles.resultHeader}>
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryIcon}>
-                        {getCategoryIcon(appliance.category)}
-                      </Text>
-                      <Text style={styles.categoryText}>{appliance.category}</Text>
+                    <View style={[styles.categoryBadge, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : 'rgba(76,175,80,0.08)' }]}>
+                      <Appliance3DModel category={appliance.category} size={36} showLabel={false} />
+                      <Text style={[styles.categoryText, { color: colors.accent }]}>{appliance.category}</Text>
                     </View>
-                    <View style={styles.confidenceBadge}>
-                      <Text style={styles.confidenceText}>
-                        {Math.round(Math.min(1, Math.max(0, appliance.confidence)) * 100)}% match
+                    <View style={[styles.confidenceBadge, { backgroundColor: isDark ? '#1f1f2e' : '#e8e8e8' }]}>
+                      <Text style={[styles.confidenceText, { color: colors.textSecondary }]}>
+                        {Math.round(appliance.confidence * 100)}% match
                       </Text>
                     </View>
                   </View>
                   
                   {appliance.brand !== 'Unknown' && (
-                    <Text style={styles.brandModel}>
+                    <Text style={[styles.brandModel, { color: colors.textSecondary }]}>
                       {appliance.brand} {appliance.model !== 'Unknown' ? appliance.model : ''}
                     </Text>
                   )}
@@ -468,37 +466,37 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
                 {/* Power Analysis */}
                 {power && (
-                  <View style={styles.powerCard}>
-                    <Text style={styles.powerTitle}>Power Consumption</Text>
-                    <Text style={styles.powerSource}>
+                  <View style={[styles.powerCard, { backgroundColor: colors.card, borderColor: colors.accent }]}>
+                    <Text style={[styles.powerTitle, { color: colors.text }]}>Power Consumption</Text>
+                    <Text style={[styles.powerSource, { color: colors.accent }]}>
                       Data: {power.source === 'category_default' ? 'Berkeley Lab Estimates' : power.source}
                     </Text>
                     
-                    <View style={styles.powerMain}>
+                    <View style={[styles.powerMain, { backgroundColor: isDark ? '#0a0a12' : '#f0f0f0' }]}>
                       <View style={styles.powerStat}>
-                        <Text style={styles.powerValue}>{power.active_watts_typical}</Text>
-                        <Text style={styles.powerUnit}>W</Text>
-                        <Text style={styles.powerLabel}>Active</Text>
+                        <Text style={[styles.powerValue, { color: colors.accent }]}>{power.active_watts_typical}</Text>
+                        <Text style={[styles.powerUnit, { color: colors.textSecondary }]}>W</Text>
+                        <Text style={[styles.powerLabel, { color: colors.textSecondary }]}>Active</Text>
                       </View>
-                      <View style={styles.powerDivider} />
+                      <View style={[styles.powerDivider, { backgroundColor: colors.border }]} />
                       <View style={styles.powerStat}>
                         <Text style={[styles.powerValue, styles.standbyValue]}>{power.standby_watts_typical}</Text>
-                        <Text style={styles.powerUnit}>W</Text>
-                        <Text style={styles.powerLabel}>Standby</Text>
+                        <Text style={[styles.powerUnit, { color: colors.textSecondary }]}>W</Text>
+                        <Text style={[styles.powerLabel, { color: colors.textSecondary }]}>Standby</Text>
                       </View>
                     </View>
 
                     {/* Usage Slider */}
-                    <View style={styles.usageSection}>
-                      <Text style={styles.usageTitle}>Daily Usage</Text>
+                      <View style={styles.usageSection}>
+                      <Text style={[styles.usageTitle, { color: colors.textSecondary }]}>Daily Usage</Text>
                       <View style={styles.usageButtons}>
-                        {USAGE_HOUR_OPTIONS.map((h) => (
+                        {[1, 2, 4, 6, 8, 12].map((h) => (
                           <TouchableOpacity
                             key={h}
-                            style={[styles.usageBtn, usageHours === h && styles.usageBtnActive]}
+                            style={[styles.usageBtn, { backgroundColor: isDark ? '#1f1f2e' : '#e0e0e0' }, usageHours === h && styles.usageBtnActive]}
                             onPress={() => setUsageHours(h)}
                           >
-                            <Text style={[styles.usageBtnText, usageHours === h && styles.usageBtnTextActive]}>
+                            <Text style={[styles.usageBtnText, { color: colors.textSecondary }, usageHours === h && styles.usageBtnTextActive]}>
                               {h}h
                             </Text>
                           </TouchableOpacity>
@@ -508,21 +506,21 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
                     {/* Cost Breakdown */}
                     <View style={styles.costGrid}>
-                      <View style={styles.costItem}>
-                        <Text style={styles.costValue}>{dailyKwh.toFixed(2)}</Text>
-                        <Text style={styles.costLabel}>kWh/day</Text>
+                      <View style={[styles.costItem, { backgroundColor: isDark ? '#1f1f2e' : '#f0f0f0' }]}>
+                        <Text style={[styles.costValue, { color: colors.text }]}>{dailyKwh.toFixed(2)}</Text>
+                        <Text style={[styles.costLabel, { color: colors.textSecondary }]}>kWh/day</Text>
                       </View>
-                      <View style={styles.costItem}>
-                        <Text style={styles.costValue}>${monthlyCost.toFixed(2)}</Text>
-                        <Text style={styles.costLabel}>per month</Text>
+                      <View style={[styles.costItem, { backgroundColor: isDark ? '#1f1f2e' : '#f0f0f0' }]}>
+                        <Text style={[styles.costValue, { color: colors.text }]}>${monthlyCost.toFixed(2)}</Text>
+                        <Text style={[styles.costLabel, { color: colors.textSecondary }]}>per month</Text>
                       </View>
-                      <View style={styles.costItem}>
-                        <Text style={styles.costValue}>${yearlyCost.toFixed(0)}</Text>
-                        <Text style={styles.costLabel}>per year</Text>
+                      <View style={[styles.costItem, { backgroundColor: isDark ? '#1f1f2e' : '#f0f0f0' }]}>
+                        <Text style={[styles.costValue, { color: colors.text }]}>${yearlyCost.toFixed(0)}</Text>
+                        <Text style={[styles.costLabel, { color: colors.textSecondary }]}>per year</Text>
                       </View>
                       <View style={[styles.costItem, styles.standbyItem]}>
                         <Text style={[styles.costValue, styles.standbyCost]}>${standbyYearlyCost.toFixed(0)}</Text>
-                        <Text style={styles.costLabel}>standby/yr</Text>
+                        <Text style={[styles.costLabel, { color: colors.textSecondary }]}>standby/yr</Text>
                       </View>
                     </View>
 
@@ -541,16 +539,16 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
                 {/* Environmental Impact Card */}
                 {power && yearlyKwh > 0 && (
-                  <View style={styles.envCard}>
-                    <Text style={styles.envTitle}>🌍 Environmental Impact</Text>
+                  <View style={[styles.envCard, { backgroundColor: colors.card, borderColor: '#2E7D32' }]}>
+                    <Text style={[styles.envTitle, { color: colors.accent }]}>🌍 Environmental Impact</Text>
                     <View style={styles.envGrid}>
-                      <View style={styles.envItem}>
-                        <Text style={styles.envValue}>{yearlyCO2.toFixed(1)}</Text>
-                        <Text style={styles.envLabel}>kg CO₂/year</Text>
+                      <View style={[styles.envItem, { backgroundColor: isDark ? '#1a1a24' : '#f0f0f0' }]}>
+                        <Text style={[styles.envValue, { color: colors.text }]}>{yearlyCO2.toFixed(1)}</Text>
+                        <Text style={[styles.envLabel, { color: colors.textSecondary }]}>kg CO₂/year</Text>
                       </View>
-                      <View style={styles.envItem}>
+                      <View style={[styles.envItem, { backgroundColor: isDark ? '#1a1a24' : '#f0f0f0' }]}>
                         <Text style={[styles.envValue, styles.treeValue]}>🌳 {treesNeeded.toFixed(1)}</Text>
-                        <Text style={styles.envLabel}>trees to offset</Text>
+                        <Text style={[styles.envLabel, { color: colors.textSecondary }]}>trees to offset</Text>
                       </View>
                     </View>
                     
@@ -563,7 +561,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                       <Text style={styles.efficiencyIcon}>
                         {comparedToAvg <= 80 ? '🏆' : comparedToAvg <= 120 ? '👍' : '⚠️'}
                       </Text>
-                      <Text style={styles.efficiencyText}>
+                      <Text style={[styles.efficiencyText, { color: colors.textSecondary }]}>
                         {comparedToAvg <= 80 
                           ? `${(100 - comparedToAvg).toFixed(0)}% more efficient than average!` 
                           : comparedToAvg <= 120 
@@ -572,14 +570,14 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                       </Text>
                     </View>
 
-                    <Text style={styles.envNote}>Based on EPA emissions data ({CO2_PER_KWH} kg CO₂/kWh)</Text>
+                    <Text style={[styles.envNote, { color: colors.textSecondary }]}>Based on EPA emissions data (0.25 kg CO₂/kWh)</Text>
                   </View>
                 )}
 
                 {/* Actions */}
                 <View style={styles.resultActions}>
-                  <TouchableOpacity style={styles.scanAnotherBtn} onPress={handleReset}>
-                    <Text style={styles.scanAnotherText}>Scan Another</Text>
+                  <TouchableOpacity style={[styles.scanAnotherBtn, { backgroundColor: isDark ? '#1f1f2e' : '#e0e0e0' }]} onPress={handleReset}>
+                    <Text style={[styles.scanAnotherText, { color: isDark ? '#aaa' : '#555' }]}>Scan Another</Text>
                   </TouchableOpacity>
                   {onViewDashboard && (
                     <TouchableOpacity style={styles.dashboardBtn} onPress={onViewDashboard}>
@@ -590,9 +588,9 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
 
                 {/* Add to Home */}
                 {!addedToHome && homes.length > 0 && (
-                  <View style={styles.addToHomeCard}>
-                    <Text style={styles.addToHomeTitle}>📥 Add to My Home</Text>
-                    <Text style={styles.addToHomeSub}>Save this device to track energy</Text>
+                  <View style={[styles.addToHomeCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8f8f8', borderColor: colors.border }]}>
+                    <Text style={[styles.addToHomeTitle, { color: colors.text }]}>📥 Add to My Home</Text>
+                    <Text style={[styles.addToHomeSub, { color: colors.textSecondary }]}>Save this device to track energy</Text>
                     
                     {!showAddToHome ? (
                       <TouchableOpacity
@@ -611,7 +609,7 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                               style={[styles.roomChip, selectedHomeId === h.id && styles.roomChipActive]}
                               onPress={() => {
                                 setSelectedHomeId(h.id);
-                                if (h.rooms.length > 0) setSelectedRoom(h.rooms[0]);
+                                if (h.rooms.length > 0) setSelectedRoom((h.rooms[0] as RoomModel).roomId ?? h.rooms[0] as unknown as string);
                               }}
                             >
                               <Text style={[styles.roomChipText, selectedHomeId === h.id && styles.roomChipTextActive]}>
@@ -625,17 +623,21 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
                           <>
                             <Text style={{ color: '#aaa', fontSize: 12, marginTop: 12, marginBottom: 6 }}>Room:</Text>
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                              {(homes.find(h => h.id === selectedHomeId)?.rooms ?? ['living-room']).map(r => (
+                              {(homes.find(h => h.id === selectedHomeId)?.rooms ?? [{ roomId: 'living-room', name: 'Living Room' }]).map((r: any) => {
+                                const roomId = typeof r === 'string' ? r : r.roomId;
+                                const roomName = typeof r === 'string' ? r.replace(/-/g, ' ') : r.name;
+                                return (
                                 <TouchableOpacity
-                                  key={r}
-                                  style={[styles.roomChip, selectedRoom === r && styles.roomChipActive]}
-                                  onPress={() => setSelectedRoom(r)}
+                                  key={roomId}
+                                  style={[styles.roomChip, selectedRoom === roomId && styles.roomChipActive]}
+                                  onPress={() => setSelectedRoom(roomId)}
                                 >
-                                  <Text style={[styles.roomChipText, selectedRoom === r && styles.roomChipTextActive]}>
-                                    {r.replace(/-/g, ' ')}
+                                  <Text style={[styles.roomChipText, selectedRoom === roomId && styles.roomChipTextActive]}>
+                                    {roomName}
                                   </Text>
                                 </TouchableOpacity>
-                              ))}
+                                );
+                              })}
                             </View>
                           </>
                         )}
@@ -686,6 +688,26 @@ export function UploadScanScreen({ onBack, onScanComplete, onViewDashboard }: Up
       </ScrollView>
     </View>
   );
+}
+
+function getCategoryIcon(category: string): string {
+  const icons: Record<string, string> = {
+    'Television': '📺',
+    'Refrigerator': '🧊',
+    'Microwave': '📻',
+    'Laptop': '💻',
+    'Oven': '🔥',
+    'Toaster': '🍞',
+    'Hair Dryer': '💨',
+    'Washing Machine': '🧺',
+    'Dryer': '🌀',
+    'Air Conditioner': '❄️',
+    'Space Heater': '🔥',
+    'Monitor': '🖥️',
+    'Light Bulb': '💡',
+    'Phone Charger': '🔌',
+  };
+  return icons[category] || '🔌';
 }
 
 const styles = StyleSheet.create({

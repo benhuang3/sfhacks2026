@@ -5,16 +5,12 @@
  * physical device, or localhost for emulators.
  */
 
-import { Platform } from 'react-native';
+// Cloudflare tunnel URL — works from any device (phone, web, emulator)
+const TUNNEL_URL = 'https://order-lecture-accounting-rows.trycloudflare.com';
 
-// Web can use localhost; physical devices need LAN IP
-const DEV_HOST = Platform.select({
-  web: 'localhost',
-  android: '10.0.2.2',
-  default: '10.142.12.209',  // LAN IP for physical devices
-});
+const BASE_URL = `${TUNNEL_URL}/api/v1`;
 
-const BASE_URL = `http://${DEV_HOST}:8000/api/v1`;
+console.log('[apiClient] BASE_URL =', BASE_URL);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,17 +41,38 @@ export interface ScanInsertResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Safe JSON parser
+// ---------------------------------------------------------------------------
+
+function parseJsonSafe(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Cannot reach server. Make sure the backend & tunnel are running.');
+  }
 
-  const data = await res.json();
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+  if (data === null) {
+    throw new Error('Server returned an invalid response. The tunnel may be down.');
+  }
 
   if (!res.ok || !data.success) {
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
@@ -116,8 +133,15 @@ export async function saveScan(params: {
  * Health check — verify server is reachable.
  */
 export async function checkHealth(): Promise<{ status: string; database: string }> {
-  const res = await fetch(`${BASE_URL}/health`);
-  const data = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/health`);
+  } catch {
+    throw new Error('Cannot reach server.');
+  }
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+  if (data === null) throw new Error('Server returned non-JSON response.');
   return data.data;
 }
 
@@ -126,8 +150,17 @@ export async function checkHealth(): Promise<{ status: string; database: string 
 // ---------------------------------------------------------------------------
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
-  const data = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`);
+  } catch {
+    throw new Error('Cannot reach server. Make sure the backend & tunnel are running.');
+  }
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+  if (data === null) {
+    throw new Error('Server returned an invalid response. The tunnel may be down.');
+  }
   if (!res.ok || !data.success) {
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }
@@ -135,8 +168,17 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
-  const data = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+  } catch {
+    throw new Error('Cannot reach server. Make sure the backend & tunnel are running.');
+  }
+  const text = await res.text();
+  const data = parseJsonSafe(text);
+  if (data === null) {
+    throw new Error('Server returned an invalid response. The tunnel may be down.');
+  }
   if (!res.ok || !data.success) {
     throw new Error(data.error || data.detail?.error || `API error ${res.status}`);
   }

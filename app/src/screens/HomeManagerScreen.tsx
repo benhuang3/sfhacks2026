@@ -24,7 +24,8 @@ import {
   type Home,
   type Device,
 } from '../services/apiClient';
-import { getCategoryIcon } from '../utils/energyConstants';
+import { Appliance3DModel } from '../components/Appliance3DModel';
+import { useTheme } from '../../App';
 
 interface HomeManagerScreenProps {
   onBack: () => void;
@@ -39,6 +40,7 @@ export function HomeManagerScreen({
   onViewActions,
   userId = 'default_user',
 }: HomeManagerScreenProps) {
+  const { colors, isDark } = useTheme();
   const [homes, setHomes] = useState<Home[]>([]);
   const [devices, setDevices] = useState<Record<string, Device[]>>({});
   const [loading, setLoading] = useState(true);
@@ -99,8 +101,8 @@ export function HomeManagerScreen({
       setNewHomeName('');
       setNewHomeRooms('living-room, kitchen');
       await loadHomes();
-    } catch (err: unknown) {
-      showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Failed to create home');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'Failed to create home');
     } finally {
       setCreating(false);
     }
@@ -135,8 +137,8 @@ export function HomeManagerScreen({
       setDeviceForm({ label: '', category: '', brand: '', model: '', roomId: 'living-room', is_critical: false });
       setShowAddDevice(null);
       await loadHomes();
-    } catch (err: unknown) {
-      showAlert('Error', err instanceof Error ? err.message : 'Operation failed' || 'Failed to add device');
+    } catch (err: any) {
+      showAlert('Error', err.message || 'Failed to add device');
     } finally {
       setAddingDevice(false);
     }
@@ -146,39 +148,49 @@ export function HomeManagerScreen({
     try {
       await deleteDevice(deviceId);
       await loadHomes();
-    } catch (err: unknown) {
-      showAlert('Error', err instanceof Error ? err.message : 'Operation failed');
+    } catch (err: any) {
+      showAlert('Error', err.message);
     }
   };
 
+  const getCategoryIcon = (cat: string): string => {
+    const icons: Record<string, string> = {
+      TV: '📺', Television: '📺', Refrigerator: '🧊', Microwave: '📻',
+      Laptop: '💻', Oven: '🔥', Toaster: '🍞', 'Hair Dryer': '💨',
+      'Washing Machine': '🧺', Dryer: '🌀', 'Air Conditioner': '❄️',
+      'Space Heater': '🔥', Monitor: '🖥️', 'Light Bulb': '💡', Light: '💡',
+    };
+    return icons[cat] || '🔌';
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={onBack} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>← Back</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Homes</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>My Homes</Text>
         <TouchableOpacity onPress={loadHomes} style={styles.headerBtn}>
-          <Text style={styles.headerBtnText}>↻</Text>
+          <Text style={[styles.headerBtnText, { color: colors.accent }]}>↻</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Create Home */}
-        <View style={styles.createSection}>
-          <Text style={styles.sectionTitle}>➕ Create Home</Text>
+        <View style={[styles.createSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>➕ Create Home</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]}
             placeholder="Home name (e.g., My Apartment)"
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textSecondary}
             value={newHomeName}
             onChangeText={setNewHomeName}
           />
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]}
             placeholder="Rooms (comma-separated)"
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textSecondary}
             value={newHomeRooms}
             onChangeText={setNewHomeRooms}
           />
@@ -198,8 +210,8 @@ export function HomeManagerScreen({
         {/* Loading */}
         {loading && (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color="#4CAF50" size="large" />
-            <Text style={styles.loadingText}>Loading homes...</Text>
+            <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading homes...</Text>
           </View>
         )}
 
@@ -207,19 +219,19 @@ export function HomeManagerScreen({
         {!loading && homes.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🏠</Text>
-            <Text style={styles.emptyTitle}>No Homes Yet</Text>
-            <Text style={styles.emptySubtitle}>Create your first home above to start tracking energy.</Text>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Homes Yet</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Create your first home above to start tracking energy.</Text>
           </View>
         )}
 
         {homes.map((home) => {
           const homeDevices = devices[home.id] || [];
           return (
-            <View key={home.id} style={styles.homeCard}>
+            <View key={home.id} style={[styles.homeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.homeHeader}>
                 <View>
-                  <Text style={styles.homeName}>🏠 {home.name}</Text>
-                  <Text style={styles.homeRooms}>{home.rooms.join(' • ')}</Text>
+                  <Text style={[styles.homeName, { color: colors.text }]}>🏠 {home.name}</Text>
+                  <Text style={[styles.homeRooms, { color: colors.textSecondary }]}>{home.rooms.join(' • ')}</Text>
                 </View>
                 <TouchableOpacity onPress={() => handleDeleteHome(home.id)}>
                   <Text style={styles.deleteBtn}>🗑️</Text>
@@ -227,17 +239,19 @@ export function HomeManagerScreen({
               </View>
 
               {/* Devices */}
-              <Text style={styles.deviceCount}>
+              <Text style={[styles.deviceCount, { color: colors.accent }]}>
                 {homeDevices.length} device{homeDevices.length !== 1 ? 's' : ''}
               </Text>
 
               {homeDevices.map((d) => (
-                <View key={d.id} style={styles.deviceRow}>
-                  <Text style={styles.deviceIcon}>{getCategoryIcon(d.category)}</Text>
+                <View key={d.id} style={[styles.deviceRow, { borderTopColor: colors.border }]}>
+                  <View style={{ marginRight: 8 }}>
+                    <Appliance3DModel category={d.category} size={32} showLabel={false} />
+                  </View>
                   <View style={styles.deviceInfo}>
-                    <Text style={styles.deviceLabel}>{d.label}</Text>
-                    <Text style={styles.deviceMeta}>
-                      {d.category} • {d.power?.active_watts_typical ?? 0}W active • {d.power?.standby_watts_typical ?? 0}W standby
+                    <Text style={[styles.deviceLabel, { color: colors.text }]}>{d.label}</Text>
+                    <Text style={[styles.deviceMeta, { color: colors.textSecondary }]}>
+                      {d.category} • {d.power.active_watts_typical}W active • {d.power.standby_watts_typical}W standby
                     </Text>
                   </View>
                   {d.is_critical && <Text style={styles.criticalBadge}>⚠️</Text>}
@@ -249,24 +263,24 @@ export function HomeManagerScreen({
 
               {/* Add device toggle */}
               {showAddDevice === home.id ? (
-                <View style={styles.addDeviceForm}>
-                  <Text style={styles.formTitle}>Add Device</Text>
-                  <TextInput style={styles.input} placeholder="Label (e.g., Living Room TV)" placeholderTextColor="#666" value={deviceForm.label} onChangeText={(t) => setDeviceForm(f => ({ ...f, label: t }))} />
-                  <TextInput style={styles.input} placeholder="Category (e.g., TV, Refrigerator)" placeholderTextColor="#666" value={deviceForm.category} onChangeText={(t) => setDeviceForm(f => ({ ...f, category: t }))} />
-                  <TextInput style={styles.input} placeholder="Brand (optional)" placeholderTextColor="#666" value={deviceForm.brand} onChangeText={(t) => setDeviceForm(f => ({ ...f, brand: t }))} />
-                  <TextInput style={styles.input} placeholder="Model (optional)" placeholderTextColor="#666" value={deviceForm.model} onChangeText={(t) => setDeviceForm(f => ({ ...f, model: t }))} />
-                  <TextInput style={styles.input} placeholder="Room (e.g., living-room)" placeholderTextColor="#666" value={deviceForm.roomId} onChangeText={(t) => setDeviceForm(f => ({ ...f, roomId: t }))} />
+                <View style={[styles.addDeviceForm, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.formTitle, { color: colors.accent }]}>Add Device</Text>
+                  <TextInput style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]} placeholder="Label (e.g., Living Room TV)" placeholderTextColor={colors.textSecondary} value={deviceForm.label} onChangeText={(t) => setDeviceForm(f => ({ ...f, label: t }))} />
+                  <TextInput style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]} placeholder="Category (e.g., TV, Refrigerator)" placeholderTextColor={colors.textSecondary} value={deviceForm.category} onChangeText={(t) => setDeviceForm(f => ({ ...f, category: t }))} />
+                  <TextInput style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]} placeholder="Brand (optional)" placeholderTextColor={colors.textSecondary} value={deviceForm.brand} onChangeText={(t) => setDeviceForm(f => ({ ...f, brand: t }))} />
+                  <TextInput style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]} placeholder="Model (optional)" placeholderTextColor={colors.textSecondary} value={deviceForm.model} onChangeText={(t) => setDeviceForm(f => ({ ...f, model: t }))} />
+                  <TextInput style={[styles.input, { backgroundColor: isDark ? '#1a1a2e' : '#f0f0f0', color: colors.text, borderColor: colors.border }]} placeholder="Room (e.g., living-room)" placeholderTextColor={colors.textSecondary} value={deviceForm.roomId} onChangeText={(t) => setDeviceForm(f => ({ ...f, roomId: t }))} />
                   <TouchableOpacity
                     style={styles.criticalToggle}
                     onPress={() => setDeviceForm(f => ({ ...f, is_critical: !f.is_critical }))}
                   >
-                    <Text style={styles.criticalToggleText}>
+                    <Text style={[styles.criticalToggleText, { color: colors.textSecondary }]}>
                       {deviceForm.is_critical ? '✅' : '⬜'} Critical device (don't auto-turn-off)
                     </Text>
                   </TouchableOpacity>
                   <View style={styles.formActions}>
-                    <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddDevice(null)}>
-                      <Text style={styles.cancelBtnText}>Cancel</Text>
+                    <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: isDark ? '#2a2a3e' : '#e0e0e0' }]} onPress={() => setShowAddDevice(null)}>
+                      <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.primaryBtn, styles.smallBtn, addingDevice && styles.disabledBtn]}
@@ -282,24 +296,24 @@ export function HomeManagerScreen({
                   </View>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.addDeviceBtn} onPress={() => setShowAddDevice(home.id)}>
-                  <Text style={styles.addDeviceBtnText}>+ Add Device</Text>
+                <TouchableOpacity style={[styles.addDeviceBtn, { borderColor: colors.accent }]} onPress={() => setShowAddDevice(home.id)}>
+                  <Text style={[styles.addDeviceBtnText, { color: colors.accent }]}>+ Add Device</Text>
                 </TouchableOpacity>
               )}
 
               {/* Action buttons */}
               <View style={styles.homeActions}>
                 <TouchableOpacity
-                  style={styles.actionBtn}
+                  style={[styles.actionBtn, { backgroundColor: isDark ? '#1f1f2e' : '#e8e8e8' }]}
                   onPress={() => onViewSummary(home.id)}
                 >
-                  <Text style={styles.actionBtnText}>📊 Summary</Text>
+                  <Text style={[styles.actionBtnText, { color: colors.text }]}>📊 Summary</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.optimizeBtn]}
                   onPress={() => onViewActions(home.id)}
                 >
-                  <Text style={styles.actionBtnText}>🤖 Optimize</Text>
+                  <Text style={[styles.actionBtnText, { color: colors.text }]}>🤖 Optimize</Text>
                 </TouchableOpacity>
               </View>
             </View>

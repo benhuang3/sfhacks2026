@@ -11,10 +11,12 @@ import {
   StyleSheet, View, Text, TouchableOpacity, ScrollView,
   Dimensions, ActivityIndicator, Platform,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import Svg, { Circle, G, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../../App';
 import { useAuth } from '../context/AuthContext';
+import { Appliance3DModel } from '../components/Appliance3DModel';
 import {
   listHomes, getHomeSummary, HomeSummary, DeviceBreakdown, Home,
 } from '../services/apiClient';
@@ -51,7 +53,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 interface DonutSlice { label: string; value: number; color: string; }
 
-function DonutChart({ slices, size = 180, strokeWidth = 28 }: { slices: DonutSlice[]; size?: number; strokeWidth?: number }) {
+function DonutChart({ slices, size = 180, strokeWidth = 28, textColor = '#fff', subColor = '#888' }: { slices: DonutSlice[]; size?: number; strokeWidth?: number; textColor?: string; subColor?: string }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const cx = size / 2;
@@ -61,7 +63,7 @@ function DonutChart({ slices, size = 180, strokeWidth = 28 }: { slices: DonutSli
   if (total === 0) {
     return (
       <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: '#888', fontSize: 14 }}>No data</Text>
+        <Text style={{ color: subColor, fontSize: 14 }}>No data</Text>
       </View>
     );
   }
@@ -93,7 +95,7 @@ function DonutChart({ slices, size = 180, strokeWidth = 28 }: { slices: DonutSli
       <SvgText
         x={cx} y={cy - 8}
         textAnchor="middle"
-        fill="#fff"
+        fill={textColor}
         fontSize="20"
         fontWeight="bold"
       >
@@ -102,7 +104,7 @@ function DonutChart({ slices, size = 180, strokeWidth = 28 }: { slices: DonutSli
       <SvgText
         x={cx} y={cy + 14}
         textAnchor="middle"
-        fill="#888"
+        fill={subColor}
         fontSize="11"
       >
         /year
@@ -139,6 +141,13 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Refetch when screen gains focus (e.g., after adding device)
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   // Compute stats from summary OR scannedDevices fallback
   const stats = useMemo(() => {
@@ -252,10 +261,10 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
         {(['day', 'month', 'year'] as const).map(t => (
           <TouchableOpacity
             key={t}
-            style={[styles.toggleBtn, timeframe === t && { backgroundColor: colors.accent }]}
+            style={[styles.toggleBtn, { backgroundColor: timeframe === t ? colors.accent : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}
             onPress={() => setTimeframe(t)}
           >
-            <Text style={[styles.toggleText, timeframe === t && { color: '#fff' }]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
+            <Text style={[styles.toggleText, { color: timeframe === t ? '#fff' : colors.textSecondary }]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -283,7 +292,7 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
       </View>
 
       {stats.savedDollars > 0 && (
-        <View style={[styles.savingsCard, { backgroundColor: '#1a2e1a', borderColor: colors.accent }]}>
+        <View style={[styles.savingsCard, { backgroundColor: isDark ? '#1a2e1a' : '#e8f5e9', borderColor: colors.accent }]}>
           <Text style={{ color: colors.accent, fontSize: 16, fontWeight: '700' }}>
             💰 You're saving ${stats.savedDollars.toFixed(2)}/year from {stats.savedKwh.toFixed(0)} kWh!
           </Text>
@@ -294,7 +303,7 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
       <View style={[styles.chartCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.chartTitle, { color: colors.text }]}>Cost Breakdown by Category</Text>
         <View style={styles.donutRow}>
-          <DonutChart slices={donutSlices} />
+          <DonutChart slices={donutSlices} textColor={colors.text} subColor={colors.textSecondary} />
           <View style={styles.legendCol}>
             {donutSlices.slice(0, 6).map((s, i) => (
               <View key={i} style={styles.legendItem}>
@@ -343,6 +352,9 @@ export function ChartDashboardScreen({ scannedDevices = [], onBack, onScan }: Pr
           <Text style={[styles.chartTitle, { color: colors.text }]}>Devices ({stats.deviceCount})</Text>
           {stats.breakdown.sort((a, b) => b.annual_cost - a.annual_cost).map((d, i) => (
             <View key={i} style={[styles.deviceRow, { borderBottomColor: colors.border }]}>
+              <View style={{ marginRight: 12 }}>
+                <Appliance3DModel category={d.category} size={36} showLabel={false} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.deviceLabel, { color: colors.text }]}>{d.label}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
@@ -377,8 +389,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '800' },
   headerSub: { fontSize: 14, marginTop: 4 },
   toggleRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginTop: 16, marginBottom: 16 },
-  toggleBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)' },
-  toggleText: { color: '#888', fontSize: 13, fontWeight: '600' },
+  toggleBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
+  toggleText: { fontSize: 13, fontWeight: '600' },
   statsRow: { flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginBottom: 12 },
   statCard: { flex: 1, borderRadius: 16, padding: 16, borderWidth: 1, alignItems: 'center' },
   statValue: { fontSize: 24, fontWeight: '800' },
@@ -391,6 +403,6 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendText: { fontSize: 12 },
-  deviceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
+  deviceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
   deviceLabel: { fontSize: 15, fontWeight: '600' },
 });

@@ -17,13 +17,14 @@
 import React, { useEffect, useState, createContext, useContext } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView,
-  Platform, useColorScheme, ActivityIndicator,
+  Platform, useColorScheme, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DefaultTheme, DarkTheme, useFocusEffect } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 // Auth
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -43,10 +44,13 @@ import { CameraScanScreen } from './src/screens/CameraScanScreen';
 import { HomeViewerScreen } from './src/screens/HomeViewerScreen';
 import { ChartDashboardScreen } from './src/screens/ChartDashboardScreen';
 import { ScanConfirmScreen } from './src/screens/ScanConfirmScreen';
+import { ChatScreen } from './src/screens/ChatScreen';
 
 // 3D Scene Component
 import { Scene3D } from './src/components/Scene3D';
-import { HomeScene, listHomes, getScene } from './src/services/apiClient';
+import { House3DViewer } from './src/components/House3DViewer';
+import { Appliance3DModel } from './src/components/Appliance3DModel';
+import { HomeScene, listHomes, getScene, listDevices, Device, Home, RoomModel } from './src/services/apiClient';
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -147,7 +151,9 @@ function ScanNavigator() {
         {({ navigation }) => (
           <CameraScanScreen
             onBack={() => navigation.goBack()}
-            onResult={() => navigation.goBack()}
+            onScanComplete={(scanData: ScanResultData, imageUri?: string) => {
+              navigation.navigate('ScanConfirm' as never, { scanData, imageUri } as never);
+            }}
           />
         )}
       </ScanStackNav.Screen>
@@ -209,7 +215,15 @@ function DashboardWrapper() {
 
   useEffect(() => {
     AsyncStorage.getItem('scannedDevices').then((d) => {
-      if (d) setScannedDevices(JSON.parse(d));
+      if (d) {
+        try {
+          setScannedDevices(JSON.parse(d));
+        } catch (err) {
+          console.warn('[App] Failed to parse scannedDevices from AsyncStorage, clearing corrupt value', err);
+          AsyncStorage.removeItem('scannedDevices').catch(() => {});
+          setScannedDevices([]);
+        }
+      }
     }).catch(() => {});
   }, []);
 
@@ -245,22 +259,27 @@ function MainTabs() {
       <Tab.Screen
         name="Home"
         component={LandingScreen}
-        options={{ tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🏠</Text>, tabBarLabel: 'Home' }}
+        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, tabBarLabel: 'Home' }}
       />
       <Tab.Screen
         name="Scan"
         component={ScanNavigator}
-        options={{ tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📷</Text>, tabBarLabel: 'Scan' }}
+        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="scan" size={size} color={color} />, tabBarLabel: 'Scan' }}
       />
       <Tab.Screen
         name="Dashboard"
         component={DashboardWrapper}
-        options={{ tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📊</Text>, tabBarLabel: 'Dashboard' }}
+        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />, tabBarLabel: 'Dashboard' }}
       />
       <Tab.Screen
         name="MyHome"
         component={HomeNavigator}
-        options={{ tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>⚡</Text>, tabBarLabel: 'My Home' }}
+        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="flash" size={size} color={color} />, tabBarLabel: 'My Home' }}
+      />
+      <Tab.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-ellipses" size={size} color={color} />, tabBarLabel: 'AI Chat' }}
       />
     </Tab.Navigator>
   );
@@ -282,24 +301,25 @@ function LandingScreen() {
     standbyWaste: number;
   } | null>(null);
   const [scene, setScene] = React.useState<HomeScene | null>(null);
+  const [devices, setDevices] = React.useState<Device[]>([]);
+  const [homes, setHomes] = React.useState<Home[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   const loadHomeData = React.useCallback(async () => {
     try {
       setLoading(true);
       let homeId = user?.homeId;
-      if (!homeId) {
-        // Try finding the first home for this user
-        const homes = await listHomes(user?.id ?? '');
-        if (homes.length > 0) {
-          homeId = homes[0].id;
-        }
+      const allHomes = await listHomes(user?.id ?? '');
+      setHomes(allHomes);
+      if (!homeId && allHomes.length > 0) {
+        homeId = allHomes[0].id;
       }
       if (homeId) {
         const { getHomeSummary } = await import('./src/services/apiClient');
-        const [summary, sceneData] = await Promise.all([
+        const [summary, sceneData, devs] = await Promise.all([
           getHomeSummary(homeId),
           getScene(homeId).catch(() => null),
+          listDevices(homeId).catch(() => [] as Device[]),
         ]);
         setStats({
           deviceCount: summary.totals.device_count,
@@ -310,6 +330,7 @@ function LandingScreen() {
           standbyWaste: summary.totals.standby_annual_cost,
         });
         if (sceneData) setScene(sceneData);
+        setDevices(devs);
       }
     } catch {
       // No data yet — that's fine
@@ -318,7 +339,6 @@ function LandingScreen() {
     }
   }, [user]);
 
-  // Refetch when screen gains focus
   useFocusEffect(
     React.useCallback(() => {
       loadHomeData();
@@ -327,17 +347,21 @@ function LandingScreen() {
 
   const fmt = (n: number, d = 1) => (n ?? 0).toFixed(d);
 
-  const cards = [
-    { icon: '🔌', label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked' },
-    { icon: '⚡', label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours' },
-    { icon: '💰', label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated' },
-    { icon: '🌱', label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint' },
-    { icon: '👻', label: 'Standby Waste', value: stats ? `$${fmt(stats.standbyWaste, 2)}/yr` : '–', sub: 'ghost energy cost' },
-    { icon: '📊', label: 'Annual Cost', value: stats ? `$${fmt(stats.annualCost, 2)}` : '–', sub: 'total estimate' },
-  ];
+  // Derive rooms from homes
+  const rooms: RoomModel[] = React.useMemo(() => {
+    if (homes.length > 0 && homes[0].rooms?.length > 0) {
+      return homes[0].rooms as RoomModel[];
+    }
+    const fromDevices = [...new Set(devices.map(d => d.roomId))].filter(Boolean);
+    return fromDevices.map(rid => ({
+      roomId: rid,
+      name: rid.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    }));
+  }, [homes, devices]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      {/* Top Navigation */}
       <View style={styles.nav}>
         <Text style={[styles.navLogo, { color: colors.accent }]}>⚡ SmartGrid</Text>
         <View style={styles.navRight}>
@@ -350,61 +374,184 @@ function LandingScreen() {
         </View>
       </View>
 
-      <View style={styles.hero}>
-        <Text style={[styles.title, { color: colors.text, fontSize: 26 }]}>
-          {user ? `Welcome, ${user.name || user.email.split('@')[0]}` : 'Know Your Power'}
-        </Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {stats && stats.deviceCount > 0
-            ? 'Here\'s your energy snapshot.'
-            : 'Scan appliances to start tracking energy.'}
-        </Text>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
-      ) : (
-        <View style={{
-          flexDirection: 'row', flexWrap: 'wrap',
-          justifyContent: 'space-between', marginTop: 8,
-        }}>
-          {cards.map((c, i) => (
-            <View
-              key={i}
-              style={{
-                width: '48%',
-                backgroundColor: colors.card,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 16,
-                marginBottom: 12,
-              }}
-            >
-              <Text style={{ fontSize: 24, marginBottom: 4 }}>{c.icon}</Text>
-              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{c.label}</Text>
-              <Text style={{ color: isDark ? '#555' : '#999', fontSize: 10, marginTop: 1 }}>{c.sub}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* 3D Home Preview */}
-      {scene && scene.objects && scene.objects.length > 0 && (
-        <View style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>
-            🏠 Your Home
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        {/* Welcome Header */}
+        <View style={styles.hero}>
+          <Text style={[styles.title, { color: colors.text, fontSize: 26 }]}>
+            {user ? `Welcome, ${user.name || user.email.split('@')[0]}` : 'Know Your Power'}
           </Text>
-          <View style={{ borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-            <Scene3D scene={scene} height={180} />
-          </View>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            {stats && stats.deviceCount > 0
+              ? 'Here\'s your energy snapshot.'
+              : 'Scan appliances to start tracking energy.'}
+          </Text>
         </View>
-      )}
 
-      <Text style={[styles.footnote, { color: isDark ? '#555' : '#999' }]}>
-        Power data based on Berkeley Lab and ENERGY STAR research
-      </Text>
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+        ) : (
+          <>
+            {/* Quick Stats Bar */}
+            <View style={{
+              flexDirection: 'row',
+              backgroundColor: colors.card,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 16,
+              marginBottom: 16,
+              justifyContent: 'space-around',
+            }}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: colors.accent, fontSize: 22, fontWeight: '800' }}>
+                  {stats?.deviceCount ?? 0}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>Devices</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#FF9800', fontSize: 22, fontWeight: '800' }}>
+                  {stats ? `$${fmt(stats.monthlyCost, 2)}` : '–'}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>Monthly</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.border }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#F44336', fontSize: 22, fontWeight: '800' }}>
+                  {stats ? `${fmt(stats.annualCo2, 0)}kg` : '–'}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>CO₂/yr</Text>
+              </View>
+            </View>
+
+            {/* Energy Stats Cards - 2x3 Grid */}
+            <View style={{
+              flexDirection: 'row', flexWrap: 'wrap',
+              justifyContent: 'space-between', marginBottom: 20,
+            }}>
+              {[
+                { icon: '🔌', label: 'Devices', value: stats ? `${stats.deviceCount}` : '–', sub: 'tracked', color: colors.accent },
+                { icon: '⚡', label: 'Annual kWh', value: stats ? `${fmt(stats.annualKwh, 0)}` : '–', sub: 'kilowatt-hours', color: '#FFB300' },
+                { icon: '💰', label: 'Monthly Cost', value: stats ? `$${fmt(stats.monthlyCost, 2)}` : '–', sub: 'estimated', color: '#FF9800' },
+                { icon: '🌱', label: 'CO₂ / year', value: stats ? `${fmt(stats.annualCo2, 1)} kg` : '–', sub: 'carbon footprint', color: '#66BB6A' },
+                { icon: '👻', label: 'Standby Waste', value: stats ? `$${fmt(stats.standbyWaste, 2)}/yr` : '–', sub: 'ghost energy cost', color: '#AB47BC' },
+                { icon: '📊', label: 'Annual Cost', value: stats ? `$${fmt(stats.annualCost, 2)}` : '–', sub: 'total estimate', color: '#42A5F5' },
+              ].map((c, i) => (
+                <View
+                  key={i}
+                  style={{
+                    width: '48%',
+                    backgroundColor: colors.card,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    padding: 16,
+                    marginBottom: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 24, marginBottom: 6 }}>{c.icon}</Text>
+                  <Text style={{ color: c.color, fontSize: 22, fontWeight: '800' }}>{c.value}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, fontWeight: '600' }}>{c.label}</Text>
+                  <Text style={{ color: isDark ? '#444' : '#aaa', fontSize: 10, marginTop: 2 }}>{c.sub}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* 3D Home Section */}
+            <View style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>
+                  🏠 Your Home
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  {devices.length} device{devices.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+
+              <House3DViewer
+                devices={devices.map(d => ({
+                  category: d.category,
+                  label: d.label,
+                  roomId: d.roomId,
+                }))}
+                rooms={rooms.map(r => ({ roomId: r.roomId, name: r.name }))}
+                height={devices.length > 0 ? 420 : 340}
+                isDark={isDark}
+              />
+            </View>
+
+            {/* My Devices with 3D Models */}
+            {devices.length > 0 && (
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>
+                  ⚡ My Devices
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {devices.map(device => (
+                    <View
+                      key={device.id}
+                      style={{
+                        backgroundColor: colors.card,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        padding: 14,
+                        marginRight: 12,
+                        alignItems: 'center',
+                        width: 120,
+                      }}
+                    >
+                      <Appliance3DModel
+                        category={device.category}
+                        size={80}
+                        showLabel={false}
+                      />
+                      <Text style={{ color: colors.text, fontSize: 12, fontWeight: '700', marginTop: 8, textAlign: 'center' }} numberOfLines={1}>
+                        {device.label || device.category}
+                      </Text>
+                      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '600', marginTop: 3 }}>
+                        {device.power?.active_watts_typical ?? '?'}W
+                      </Text>
+                      {device.power?.standby_watts_typical > 0 && (
+                        <Text style={{ color: '#FF9800', fontSize: 9, marginTop: 2 }}>
+                          👻 {device.power.standby_watts_typical}W standby
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Quick Tips */}
+            <View style={{
+              backgroundColor: isDark ? 'rgba(76,175,80,0.08)' : '#E8F5E9',
+              borderRadius: 16,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(76,175,80,0.2)' : '#C8E6C9',
+              marginBottom: 16,
+            }}>
+              <Text style={{ color: colors.accent, fontSize: 14, fontWeight: '700', marginBottom: 8 }}>
+                💡 Energy Tip
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20 }}>
+                {stats && stats.standbyWaste > 3
+                  ? `Your appliances waste $${fmt(stats.standbyWaste, 2)}/yr in standby. Unplug devices when not in use or use smart power strips!`
+                  : 'Scan more appliances to get personalized energy-saving tips.'}
+              </Text>
+            </View>
+          </>
+        )}
+
+        <Text style={[styles.footnote, { color: isDark ? '#444' : '#bbb' }]}>
+          Power data based on Berkeley Lab and ENERGY STAR research
+        </Text>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -470,7 +617,7 @@ const styles = StyleSheet.create({
   navRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   themeToggle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
   themeToggleText: { fontSize: 18 },
-  hero: { alignItems: 'center', marginTop: 48, marginBottom: 40 },
+  hero: { alignItems: 'center', marginTop: 16, marginBottom: 20 },
   heroIconBox: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   heroIcon: { fontSize: 36 },
   title: { fontSize: 32, fontWeight: '800', marginBottom: 12, textAlign: 'center' },

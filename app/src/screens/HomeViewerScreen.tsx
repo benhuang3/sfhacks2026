@@ -22,7 +22,8 @@ import {
   ActionProposal, getScene, HomeScene, RoomModel,
 } from '../services/apiClient';
 import { Scene3D } from '../components/Scene3D';
-import { RATE_PER_KWH, CO2_PER_KWH } from '../utils/energyConstants';
+import { Appliance3DModel } from '../components/Appliance3DModel';
+import { House3DViewer } from '../components/House3DViewer';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -163,12 +164,12 @@ function Room3DView({
               onPress={() => onSelectDevice(isSelected ? null : device)}
               activeOpacity={0.7}
             >
-              <Text style={styles.device3dIcon}>{getDeviceIcon(device.category)}</Text>
+              <Appliance3DModel category={device.category} size={42} showLabel={false} />
               <Text style={styles.device3dLabel} numberOfLines={1}>{device.label}</Text>
-              {(device.power?.standby_watts_typical ?? 0) > 1 && (
+              {device.power.standby_watts_typical > 1 && (
                 <View style={styles.device3dGhost}>
                   <Text style={styles.device3dGhostText}>
-                    👻 {device.power?.standby_watts_typical ?? 0}W
+                    👻 {device.power.standby_watts_typical}W
                   </Text>
                 </View>
               )}
@@ -201,14 +202,11 @@ function DeviceDetailPanel({
   onClose: () => void;
   onAction: (action: string) => void;
 }) {
-  const activeHours = device.active_hours_per_day || 4;
-  const activeW = device.power?.active_watts_typical ?? 0;
-  const standbyW = device.power?.standby_watts_typical ?? 0;
-  const annualKwh = (activeW * activeHours +
-    standbyW * (24 - activeHours)) * 365 / 1000;
-  const annualCost = annualKwh * RATE_PER_KWH;
-  const annualCo2 = annualKwh * CO2_PER_KWH;
-  const ghostCost = (standbyW * (24 - activeHours) * 365 / 1000) * RATE_PER_KWH;
+  const annualKwh = (device.power.active_watts_typical * device.active_hours_per_day +
+    device.power.standby_watts_typical * (24 - device.active_hours_per_day)) * 365 / 1000;
+  const annualCost = annualKwh * 0.30;
+  const annualCo2 = annualKwh * 0.25;
+  const ghostCost = (device.power.standby_watts_typical * (24 - device.active_hours_per_day) * 365 / 1000) * 0.30;
 
   return (
     <Animated.View style={[styles.detailPanel, {
@@ -217,7 +215,7 @@ function DeviceDetailPanel({
     }]}>
       <View style={styles.detailHeader}>
         <View style={styles.detailTitleRow}>
-          <Text style={styles.detailIcon}>{getDeviceIcon(device.category)}</Text>
+          <Appliance3DModel category={device.category} size={48} showLabel={false} />
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={[styles.detailName, { color: colors.text }]}>{device.label}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
@@ -234,13 +232,13 @@ function DeviceDetailPanel({
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(76,175,80,0.1)' : '#e8f5e9' }]}>
           <Text style={[styles.statValue, { color: '#4CAF50' }]}>
-            {activeW}W
+            {device.power.active_watts_typical}W
           </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: isDark ? 'rgba(255,152,0,0.1)' : '#fff3e0' }]}>
           <Text style={[styles.statValue, { color: '#FF9800' }]}>
-            {standbyW}W
+            {device.power.standby_watts_typical}W
           </Text>
           <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Standby 👻</Text>
         </View>
@@ -311,10 +309,10 @@ function AgentCommandBar({
       const result = await sendAgentCommand(homeId, command.trim());
       onResult(result);
       setCommand('');
-    } catch (e: unknown) {
+    } catch (e: any) {
       onResult({
         intent: 'error',
-        message: e instanceof Error ? e.message : 'Agent command failed',
+        message: e.message || 'Agent command failed',
         proposals: [],
         executed: [],
         auto_executed: false,
@@ -429,6 +427,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [agentResult, setAgentResult] = useState<AgentCommandResult | null>(null);
+  const [viewMode, setViewMode] = useState<'3d' | 'room'>('3d');
 
   // Load data
   const loadData = useCallback(async () => {
@@ -490,7 +489,7 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
       const result = await sendAgentCommand(homeId, `${action} ${selectedDevice.label}`);
       setAgentResult(result);
       setTimeout(loadData, 500);
-    } catch (e: unknown) {
+    } catch (e: any) {
       console.error('Action failed:', e);
     }
   }, [homeId, selectedDevice, loadData]);
@@ -566,9 +565,34 @@ export function HomeViewerScreen({ homeId, onBack }: Props) {
         ))}
       </ScrollView>
 
-      {/* 3D Room View */}
+      {/* View Mode Toggle */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 8, gap: 8 }}>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+            backgroundColor: viewMode === '3d' ? colors.accent : (isDark ? '#222' : '#eee') }}
+          onPress={() => setViewMode('3d')}
+        >
+          <Text style={{ color: viewMode === '3d' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>🏠 3D House</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+            backgroundColor: viewMode === 'room' ? colors.accent : (isDark ? '#222' : '#eee') }}
+          onPress={() => setViewMode('room')}
+        >
+          <Text style={{ color: viewMode === 'room' ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>📐 Room View</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 3D Views */}
       <View style={{ flex: 1 }}>
-        {scene && scene.objects && scene.objects.length > 0 ? (
+        {viewMode === '3d' ? (
+          <House3DViewer
+            rooms={rooms}
+            devices={devices.map(d => ({ label: d.label, category: d.category, roomId: d.roomId }))}
+            isDark={isDark}
+            height={SCREEN_H - 280}
+          />
+        ) : scene && scene.objects && scene.objects.length > 0 ? (
           <Scene3D
             scene={scene}
             selectedRoomId={selectedRoom}
