@@ -10,7 +10,7 @@ import {
 import { useScannerStore } from '../store/scannerStore';
 import { TrackedObject } from '../utils/scannerTypes';
 import { getDisplayName } from '../utils/applianceClasses';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 
 interface ScanResultScreenProps {
   onBack: () => void;

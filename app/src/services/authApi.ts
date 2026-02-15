@@ -4,10 +4,9 @@
 
 // Cloudflare tunnel URL — works from any network
 const TUNNEL_URL = 'https://lamps-governance-legacy-began.trycloudflare.com';
+import { API_V1_URL } from '../utils/apiConfig';
 
-const BASE_URL = `${TUNNEL_URL}/api/v1`;
-
-console.log('[authApi] BASE_URL =', BASE_URL);
+const BASE_URL = API_V1_URL;
 
 // ---------------------------------------------------------------------------
 // Types

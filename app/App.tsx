@@ -14,7 +14,7 @@
  *     - My Home    → HomeManagerScreen → HomeSummary → Actions → 3D
  */
 
-import React, { useEffect, useState, createContext, useContext } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView, Image,
   Platform, useColorScheme, ActivityIndicator, ScrollView, Modal,
@@ -54,29 +54,16 @@ import { Appliance3DModel } from './src/components/Appliance3DModel';
 import { HomeScene, listHomes, getScene, listDevices, Device, Home, RoomModel } from './src/services/apiClient';
 
 // ---------------------------------------------------------------------------
-// Theme
+// Theme (extracted to src/context/ThemeContext.tsx to avoid require cycles)
 // ---------------------------------------------------------------------------
-type ThemeMode = 'dark' | 'light' | 'system';
+import {
+  ThemeContext, useTheme,
+  darkColors, lightColors,
+  type ThemeMode,
+} from './src/context/ThemeContext';
 
-const darkColors = {
-  bg: '#0a0a12', card: '#12121a', border: '#1f1f2e',
-  text: '#ffffff', textSecondary: '#888888', accent: '#4CAF50',
-};
-const lightColors = {
-  bg: '#f5f5f5', card: '#ffffff', border: '#e0e0e0',
-  text: '#1a1a1a', textSecondary: '#666666', accent: '#2E7D32',
-};
-
-interface ThemeContextType {
-  isDark: boolean; themeMode: ThemeMode;
-  setThemeMode: (m: ThemeMode) => void;
-  colors: typeof darkColors;
-}
-
-export const ThemeContext = createContext<ThemeContextType>({
-  isDark: true, themeMode: 'dark', setThemeMode: () => {}, colors: darkColors,
-});
-export const useTheme = () => useContext(ThemeContext);
+// Re-export so existing imports from '../../App' still work during migration
+export { ThemeContext, useTheme };
 
 // ---------------------------------------------------------------------------
 // Navigators

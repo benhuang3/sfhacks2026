@@ -133,7 +133,7 @@ export function CameraScanScreen({ onBack, onResult, onScanComplete }: CameraSca
     try {
       const data = await uploadScanImage(photoUri);
       log.scan('Scan result received', data);
-      const scanData = data?.data ?? data;
+      const scanData = (data?.data ?? data) as ScanResult;
       setResult(scanData);
       onResult?.(scanData);
       // Navigate to confirm screen if callback provided

@@ -14,8 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { ScanResultData } from './UploadScanScreen';
 import { Appliance3DModel } from '../components/Appliance3DModel';
-import { LineGraph } from '../components/LineGraph';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 
 interface DashboardScreenProps {
   onBack: () => void;

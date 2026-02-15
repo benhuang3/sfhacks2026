@@ -33,6 +33,22 @@ function stubUseOCR(_: { model: any }) {
   };
 }
 
+function stubUseImageSegmentation(_: { model: { modelSource: any }; preventLoad?: boolean }) {
+  return {
+    isReady: true,
+    isGenerating: false,
+    error: null as RnExecutorchError,
+    downloadProgress: 1,
+    forward: async (
+      _imageSource: string,
+      _classesOfInterest?: number[],
+      _resize?: boolean
+    ) => {
+      return {} as Partial<Record<number, number[]>>;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Conditional real import
 // ---------------------------------------------------------------------------
@@ -56,3 +72,19 @@ export type RnExecutorchError = Error | null;
 export const OCR_ENGLISH = realModule?.OCR_ENGLISH ?? 'eng';
 
 export const useOCR = realModule?.useOCR ?? stubUseOCR;
+
+// Image segmentation (DeepLabV3)
+export const useImageSegmentation =
+  realModule?.useImageSegmentation ?? stubUseImageSegmentation;
+
+export const DEEPLAB_V3_RESNET50 =
+  realModule?.DEEPLAB_V3_RESNET50 ?? { modelSource: '' };
+
+// DeeplabLabel enum — mirrors react-native-executorch's values
+export const DeeplabLabel: Record<string, number> = realModule?.DeeplabLabel ?? {
+  BACKGROUND: 0, AEROPLANE: 1, BICYCLE: 2, BIRD: 3, BOAT: 4,
+  BOTTLE: 5, BUS: 6, CAR: 7, CAT: 8, CHAIR: 9, COW: 10,
+  DININGTABLE: 11, DOG: 12, HORSE: 13, MOTORBIKE: 14, PERSON: 15,
+  POTTEDPLANT: 16, SHEEP: 17, SOFA: 18, TRAIN: 19, TVMONITOR: 20,
+  ARGMAX: 21,
+};

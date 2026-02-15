@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../App';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../context/ThemeContext';
 import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
 } from '../services/apiClient';

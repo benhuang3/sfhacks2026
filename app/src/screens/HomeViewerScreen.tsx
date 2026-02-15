@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 import {
   listDevices, Device, getHomeSummary, HomeSummary,
   getHome, Home, sendAgentCommand, AgentCommandResult,

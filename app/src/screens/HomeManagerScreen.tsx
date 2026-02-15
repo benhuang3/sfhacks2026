@@ -27,7 +27,7 @@ import {
   type Device,
 } from '../services/apiClient';
 import { Appliance3DModel } from '../components/Appliance3DModel';
-import { useTheme } from '../../App';
+import { useTheme } from '../context/ThemeContext';
 import { log } from '../utils/logger';
 
 interface HomeManagerScreenProps {
