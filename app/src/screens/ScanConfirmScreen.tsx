@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import {
   addDevice, listHomes, Home, listCategories, CategoryInfo, RoomModel,
+  researchDevice, ResearchResult, ResearchAlternative,
 } from '../services/apiClient';
 import { useAuth } from '../context/AuthContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
@@ -80,6 +81,8 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [researchData, setResearchData] = useState<ResearchResult | null>(null);
+  const [researching, setResearching] = useState(false);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -143,6 +146,33 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
     }
   }, [homes]);
 
+  // Research device power specs when brand/model are known
+  useEffect(() => {
+    const brand = deviceBrand && deviceBrand !== 'Unknown' ? deviceBrand : '';
+    const model = deviceModel && deviceModel !== 'Unknown' ? deviceModel : '';
+    const cat = selectedCategory || '';
+    if (!brand && !model) return;
+    if (!cat) return;
+
+    let cancelled = false;
+    setResearching(true);
+    log.scan('Research started for scanned device', { brand: brand || 'Unknown', model: model || 'Unknown', category: cat });
+    researchDevice(brand || 'Unknown', model || 'Unknown', cat)
+      .then(result => {
+        if (!cancelled) {
+          setResearchData(result);
+          log.scan('Research completed for scanned device', {
+            hasProfile: !!result.power_profile,
+            source: result.power_profile?.source,
+            alternativesCount: result.alternatives.length,
+          });
+        }
+      })
+      .catch(err => { log.error('scan', 'Research failed for scanned device', err); })
+      .finally(() => { if (!cancelled) setResearching(false); });
+    return () => { cancelled = true; };
+  }, [deviceBrand, deviceModel, selectedCategory]);
+
   const filteredCategories = useMemo(() => {
     if (!searchQuery.trim()) return allCategories;
     const q = searchQuery.toLowerCase();
@@ -156,7 +186,9 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
     log.scan('Confirm device pressed', { category: selectedCategory, homeId: selectedHomeId, room: selectedRoom });
 
     try {
-      const pp = scanData.power_profile?.profile;
+      // Prefer researched power data over category defaults
+      const rp = researchData?.power_profile;
+      const pp = rp || scanData.power_profile?.profile;
       const newDevice = await addDevice(selectedHomeId, {
         roomId: selectedRoom,
         label: deviceLabel || selectedCategory,
@@ -461,29 +493,84 @@ export function ScanConfirmScreen({ scanData, imageUri, onBack, onDeviceAdded }:
         )}
 
         {/* Power profile preview */}
-        {selectedCategory && scanData.power_profile?.profile && (
-          <View style={[styles.powerPreview, { backgroundColor: isDark ? '#111122' : '#f0f4ff' }]}>
-            <Text style={[styles.powerTitle, { color: colors.text }]}><Ionicons name="flash-outline" size={14} color={colors.accent} /> Power Estimate</Text>
-            <View style={styles.powerRow}>
-              <View style={styles.powerStat}>
-                <Text style={[styles.powerValue, { color: colors.accent }]}>
-                  {scanData.power_profile.profile.active_watts_typical}W
+        {selectedCategory && (scanData.power_profile?.profile || researchData?.power_profile) && (() => {
+          const rp = researchData?.power_profile;
+          const pp = rp || scanData.power_profile?.profile;
+          if (!pp) return null;
+          return (
+            <View style={[styles.powerPreview, { backgroundColor: isDark ? '#111122' : '#f0f4ff' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={[styles.powerTitle, { color: colors.text, marginBottom: 0 }]}>
+                  <Ionicons name="flash-outline" size={14} color={colors.accent} /> Power Estimate
                 </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Active</Text>
+                {rp && (
+                  <View style={{ backgroundColor: '#4CAF50', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                      {rp.source === 'energystar_api' ? 'ENERGY STAR' : 'Researched'}
+                    </Text>
+                  </View>
+                )}
+                {researching && !rp && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <ActivityIndicator size="small" color={colors.accent} />
+                    <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Researching...</Text>
+                  </View>
+                )}
               </View>
-              <View style={styles.powerStat}>
-                <Text style={[styles.powerValue, { color: '#FF9800' }]}>
-                  {scanData.power_profile.profile.standby_watts_typical}W
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Standby</Text>
-              </View>
-              <View style={styles.powerStat}>
-                <Text style={[styles.powerValue, { color: colors.textSecondary }]}>
-                  {Math.round(scanData.power_profile.profile.confidence * 100)}%
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Confidence</Text>
+              <View style={[styles.powerRow, { marginTop: 10 }]}>
+                <View style={styles.powerStat}>
+                  <Text style={[styles.powerValue, { color: colors.accent }]}>
+                    {pp.active_watts_typical}W
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Active</Text>
+                </View>
+                <View style={styles.powerStat}>
+                  <Text style={[styles.powerValue, { color: '#FF9800' }]}>
+                    {pp.standby_watts_typical}W
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Standby</Text>
+                </View>
+                <View style={styles.powerStat}>
+                  <Text style={[styles.powerValue, { color: colors.textSecondary }]}>
+                    {Math.round(pp.confidence * 100)}%
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10 }}>Confidence</Text>
+                </View>
               </View>
             </View>
+          );
+        })()}
+
+        {/* Research alternatives preview */}
+        {researchData && researchData.alternatives.length > 0 && (
+          <View style={[styles.powerPreview, { backgroundColor: isDark ? '#0d1a0d' : '#f0fff0', marginTop: 12 }]}>
+            <Text style={[styles.powerTitle, { color: colors.text }]}>
+              <Ionicons name="leaf-outline" size={14} color="#4CAF50" /> Efficient Alternatives
+            </Text>
+            {researchData.alternatives.slice(0, 2).map((alt, i) => (
+              <View key={i} style={{
+                flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                paddingVertical: 8, borderTopWidth: i > 0 ? 1 : 0,
+                borderTopColor: isDark ? '#1a2a1a' : '#ddeedd',
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
+                    {alt.brand} {alt.model}
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                    {alt.active_watts_typical}W active
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: '#4CAF50', fontSize: 13, fontWeight: '700' }}>
+                    Save ${alt.annual_savings_dollars}/yr
+                  </Text>
+                  {alt.energy_star_certified && (
+                    <Text style={{ color: '#2196F3', fontSize: 10, fontWeight: '600' }}>ENERGY STAR</Text>
+                  )}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 

@@ -2,7 +2,7 @@
  * DeviceDetailScreen — Full-page device power summary + edit/delete.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -16,9 +16,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Device, RoomModel, updateDevice, deleteDevice } from '../services/apiClient';
+import { Device, RoomModel, updateDevice, deleteDevice, researchDevice, ResearchResult } from '../services/apiClient';
 import { useTheme } from '../context/ThemeContext';
 import { Appliance3DModel } from '../components/Appliance3DModel';
+import { log } from '../utils/logger';
 
 interface DeviceDetailScreenProps {
   device: Device;
@@ -37,8 +38,54 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
   const [editRoomId, setEditRoomId] = useState(device.roomId || '');
   const [editHours, setEditHours] = useState(String(device.active_hours_per_day ?? 4));
   const [saving, setSaving] = useState(false);
+  const [research, setResearch] = useState<ResearchResult | null>(null);
+  const [researching, setResearching] = useState(false);
 
   const roomName = rooms.find(r => r.roomId === device.roomId)?.name ?? device.roomId ?? 'Unknown room';
+
+  // Auto-fetch research data if brand/model are known
+  useEffect(() => {
+    const brand = device.brand && device.brand !== 'Unknown' ? device.brand : '';
+    const model = device.model && device.model !== 'Unknown' ? device.model : '';
+    if (!brand && !model) return;
+
+    let cancelled = false;
+    setResearching(true);
+    log.api('Research auto-fetch started', { brand: brand || 'Unknown', model: model || 'Unknown', category: device.category });
+    researchDevice(brand || 'Unknown', model || 'Unknown', device.category)
+      .then(result => {
+        if (!cancelled) {
+          setResearch(result);
+          log.api('Research auto-fetch completed', {
+            hasProfile: !!result.power_profile,
+            source: result.power_profile?.source,
+            alternativesCount: result.alternatives.length,
+          });
+        }
+      })
+      .catch(err => { log.error('api', 'Research auto-fetch failed', err); })
+      .finally(() => { if (!cancelled) setResearching(false); });
+    return () => { cancelled = true; };
+  }, [device.brand, device.model, device.category]);
+
+  function handleResearch() {
+    const brand = editBrand || device.brand || 'Unknown';
+    const model = editModel || device.model || 'Unknown';
+    if (brand === 'Unknown' && model === 'Unknown') return;
+    log.action('Research button pressed', { brand, model, category: device.category });
+    setResearching(true);
+    researchDevice(brand, model, device.category)
+      .then(result => {
+        setResearch(result);
+        log.action('Research completed', {
+          hasProfile: !!result.power_profile,
+          source: result.power_profile?.source,
+          alternativesCount: result.alternatives.length,
+        });
+      })
+      .catch(err => { log.error('action', 'Research button failed', err); })
+      .finally(() => setResearching(false));
+  }
 
   async function handleSave() {
     try {
@@ -161,6 +208,103 @@ export function DeviceDetailScreen({ device, rooms, onBack, onDeviceUpdated }: D
             </View>
           </View>
         )}
+
+        {/* Research & Alternatives */}
+        <View style={[styles.card, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
+              Energy Alternatives
+            </Text>
+            <TouchableOpacity
+              onPress={handleResearch}
+              disabled={researching}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                backgroundColor: isDark ? 'rgba(76,175,80,0.15)' : '#E8F5E9',
+                paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
+                opacity: researching ? 0.6 : 1,
+              }}
+            >
+              {researching ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Ionicons name="search-outline" size={14} color={colors.accent} />
+              )}
+              <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>
+                {researching ? 'Searching...' : 'Research'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {research && research.alternatives.length > 0 ? (
+            research.alternatives.map((alt, i) => (
+              <View key={i} style={{
+                paddingVertical: 12,
+                borderTopWidth: i > 0 ? 1 : 0,
+                borderTopColor: isDark ? '#333' : '#eee',
+              }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>
+                      {alt.brand} {alt.model}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                      {alt.active_watts_typical}W active
+                      {power ? ` vs your ${power.active_watts_typical}W` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: '#4CAF50', fontSize: 15, fontWeight: '800' }}>
+                      -${alt.annual_savings_dollars}/yr
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                      {alt.annual_savings_kwh} kWh saved
+                    </Text>
+                    {alt.energy_star_certified && (
+                      <View style={{
+                        backgroundColor: '#2196F3', paddingHorizontal: 6, paddingVertical: 1,
+                        borderRadius: 6, marginTop: 3,
+                      }}>
+                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>ENERGY STAR</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            ))
+          ) : research && research.alternatives.length === 0 ? (
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic' }}>
+              No more efficient alternatives found for this device.
+            </Text>
+          ) : !researching ? (
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic' }}>
+              {device.brand === 'Unknown' && device.model === 'Unknown'
+                ? 'Add brand/model info above, then tap Research.'
+                : 'Tap Research to find energy-efficient alternatives.'}
+            </Text>
+          ) : null}
+
+          {research?.power_profile && (
+            <View style={{
+              marginTop: 12, paddingTop: 12,
+              borderTopWidth: 1, borderTopColor: isDark ? '#333' : '#eee',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{
+                  backgroundColor: research.power_profile.source === 'energystar_api' ? '#4CAF50' : '#FF9800',
+                  paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8,
+                }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                    {research.power_profile.source === 'energystar_api' ? 'ENERGY STAR' : 'AI Research'}
+                  </Text>
+                </View>
+                <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
+                  Researched: {research.power_profile.active_watts_typical}W active, {research.power_profile.standby_watts_typical}W standby
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
 
         {/* Edit section */}
         <View style={[styles.card, { backgroundColor: isDark ? '#1a1a2e' : '#fff' }]}>

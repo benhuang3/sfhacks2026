@@ -8,6 +8,7 @@ Endpoints:
   POST /api/v1/power-profile                    → Power Agent
   POST /api/v1/seed-defaults                    → Seed category defaults
   POST /api/v1/identify-brand                    → Multi-angle brand ID
+  POST /api/v1/research-device                   → Research power specs + alternatives
   POST /api/v1/scans                            → Insert scan
   POST /api/v1/scans/similar                    → Vector similarity search
   POST /api/v1/scans/resolve                    → Cache-aware resolve
@@ -108,6 +109,15 @@ from actions_service import (
     revert_action,
     compute_action_savings,
 )
+
+try:
+    from research_agent import research_device
+    RESEARCH_AVAILABLE = True
+except ImportError as _re:
+    logger.warning("research_agent import failed: %s — endpoint will return empty", _re)
+    RESEARCH_AVAILABLE = False
+    async def research_device(brand: str, model: str, category: str):  # type: ignore[misc]
+        return {"power_profile": None, "alternatives": []}
 
 from auth import (
     SignupRequest,
@@ -615,6 +625,38 @@ async def identify_brand(req: IdentifyBrandRequest):
         logger.warning("Brand identification failed: %s", exc, exc_info=True)
 
     return {"success": True, "data": {"brand": "Unknown", "model": "Unknown"}}
+
+
+# ---------------------------------------------------------------------------
+# Research Agent → POST /api/v1/research-device
+# ---------------------------------------------------------------------------
+
+class ResearchDeviceRequest(BaseModel):
+    brand: str = "Unknown"
+    model: str = "Unknown"
+    category: str = "Unknown"
+
+
+@app.post("/api/v1/research-device")
+async def research_device_endpoint(req: ResearchDeviceRequest):
+    """
+    Look up real power specs and energy-efficient alternatives.
+    Priority: MongoDB cache → ENERGY STAR API (free) → Gemini flash-lite.
+    """
+    logger.info("POST /api/v1/research-device — brand=%s model=%s category=%s", req.brand, req.model, req.category)
+    try:
+        result = await research_device(req.brand, req.model, req.category)
+        has_profile = result.get("power_profile") is not None
+        alt_count = len(result.get("alternatives", []))
+        source = result.get("power_profile", {}).get("source", "none") if has_profile else "none"
+        logger.info("POST /api/v1/research-device — done: hasProfile=%s source=%s alternatives=%d", has_profile, source, alt_count)
+        return {"success": True, "data": result}
+    except Exception as exc:
+        logger.exception("Research device failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "error": str(exc)},
+        )
 
 
 @app.post("/api/v1/seed-defaults")

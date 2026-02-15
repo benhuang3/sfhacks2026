@@ -510,6 +510,45 @@ export async function sendAgentCommand(
 }
 
 // ---------------------------------------------------------------------------
+// Research Agent API — post-scan power lookup + alternatives
+// ---------------------------------------------------------------------------
+
+export interface ResearchPowerProfile {
+  active_watts_typical: number;
+  standby_watts_typical: number;
+  active_watts_range: [number, number];
+  standby_watts_range: [number, number];
+  source: string;
+  confidence: number;
+  sources_used: string[];
+}
+
+export interface ResearchAlternative {
+  brand: string;
+  model: string;
+  category: string;
+  active_watts_typical: number;
+  standby_watts_typical: number;
+  annual_savings_kwh: number;
+  annual_savings_dollars: number;
+  energy_star_certified: boolean;
+  source_url: string;
+}
+
+export interface ResearchResult {
+  power_profile: ResearchPowerProfile | null;
+  alternatives: ResearchAlternative[];
+}
+
+export async function researchDevice(
+  brand: string,
+  model: string,
+  category: string,
+): Promise<ResearchResult> {
+  return post<ResearchResult>('/research-device', { brand, model, category });
+}
+
+// ---------------------------------------------------------------------------
 // Categories API — for device search/confirm
 // ---------------------------------------------------------------------------
 
