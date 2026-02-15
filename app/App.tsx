@@ -70,11 +70,13 @@ export { ThemeContext, useTheme };
 // ---------------------------------------------------------------------------
 // Navigators
 // ---------------------------------------------------------------------------
+const isWeb = Platform.OS === 'web';
 const AuthStackNav = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const ScanStackNav = createNativeStackNavigator();
 const HomeStackNav = createNativeStackNavigator();
 const LandingStackNav = createNativeStackNavigator();
+const WebTabNav = createBottomTabNavigator();
 
 // ---------------------------------------------------------------------------
 // Auth Navigator
@@ -297,7 +299,125 @@ function LandingNavigator() {
 }
 
 // ---------------------------------------------------------------------------
-// Main Tabs
+// Web Top Navigation Bar (replaces bottom tabs on web)
+// ---------------------------------------------------------------------------
+function WebTopNavBar({ state, navigation }: any) {
+  const { colors, isDark, setThemeMode } = useTheme();
+  const { user, logout } = useAuth();
+
+  const tabConfig: Record<string, { label: string; icon: string }> = {
+    Dashboard: { label: 'Dashboard', icon: 'stats-chart' },
+    MyHome: { label: 'My Home', icon: 'home' },
+    Chat: { label: 'AI Chat', icon: 'chatbubble-ellipses' },
+  };
+
+  return (
+    <View style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingHorizontal: 24,
+      height: 56,
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 32 }}>
+        <Image source={require('./assets/image.png')} style={{ width: 28, height: 28, marginRight: 8, tintColor: colors.accent }} />
+        <Text style={{ color: colors.accent, fontSize: 20, fontWeight: '800' }}>SmartGrid</Text>
+      </View>
+
+      {state.routes.map((route: any, index: number) => {
+        const isActive = state.index === index;
+        const config = tabConfig[route.name] || { label: route.name, icon: 'ellipse' };
+        return (
+          <TouchableOpacity
+            key={route.key}
+            onPress={() => navigation.navigate(route.name)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 8,
+              marginRight: 8,
+              backgroundColor: isActive ? colors.accent + '18' : 'transparent',
+            }}
+          >
+            <Ionicons name={config.icon as any} size={18} color={isActive ? colors.accent : colors.textSecondary} />
+            <Text style={{
+              color: isActive ? colors.accent : colors.textSecondary,
+              fontSize: 14,
+              fontWeight: isActive ? '700' : '500',
+              marginLeft: 6,
+            }}>{config.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+
+      <View style={{ flex: 1 }} />
+
+      <Text style={{ color: colors.textSecondary, fontSize: 13, marginRight: 12 }}>
+        {user?.name || user?.email?.split('@')[0] || 'User'}
+      </Text>
+      <TouchableOpacity onPress={() => setThemeMode(isDark ? 'light' : 'dark')} style={{ marginRight: 12 }}>
+        <Ionicons name={isDark ? 'moon' : 'sunny'} size={20} color={isDark ? '#FFD54F' : '#FF9800'} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={logout}
+        style={{
+          flexDirection: 'row', alignItems: 'center',
+          backgroundColor: 'rgba(255,68,68,0.1)',
+          paddingHorizontal: 12, paddingVertical: 6,
+          borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,68,68,0.25)', gap: 4,
+        }}
+      >
+        <Ionicons name="log-out-outline" size={14} color="#ff4444" />
+        <Text style={{ color: '#ff4444', fontSize: 12, fontWeight: '600' }}>Logout</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Web Responsive Wrapper — centers content with max width on desktop
+// ---------------------------------------------------------------------------
+function WebResponsive({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, maxWidth: 1200, width: '100%', alignSelf: 'center', backgroundColor: colors.bg }}>
+      {children}
+    </View>
+  );
+}
+
+function WebDashboard() {
+  return <WebResponsive><DashboardWrapper /></WebResponsive>;
+}
+function WebHome() {
+  return <WebResponsive><HomeNavigator /></WebResponsive>;
+}
+function WebChat() {
+  return <WebResponsive><ChatScreen /></WebResponsive>;
+}
+
+// ---------------------------------------------------------------------------
+// Web Main Layout — 3 tabs with top nav, responsive container
+// ---------------------------------------------------------------------------
+function WebMainLayout() {
+  return (
+    <WebTabNav.Navigator
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <WebTopNavBar {...props} />}
+    >
+      <WebTabNav.Screen name="Dashboard" component={WebDashboard} />
+      <WebTabNav.Screen name="MyHome" component={WebHome} />
+      <WebTabNav.Screen name="Chat" component={WebChat} />
+    </WebTabNav.Navigator>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Tabs (native only — 5 tabs with bottom bar)
 // ---------------------------------------------------------------------------
 function MainTabs() {
   const { colors, isDark } = useTheme();
@@ -727,7 +847,8 @@ function AppContent() {
     );
   }
 
-  return isAuthenticated ? <MainTabs /> : <AuthNavigator />;
+  if (!isAuthenticated) return <AuthNavigator />;
+  return isWeb ? <WebMainLayout /> : <MainTabs />;
 }
 
 // ---------------------------------------------------------------------------

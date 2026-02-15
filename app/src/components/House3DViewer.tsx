@@ -14,7 +14,12 @@
 
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { View, StyleSheet, Platform, Text, ActivityIndicator } from 'react-native';
-import { WebView } from 'react-native-webview';
+
+// WebView is native-only; on web we render an <iframe> instead
+let WebView: any = null;
+if (Platform.OS !== 'web') {
+  try { WebView = require('react-native-webview').WebView; } catch {}
+}
 
 interface DeviceInfo {
   label: string;
@@ -114,6 +119,16 @@ export function House3DViewer({
   const ROOMS = ${roomsJson};
   const DEVICES = ${devicesJson};
   const IS_DARK = ${isDark};
+
+  // Helper: send message to host (WebView on native, parent window on web)
+  function sendToHost(data) {
+    var msg = JSON.stringify(data);
+    if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+      window.ReactNativeWebView.postMessage(msg);
+    } else if (window.parent !== window) {
+      window.parent.postMessage(msg, '*');
+    }
+  }
 
   // ================================================================
   // glTF Model Loading Infrastructure
@@ -2549,17 +2564,15 @@ export function House3DViewer({
       }
 
       if (deviceData) {
-        // Send device tap to React Native
+        // Send device tap to host (React Native WebView or iframe parent)
         try {
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'deviceTap',
-              label: deviceData.deviceLabel,
-              category: deviceData.deviceCategory,
-              roomId: deviceData.roomId,
-              roomName: deviceData.roomName,
-            }));
-          }
+          sendToHost({
+            type: 'deviceTap',
+            label: deviceData.deviceLabel,
+            category: deviceData.deviceCategory,
+            roomId: deviceData.roomId,
+            roomName: deviceData.roomName,
+          });
         } catch(err) {}
 
         // Visual pulse feedback — expand glow ring briefly
@@ -2660,17 +2673,15 @@ export function House3DViewer({
         tooltip.style.display = 'block';
         tooltip.style.left = Math.min(e.clientX + 10, window.innerWidth - 280) + 'px';
         tooltip.style.top = Math.max(e.clientY - 80, 10) + 'px';
-        // Also send room tap event to React Native
+        // Also send room tap event to host
         try {
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'roomTap',
-              roomId: ud.roomId,
-              roomName: rm,
-              deviceCount: devs.length,
-              totalWatts: totalWatts,
-            }));
-          }
+          sendToHost({
+            type: 'roomTap',
+            roomId: ud.roomId,
+            roomName: rm,
+            deviceCount: devs.length,
+            totalWatts: totalWatts,
+          });
         } catch(err) {}
         setTimeout(function() { tooltip.style.display = 'none'; }, 5000);
       } else {
@@ -2780,6 +2791,19 @@ export function House3DViewer({
     return () => clearTimeout(t);
   }, [rooms.length, devices.length]);
 
+  // Web: listen for postMessage from iframe (ignore messages from other sources)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handler = (e: MessageEvent) => {
+      // Only accept string messages that look like our JSON payloads
+      if (typeof e.data === 'string' && e.data.startsWith('{')) {
+        handleMessage({ nativeEvent: { data: e.data } } as any);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [handleMessage]);
+
   const containerHeight = Math.max(height, 280);
   return (
     <View style={[styles.container, { height: containerHeight }]}>
@@ -2789,22 +2813,36 @@ export function House3DViewer({
           <Text style={styles.loadingText}>Loading 3D house…</Text>
         </View>
       ) : null}
-      <WebView
-        key={`house3d-${rooms.length}-${devices.length}`}
-        source={{ html: htmlContent }}
-        style={[styles.webview, { minHeight: 280, opacity: showWebView ? 1 : 0 }]}
-        scrollEnabled={false}
-        bounces={false}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        originWhitelist={['*']}
-        mixedContentMode="always"
-        allowsInlineMediaPlayback={true}
-        overScrollMode="never"
-        nestedScrollEnabled={false}
-        onMessage={handleMessage}
-        {...(Platform.OS === 'android' ? { hardwareAccelerationDisabledInWebView: false } : {})}
-      />
+      {Platform.OS === 'web' ? (
+        <iframe
+          key={`house3d-${rooms.length}-${devices.length}`}
+          srcDoc={htmlContent}
+          style={{
+            width: '100%',
+            height: containerHeight,
+            border: 'none',
+            borderRadius: 16,
+            opacity: showWebView ? 1 : 0,
+          } as any}
+        />
+      ) : WebView ? (
+        <WebView
+          key={`house3d-${rooms.length}-${devices.length}`}
+          source={{ html: htmlContent }}
+          style={[styles.webview, { minHeight: 280, opacity: showWebView ? 1 : 0 }]}
+          scrollEnabled={false}
+          bounces={false}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          originWhitelist={['*']}
+          mixedContentMode="always"
+          allowsInlineMediaPlayback={true}
+          overScrollMode="never"
+          nestedScrollEnabled={false}
+          onMessage={handleMessage}
+          {...(Platform.OS === 'android' ? { hardwareAccelerationDisabledInWebView: false } : {})}
+        />
+      ) : null}
     </View>
   );
 }

@@ -1392,6 +1392,16 @@ def _get_energy_fallback(question: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Serve Expo Web build (static files) — mount LAST so API routes take priority
+# ---------------------------------------------------------------------------
+_web_dist = os.path.join(os.path.dirname(__file__), "..", "app", "dist")
+if os.path.isdir(_web_dist):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_web_dist, html=True), name="web")
+    logger.info("Serving web build from %s", os.path.abspath(_web_dist))
+
+
+# ---------------------------------------------------------------------------
 # Run directly: python server.py
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
